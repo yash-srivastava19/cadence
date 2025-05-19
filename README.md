@@ -21,3 +21,6 @@ worked on researching what kind of problems exists that fit the description, and
 8. digital root calculation.
 
 Will try to find more that fits this description, and work on one file at a time. We have the foundations laid down, just need to fill in an run experiments.
+
+19/05/2025:
+Worked on basic versions of all the db, eval, llm, sampler(not evolve because it will be based on problem). Used SQLite for DB, and apply_diff uses `re`. The work is going on nice, and now would like to continue and run them in a pipeline.
