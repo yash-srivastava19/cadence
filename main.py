@@ -1,11 +1,14 @@
 import logging
 import json
-
+from argparse import ArgumentParser
 from src.database import sample, add, get_best_program
 from src.evaluator import execute
 from src.evolve import apply_diff
 from src.prompt_sampler import build, update_instruction, INSTRUCTION_TEMPLATE
 from src.llm import generate, mutate_instruction
+
+from src.tasks.tsp_task import TSPTask
+task = TSPTask()
 
 logging.basicConfig(level=logging.INFO)
 
@@ -15,6 +18,17 @@ META_PROMPT_EDIT_INTERVAL = 2
 EXPERIMENT_LOG = []
 
 if __name__ == '__main__':
+    parser = ArgumentParser(description="Run the evolutionary program synthesis experiment.")
+    parser.add_argument("--num_generations", type=int, default=NUM_GENERATIONS,help="Total number of generations to run (default: 6)")
+    parser.add_argument("--elitism_interval", type=int, default=ELITISM_INTERVAL,help="Interval for elitism (default: 5)")
+    parser.add_argument("--meta_prompt_edit_interval", type=int, default=META_PROMPT_EDIT_INTERVAL,help="Interval for editing the meta prompt (default: 2)")
+
+    args = parser.parse_args()
+
+    NUM_GENERATIONS = args.num_generations
+    ELITISM_INTERVAL = args.elitism_interval
+    META_PROMPT_EDIT_INTERVAL = args.meta_prompt_edit_interval
+
     generation = 1
     while generation <= NUM_GENERATIONS:
         logging.info(f"=== Generation {generation} ===")
@@ -56,8 +70,7 @@ if __name__ == '__main__':
         child_program_code = apply_diff(parent_program[3], diffs)
 
         # Step 5: Evaluate
-        print(child_program_code)
-        metric = execute(child_program_code)
+        metric = execute(child_program_code, task)
         if "error" in metric:
             logging.error(f"Evaluation failed: {metric['error']}")
             continue

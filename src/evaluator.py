@@ -32,18 +32,18 @@ def execute_single_seed(seed, tsp_func):
     except Exception as e:
         return float("inf")
 
-def execute(child_program_code: str, seeds: list[int] = [1, 2, 3, 4, 5]):
+def execute(child_program_code: str, task, seeds: list[int] = [1, 2, 3, 4, 5]):
     try:
         # Load the tsp() function from the generated program
         local_env = {}
         exec(child_program_code, local_env)
-        tsp_func = local_env.get("tsp")
+        func = local_env.get(task.function_name)
 
-        if tsp_func is None:
+        if func is None:
             return {"error": "No 'tsp' function found", "cost": float("inf")}
 
         with ThreadPoolExecutor(max_workers=len(seeds)) as executor:
-            results = list(executor.map(lambda seed: execute_single_seed(seed, tsp_func), seeds))
+            results = list(executor.map(lambda seed: execute_single_seed(seed, func), seeds))
 
 
         avg_cost = sum(results) / len(results)
