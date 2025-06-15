@@ -24,3 +24,6 @@ Will try to find more that fits this description, and work on one file at a time
 
 19/05/2025:
 Worked on basic versions of all the db, eval, llm, sampler(not evolve because it will be based on problem). Used SQLite for DB, and apply_diff uses `re`. The work is going on nice, and now would like to continue and run them in a pipeline.
+
+15/06/2025:
+Working for TSP problem, however not evolving too much. Improved the DB, evaluator, prompts and other functions, and using gemini for program evals. working on improving the strategy to make cost go down.
