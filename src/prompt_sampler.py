@@ -71,7 +71,7 @@ def build(parent_program, inspirations):
     # Instruction to generate new code
     prompt += (
     "### TASK:\n"
-    "Your task is to modify this program to reduce the cost of the tour.\n\n"
+    "Your task is to modify this program to reduce the cost and increase efficiency. Do not repeat or return the same code unless there’s a meaningful improvement.\n\n"
     "Only modify code *inside the blocks marked* by:\n"
     "    ### START_BLOCK\n"
     "    ... code here ...\n"
@@ -87,7 +87,7 @@ def build(parent_program, inspirations):
     "Avoid copying the exact same structure or logic unless necessary.\n"
     "Try a different approach, optimization, or heuristic to reduce cost.\n"
     "Do not assume any import or library unless you explicitly include it.\n"
-    "The code should run when passed to `exec()`, without relying on any outside context.\n"
+    "The code should run when passed to `exec()`, without relying on any outside modules such as numpy.\n"
     )
 
     return prompt

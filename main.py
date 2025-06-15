@@ -49,7 +49,7 @@ if __name__ == '__main__':
         child_program_code = apply_diff(parent_program[3], diffs)
 
         # Step 5: Evaluate
-        # print(child_program_code)
+        print(child_program_code)
         metric = execute(child_program_code)
         if "error" in metric:
             logging.error(f"Evaluation failed: {metric['error']}")
@@ -73,8 +73,6 @@ if __name__ == '__main__':
         })
 
         generation += 1
-
-    # Save results
     with open("experiment_log.json", "w") as f:
         json.dump(EXPERIMENT_LOG, f, indent=2)
 
