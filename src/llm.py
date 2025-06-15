@@ -1,19 +1,28 @@
-def generate():
-    pass
-
+from google import genai
 import os
-import cohere
 import dotenv
 
 dotenv.load_dotenv()
-CO_API_KEY = os.getenv("CO_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+client = genai.Client(api_key = GEMINI_API_KEY)
+
+def generate(prompt):
+    try:
+        response = client.models.generate_content(
+            model = "gemini-2.0-flash",
+            contents = prompt,
+        )
+        return extract_valid_blocks(response.text)
+
+    except Exception as e:
+        print(f"[LLM Error] {e}")
+        return []
 
 
-co = cohere.ClientV2(CO_API_KEY)
-
-response = co.chat(
-    model="command-a-03-2025",
-    messages=[{"role": "user", "content": "hello world!"}],
-)
-
-print(response.message.content[0].text)
+def extract_valid_blocks(text):
+    """
+    Extracts all code snippets between ### START_BLOCK and ### END_BLOCK.
+    """
+    import re
+    pattern = r"### START_BLOCK\n(.*?)\n### END_BLOCK"
+    return re.findall(pattern, text, re.DOTALL)

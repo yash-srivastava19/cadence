@@ -6,3 +6,5 @@ __pycache__/
 .DS_Store
 venv/
 cadence_db.sqlite
+experiment_log.json
+cost_evolution.png

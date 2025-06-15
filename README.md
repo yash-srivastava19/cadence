@@ -8,11 +8,11 @@ Finding new solutions using LLMs(not RL)
 - any problem we encounter, we'll take inspiration from the paper.
 
 ### worklog
-18/05/2025: 
+18/05/2025:
 worked on researching what kind of problems exists that fit the description, and laid down the structure(and boilerplate) for the project, named it cadence. Some of the interesting problems I found out were:
 
 1. root finding.
-2. prime factorization.  
+2. prime factorization.
 3. inverse of a matrix.
 4. fft optimization.
 5. minimum makesplan scheduling with precedence.

@@ -1,3 +1,4 @@
 # Add your dependencies here
-cohere
 python-dotenv
+matplotlib
+google-genai
