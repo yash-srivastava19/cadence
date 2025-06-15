@@ -1,4 +1,0 @@
-# Add your dependencies here
-python-dotenv
-matplotlib
-google-genai

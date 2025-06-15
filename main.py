@@ -4,19 +4,26 @@ import json
 from src.database import sample, add, get_best_program
 from src.evaluator import execute
 from src.evolve import apply_diff
-from src.prompt_sampler import build
-from src.llm import generate
+from src.prompt_sampler import build, update_instruction, INSTRUCTION_TEMPLATE
+from src.llm import generate, mutate_instruction
 
 logging.basicConfig(level=logging.INFO)
 
-NUM_GENERATIONS = 10
+NUM_GENERATIONS = 6
 ELITISM_INTERVAL = 5
+META_PROMPT_EDIT_INTERVAL = 2
 EXPERIMENT_LOG = []
 
 if __name__ == '__main__':
     generation = 1
     while generation <= NUM_GENERATIONS:
         logging.info(f"=== Generation {generation} ===")
+
+        if generation > 0 and generation % META_PROMPT_EDIT_INTERVAL == 0:
+            logging.info("Evolving meta prompt...")
+            new_instruction = mutate_instruction(INSTRUCTION_TEMPLATE)
+            update_instruction(new_instruction)
+            logging.info(f"Updated instruction:\n{new_instruction}")
 
         # Step 1: Select parent program (with elitism every ELITISM_INTERVAL generations)
         if generation > 0 and generation % ELITISM_INTERVAL == 0:

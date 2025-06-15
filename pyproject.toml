@@ -1,0 +1,12 @@
+# pyproject.toml
+[project]
+name = "cadence"
+version = "0.1.0"
+description = "LLM-based program evolution framework, similar to AlphaEvolve"
+requires-python = ">=3.11.4"
+
+dependencies = [
+  "matplotlib",
+  "python-dotenv",
+  "google-genai",
+]

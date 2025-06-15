@@ -1,34 +1,20 @@
-def build(parent_program, inspirations):
-    """
-    Constructs a prompt for an LLM given a parent program and a set of inspirations.
-
-    Args:
-        parent_program (tuple): (id, generation_number, parent_id, program_code, metric) or None if no parent found.
-        inspirations (list): List of tuples, each representing a child program:
-                             (id, generation_number, parent_id, program_code, metric)
-
-    Returns:
-        str: A prompt string for the LLM.
-    """
-    prompt = ""
-
-    if parent_program:
-        prompt += f"Parent Program:\n{parent_program[3]}\n\n"  # Assuming program_code is at index 3
-    else:
-        prompt += "No parent program found.\n\n"
-
-    if inspirations:
-        prompt += "Inspirations:\n"
-        for inspiration in inspirations:
-            prompt += f"{inspiration[3]}\n"  # Assuming program_code is at index 3
-    else:
-        prompt += "No inspirations found.\n"
-
-    return prompt
-
-### GPT-4o
-
 import re
+
+# Global mutable instruction
+INSTRUCTION_TEMPLATE = """
+Your task is to modify this program to reduce the cost and increase efficiency.
+Only modify code inside the START_BLOCK and END_BLOCK markers.
+Do not repeat the same logic unless necessary.
+Avoid markdown or explanation in your output.
+Ensure the code is self-contained and executable.
+"""
+
+def update_instruction(new_instruction: str):
+    """
+    Updates the global instruction template used in prompts.
+    """
+    global INSTRUCTION_TEMPLATE
+    INSTRUCTION_TEMPLATE = new_instruction
 
 def extract_code_blocks(code: str, start_marker="### START_BLOCK", end_marker="### END_BLOCK"):
     """
@@ -37,57 +23,60 @@ def extract_code_blocks(code: str, start_marker="### START_BLOCK", end_marker="#
     pattern = re.compile(rf"{re.escape(start_marker)}\n([\s\S]*?)\n{re.escape(end_marker)}", re.MULTILINE)
     return [match.group(1).strip() for match in pattern.finditer(code)]
 
-def build(parent_program, inspirations):
+def build(parent_program, inspirations=None, last_diff=None, last_metric=None):
     """
-    Constructs a prompt for an LLM given a parent program and a set of inspirations.
+    Constructs a prompt for the LLM to evolve a given program.
 
     Args:
         parent_program (tuple): (id, generation_number, parent_id, program_code, metric)
-        inspirations (list): List of child programs with the same structure.
+        inspirations (list): Optional list of child programs (same format)
+        last_diff (str): Optional - last attempted diff
+        last_metric (float): Optional - result of last diff
 
     Returns:
-        str: A fully constructed prompt string for the LLM.
+        str: Fully formed prompt string
     """
-    prompt = "You are an expert Python programmer tasked with evolving a given program.\n\n"
+    parent_code = parent_program[3] if parent_program else ""
+    parent_metric = parent_program[4] if parent_program else "N/A"
+    block_count = len(extract_code_blocks(parent_code))
 
-    # Add parent program
-    if parent_program:
-        prompt += "### PARENT PROGRAM (baseline):\n"
-        prompt += parent_program[3] + "\n\n"
-        prompt += f"# Metric: {parent_program[4]}\n\n"
-    else:
-        prompt += "No parent program found.\n\n"
+    prompt = f"""You are an expert Python programmer tasked with evolving a given program.
 
-    # Add inspiration programs (previous mutations)
+### PARENT PROGRAM (baseline):
+{parent_code}
+
+# Metric: {parent_metric}
+
+"""
+
     if inspirations:
         prompt += "### INSPIRATION PROGRAMS (previous mutations):\n"
         for i, insp in enumerate(inspirations):
-            prompt += f"## Inspiration #{i+1}\n"
-            prompt += insp[3] + "\n"
-            prompt += f"# Metric: {insp[4]}\n\n"
-    else:
-        prompt += "No inspiration programs available.\n\n"
+            prompt += f"## Inspiration #{i+1}\n{insp[3]}\n# Metric: {insp[4]}\n\n"
 
-    # Instruction to generate new code
-    prompt += (
-    "### TASK:\n"
-    "Your task is to modify this program to reduce the cost and increase efficiency. Do not repeat or return the same code unless there’s a meaningful improvement.\n\n"
-    "Only modify code *inside the blocks marked* by:\n"
-    "    ### START_BLOCK\n"
-    "    ... code here ...\n"
-    "    ### END_BLOCK\n\n"
-    "You MUST output only replacement code blocks.\n"
-    "- Each block should start with a single ### START_BLOCK line\n"
-    "- Then plain Python code (no markdown, no backticks, no triple quotes)\n"
-    "- Then a single ### END_BLOCK line\n"
-    "- Do not repeat or nest the markers\n"
-    "- Do not include any text or explanation outside these blocks\n\n"
-    "Output as many blocks as exist in the parent program, in order.\n"
-    "Each block must correspond 1-to-1 with a block in the parent code.\n"
-    "Avoid copying the exact same structure or logic unless necessary.\n"
-    "Try a different approach, optimization, or heuristic to reduce cost.\n"
-    "Do not assume any import or library unless you explicitly include it.\n"
-    "The code should run when passed to `exec()`, without relying on any outside modules such as numpy.\n"
-    )
+    if last_diff and last_metric is not None:
+        prompt += f"""### LAST DIFF + METRIC
+Diff applied:
+{last_diff}
 
-    return prompt
+Resulting metric: {last_metric}
+
+Please suggest a better variation.
+"""
+
+    prompt += f"""
+### TASK:
+{INSTRUCTION_TEMPLATE}
+
+- There are {block_count} code block(s) to modify.
+- Return exactly {block_count} updated blocks in the same order they appear.
+- Each block must be formatted as:
+
+### START_BLOCK
+<your updated code>
+### END_BLOCK
+
+No commentary, no markdown, no extra text — only the code blocks.
+"""
+
+    return prompt.strip()
