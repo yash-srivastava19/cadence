@@ -30,3 +30,12 @@ class Task(ABC):
         Lower cost = better.
         """
         pass
+
+    @property
+    @abstractmethod
+    def baseline_program(self) -> str:
+        """
+        Returns the default, minimal working solution for this task.
+        Should be a complete code string with ### START_BLOCK / END_BLOCK markers.
+        """
+        pass

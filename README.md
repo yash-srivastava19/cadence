@@ -183,3 +183,11 @@ Worked on basic versions of all the db, eval, llm, sampler(not evolve because it
 Working for TSP problem, however not evolving too much. Improved the DB, evaluator, prompts and other functions, and using gemini for program evals. working on improving the strategy to make cost go down.
 
 Made the task general so that they can be used for a variety of problems. Added async calls and logging. CLI added too and updated the README.
+
+22/06/2025
+RL not actually improving
+- RL + LLM reward modelling.
+- `train_rl` barebones is now ready.
+- examples are now added, will add more.
+- Fallback when no parent code is there.
+- analyze result now works for RL and LLM case.

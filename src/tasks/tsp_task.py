@@ -27,3 +27,10 @@ class TSPTask(Task):
         for i in range(len(output)):
             total += dist(output[i], output[(i + 1) % len(output)])
         return total
+
+    @property
+    def baseline_program(self) -> str:
+        return """### START_BLOCK
+    def tsp(cities):
+        return list(range(len(cities)))
+    ### END_BLOCK"""

@@ -3,13 +3,19 @@
 import json
 import matplotlib.pyplot as plt
 
-def load_log(filename="experiment_log.json"):
+RL_FILE = "rl_experiment_log.json"
+LLM_FILE = "experiment_log.json"
+
+def load_log(filename=RL_FILE):
     with open(filename, "r") as f:
         return json.load(f)
 
 def plot_metric_over_generations(log):
     generations = [entry["generation"] for entry in log]
-    cost = [entry["metric"]["cost"] for entry in log]
+    if RL_FILE:
+        cost = [entry["cost"] for entry in log]
+    elif LLM_FILE:
+        cost = [entry["metric"]["cost"] for entry in log]
 
     plt.figure(figsize=(10, 6))
     plt.plot(generations, cost, marker="o", linestyle="-", color="royalblue")

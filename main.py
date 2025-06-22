@@ -17,6 +17,14 @@ ELITISM_INTERVAL = 5
 META_PROMPT_EDIT_INTERVAL = 2
 EXPERIMENT_LOG = []
 
+
+existing_parent, _ = sample(generation_number=0)
+if not existing_parent:
+    logging.info("No program found in generation 0. Adding task baseline.")
+    metric = execute(task.baseline_program, task)["cost"]
+    add(program_code=task.baseline_program, metric=metric)
+    logging.info(f"Baseline added with cost: {metric}")
+
 if __name__ == '__main__':
     parser = ArgumentParser(description="Run the evolutionary program synthesis experiment.")
     parser.add_argument("--num_generations", type=int, default=NUM_GENERATIONS,help="Total number of generations to run (default: 6)")
