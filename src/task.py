@@ -39,3 +39,10 @@ class Task(ABC):
         Should be a complete code string with ### START_BLOCK / END_BLOCK markers.
         """
         pass
+
+    def is_feasible(self, output, *args) -> bool:
+        """
+        Check if the output is feasible for the task.
+        This can be overridden by subclasses if needed.
+        """
+        return True

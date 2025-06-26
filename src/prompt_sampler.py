@@ -23,60 +23,48 @@ def extract_code_blocks(code: str, start_marker="### START_BLOCK", end_marker="#
     pattern = re.compile(rf"{re.escape(start_marker)}\n([\s\S]*?)\n{re.escape(end_marker)}", re.MULTILINE)
     return [match.group(1).strip() for match in pattern.finditer(code)]
 
-def build(parent_program, inspirations=None, last_diff=None, last_metric=None):
+def build(parent_program, inspirations):
     """
-    Constructs a prompt for the LLM to evolve a given program.
-
-    Args:
-        parent_program (tuple): (id, generation_number, parent_id, program_code, metric)
-        inspirations (list): Optional list of child programs (same format)
-        last_diff (str): Optional - last attempted diff
-        last_metric (float): Optional - result of last diff
-
-    Returns:
-        str: Fully formed prompt string
+    Builds a structured prompt to encourage novelty and heuristics.
     """
-    parent_code = parent_program[3] if parent_program else ""
-    parent_metric = parent_program[4] if parent_program else "N/A"
-    block_count = len(extract_code_blocks(parent_code))
+    prompt = '''You are an expert engineer tasked with improving a Python program that solves a real-world optimization problem.
 
-    prompt = f"""You are an expert Python programmer tasked with evolving a given program.
+The current implementation may be functional, but there is significant room for improvement in:
+- efficiency
+- solution quality
+- clarity and generalization
 
-### PARENT PROGRAM (baseline):
-{parent_code}
+Your task is to generate a modified version of the code that:
+- explores a new strategy (not the same as previous attempts)
+- avoids brute-force if possible
+- uses simple heuristics, local search, or rule-based logic
+- reduces cost and improves reliability over multiple test cases
 
-# Metric: {parent_metric}
+Only change code inside the blocks marked by:
+    ### START_BLOCK
+    ...code...
+    ### END_BLOCK
 
-"""
+You MUST output the same number of blocks as in the parent program. Do NOT include anything else.
+'''
 
+    # Add the current (parent) baseline
+    prompt += "\n### CURRENT BASELINE SOLUTION:\n"
+    prompt += parent_program[3] + "\n"
+    prompt += f"# Baseline cost: {parent_program[4]}\n"
+
+    # Add inspiration programs if any
     if inspirations:
-        prompt += "### INSPIRATION PROGRAMS (previous mutations):\n"
+        prompt += "\n### PREVIOUS ATTEMPTS:\n"
         for i, insp in enumerate(inspirations):
-            prompt += f"## Inspiration #{i+1}\n{insp[3]}\n# Metric: {insp[4]}\n\n"
+            prompt += f"\n## Attempt #{i+1} (Cost: {insp[4]})\n"
+            prompt += insp[3] + "\n"
 
-    if last_diff and last_metric is not None:
-        prompt += f"""### LAST DIFF + METRIC
-Diff applied:
-{last_diff}
+    # Final reminder
+    prompt += "\n### INSTRUCTIONS:\n"
+    prompt += "- Try a fundamentally different idea from previous versions.\n"
+    prompt += "- Avoid copying structure unless necessary.\n"
+    prompt += "- Do not include extra explanation or comments.\n"
+    prompt += "- Output ONLY valid Python code blocks between the markers.\n"
 
-Resulting metric: {last_metric}
-
-Please suggest a better variation.
-"""
-
-    prompt += f"""
-### TASK:
-{INSTRUCTION_TEMPLATE}
-
-- There are {block_count} code block(s) to modify.
-- Return exactly {block_count} updated blocks in the same order they appear.
-- Each block must be formatted as:
-
-### START_BLOCK
-<your updated code>
-### END_BLOCK
-
-No commentary, no markdown, no extra text — only the code blocks.
-"""
-
-    return prompt.strip()
+    return prompt

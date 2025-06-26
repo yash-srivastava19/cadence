@@ -2,7 +2,7 @@ import logging
 import json
 from argparse import ArgumentParser
 from src.database import sample, add, get_best_program
-from src.evaluator import execute
+from src.evaluator import execute, INFEASIBLE_COST
 from src.evolve import apply_diff
 from src.prompt_sampler import build, update_instruction, INSTRUCTION_TEMPLATE
 from src.llm import generate, mutate_instruction
@@ -13,8 +13,8 @@ task = TSPTask()
 logging.basicConfig(level=logging.INFO)
 
 NUM_GENERATIONS = 6
-ELITISM_INTERVAL = 5
-META_PROMPT_EDIT_INTERVAL = 2
+ELITISM_INTERVAL = 7
+META_PROMPT_EDIT_INTERVAL = 7
 EXPERIMENT_LOG = []
 
 
@@ -79,10 +79,16 @@ if __name__ == '__main__':
 
         # Step 5: Evaluate
         metric = execute(child_program_code, task)
+        # print(metric)
         if "error" in metric:
             logging.error(f"Evaluation failed: {metric['error']}")
             continue
-        logging.info(f"Evaluation metric for child: {metric['cost']:.4f}")
+
+        if (not metric["feasibility"] or metric["cost"] >= INFEASIBLE_COST):
+            logging.warning(f"Child program is infeasible or has high cost: {metric['cost']}")
+        else:
+            logging.info(f"Valid Result: Cost: {metric['cost']}")
+        logging.info(f"Evaluation metric for child: {metric['cost']:.4f} | Feasibility: {metric.get('feasibility_ratio', 0.0):.2f}")
 
         # Step 6: Store in DB
         add(
@@ -97,7 +103,8 @@ if __name__ == '__main__':
         EXPERIMENT_LOG.append({
             "generation": generation + 1,
             "parent_id": parent_program[0],
-            "metric": metric,
+            "cost": metric["cost"],
+            "feasibility": metric.get("feasibility_ratio", 0.0),
         })
 
         generation += 1

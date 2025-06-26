@@ -15,8 +15,17 @@ class TSPTask(Task):
         return [(random.uniform(0, 100), random.uniform(0, 100)) for _ in range(self.n_cities)]
 
     def evaluate(self, output, cities) -> float:
+        if not self.is_feasible(output, cities):
+            return {
+                "cost": float("inf"),
+                "feasible": False
+            }
+
         if not isinstance(output, list) or sorted(output) != list(range(len(cities))):
-            return float("inf")
+            return {
+                "cost": float("inf"),
+                "feasible": False
+            }
 
         def dist(i, j):
             x1, y1 = cities[i]
@@ -26,7 +35,17 @@ class TSPTask(Task):
         total = 0
         for i in range(len(output)):
             total += dist(output[i], output[(i + 1) % len(output)])
-        return total
+        return {
+            "cost": total,
+            "feasible": True
+        }
+
+    def is_feasible(self, output, cities) -> bool:
+        if not isinstance(output, list) or len(output) != len(cities):
+            return False
+        if sorted(output) != list(range(len(cities))):
+            return False
+        return True
 
     @property
     def baseline_program(self) -> str:
