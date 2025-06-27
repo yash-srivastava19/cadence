@@ -48,6 +48,7 @@ def execute(child_program_code: str, task, seeds: list[int] = [1, 2, 3, 4, 5]):
         from statistics import mean
 
         local_env = {}
+        results = []
         exec(child_program_code, local_env)
         func = local_env.get(task.function_name)
 
@@ -61,10 +62,10 @@ def execute(child_program_code: str, task, seeds: list[int] = [1, 2, 3, 4, 5]):
         avg_cost = mean(r["cost"] for r in results)
         feasibility_ratio = sum(1 for r in results if r["feasible"]) / len(results)
 
-    except Exception as e:
-        return results.append({"cost": INFEASIBLE_COST, "feasible": False})
+        return {
+            "cost": avg_cost,
+            "feasibility": feasibility_ratio,
+        }
 
-    return {
-        "cost": avg_cost,
-        "feasibility": feasibility_ratio,
-    }
+    except Exception as e:
+        return {"cost": INFEASIBLE_COST, "feasibility": False}

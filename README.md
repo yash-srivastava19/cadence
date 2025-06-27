@@ -194,4 +194,7 @@ RL not actually improving
 
 
 26/06/2025
-- Need to focus on improving the prompt and output strategy.
+- Need to focus on improving the prompt and output strategy. Novelty, heuristics and all were considered and added.
+
+27/06/2025
+- Added resumed checkpointing. Gemini exhausted. Did some code refactors.

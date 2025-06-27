@@ -1,3 +1,4 @@
+import os
 import logging
 import json
 from argparse import ArgumentParser
@@ -25,8 +26,19 @@ if not existing_parent:
     add(program_code=task.baseline_program, metric=metric)
     logging.info(f"Baseline added with cost: {metric}")
 
+LOG_PATH = "experiment_log.json"
+
+if os.path.exists(LOG_PATH):
+    with open(LOG_PATH, "r") as f:
+        EXPERIMENT_LOG = json.load(f)
+    completed_generations = {entry["generation"] for entry in EXPERIMENT_LOG}
+else:
+    EXPERIMENT_LOG = []
+    completed_generations = set()
+
 if __name__ == '__main__':
     parser = ArgumentParser(description="Run the evolutionary program synthesis experiment.")
+    parser.add_argument("--start_generation", type=int, default=0,help="checkpointing index (default: 0)")
     parser.add_argument("--num_generations", type=int, default=NUM_GENERATIONS,help="Total number of generations to run (default: 6)")
     parser.add_argument("--elitism_interval", type=int, default=ELITISM_INTERVAL,help="Interval for elitism (default: 5)")
     parser.add_argument("--meta_prompt_edit_interval", type=int, default=META_PROMPT_EDIT_INTERVAL,help="Interval for editing the meta prompt (default: 2)")
@@ -38,7 +50,13 @@ if __name__ == '__main__':
     META_PROMPT_EDIT_INTERVAL = args.meta_prompt_edit_interval
 
     generation = 1
-    while generation <= NUM_GENERATIONS:
+    while generation in range(args.start_generation, NUM_GENERATIONS + args.start_generation):
+        # Checkpointing.
+        if generation in completed_generations:
+            logging.info(f"Skipping generation {generation} already completed.")
+            generation += 1
+            continue
+
         logging.info(f"=== Generation {generation} ===")
 
         if generation > 0 and generation % META_PROMPT_EDIT_INTERVAL == 0:
@@ -79,10 +97,6 @@ if __name__ == '__main__':
 
         # Step 5: Evaluate
         metric = execute(child_program_code, task)
-        # print(metric)
-        if "error" in metric:
-            logging.error(f"Evaluation failed: {metric['error']}")
-            continue
 
         if (not metric["feasibility"] or metric["cost"] >= INFEASIBLE_COST):
             logging.warning(f"Child program is infeasible or has high cost: {metric['cost']}")
@@ -108,7 +122,7 @@ if __name__ == '__main__':
         })
 
         generation += 1
-    with open("experiment_log.json", "w") as f:
-        json.dump(EXPERIMENT_LOG, f, indent=2)
+        with open(LOG_PATH, "w") as f:
+            json.dump(EXPERIMENT_LOG, f, indent=2)
 
     logging.info("Experiment complete. Log saved to experiment_log.json")
