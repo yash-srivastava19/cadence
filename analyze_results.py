@@ -6,9 +6,11 @@ import matplotlib.pyplot as plt
 RL_FILE = "rl_experiment_log.json"
 LLM_FILE = "experiment_log.json"
 
+
 def load_log(filename=LLM_FILE):
     with open(filename, "r") as f:
         return json.load(f)
+
 
 def plot_metric_over_generations(log):
     generations = [entry["generation"] for entry in log]
@@ -26,6 +28,7 @@ def plot_metric_over_generations(log):
     plt.tight_layout()
     plt.savefig("cost_evolution.png")
     plt.show()
+
 
 if __name__ == "__main__":
     log = load_log()

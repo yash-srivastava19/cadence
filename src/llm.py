@@ -4,7 +4,8 @@ import dotenv
 
 dotenv.load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-client = genai.Client(api_key = GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
+
 
 def mutate_instruction(base_instruction: str) -> str:
     """
@@ -21,8 +22,8 @@ Keep the instruction concise and return only the new instruction block, nothing 
 
     try:
         response = client.models.generate_content(
-            model = "gemini-2.0-flash",
-            contents = meta_prompt,
+            model="gemini-2.0-flash",
+            contents=meta_prompt,
         )
         return response.text
 
@@ -34,8 +35,8 @@ Keep the instruction concise and return only the new instruction block, nothing 
 def generate(prompt):
     try:
         response = client.models.generate_content(
-            model = "gemini-2.0-flash",
-            contents = prompt,
+            model="gemini-2.0-flash",
+            contents=prompt,
         )
         return extract_valid_blocks(response.text)
 
@@ -49,5 +50,6 @@ def extract_valid_blocks(text):
     Extracts all code snippets between ### START_BLOCK and ### END_BLOCK.
     """
     import re
+
     pattern = r"### START_BLOCK\n(.*?)\n### END_BLOCK"
     return re.findall(pattern, text, re.DOTALL)

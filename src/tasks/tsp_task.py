@@ -2,6 +2,7 @@ import random
 from math import sqrt
 from src.task import Task
 
+
 class TSPTask(Task):
     def __init__(self, n_cities=10):
         self.n_cities = n_cities
@@ -12,20 +13,17 @@ class TSPTask(Task):
 
     def generate_inputs(self, seed: int):
         random.seed(seed)
-        return [(random.uniform(0, 100), random.uniform(0, 100)) for _ in range(self.n_cities)]
+        return [
+            (random.uniform(0, 100), random.uniform(0, 100))
+            for _ in range(self.n_cities)
+        ]
 
     def evaluate(self, output, cities) -> float:
         if not self.is_feasible(output, cities):
-            return {
-                "cost": float("inf"),
-                "feasible": False
-            }
+            return {"cost": float("inf"), "feasible": False}
 
         if not isinstance(output, list) or sorted(output) != list(range(len(cities))):
-            return {
-                "cost": float("inf"),
-                "feasible": False
-            }
+            return {"cost": float("inf"), "feasible": False}
 
         def dist(i, j):
             x1, y1 = cities[i]
@@ -35,10 +33,7 @@ class TSPTask(Task):
         total = 0
         for i in range(len(output)):
             total += dist(output[i], output[(i + 1) % len(output)])
-        return {
-            "cost": total,
-            "feasible": True
-        }
+        return {"cost": total, "feasible": True}
 
     def is_feasible(self, output, cities) -> bool:
         if not isinstance(output, list) or len(output) != len(cities):

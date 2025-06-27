@@ -47,13 +47,15 @@ for generation in range(NUM_GENERATIONS):
     agent.observe(prompt, child_program_code, reward)
 
     # Step 6: Log for visualization
-    EXPERIMENT_LOG.append({
-        "generation": generation,
-        "prompt": prompt,
-        "code": child_program_code,
-        "cost": result.get("cost", float("inf")),
-        "reward": reward,
-    })
+    EXPERIMENT_LOG.append(
+        {
+            "generation": generation,
+            "prompt": prompt,
+            "code": child_program_code,
+            "cost": result.get("cost", float("inf")),
+            "reward": reward,
+        }
+    )
 
 # Save logs
 with open("rl_experiment_log.json", "w") as f:

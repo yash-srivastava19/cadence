@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 
+
 class Task(ABC):
     """
     Abstract base class for defining a problem/task that can be evolved.

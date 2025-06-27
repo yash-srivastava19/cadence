@@ -1,5 +1,6 @@
 import re
 
+
 def apply_diff(parent_program: str, diffs: list[str]) -> str:
     """
     Apply list of diff code blocks into parent_program using START/END markers.
@@ -10,9 +11,12 @@ def apply_diff(parent_program: str, diffs: list[str]) -> str:
     return _apply_diff_in_strs(parent_program, diffs)
 
 
-def _apply_diff_in_strs(file_str: str, diffs: list[str],
-                        start_marker="### START_BLOCK",
-                        end_marker="### END_BLOCK") -> str:
+def _apply_diff_in_strs(
+    file_str: str,
+    diffs: list[str],
+    start_marker="### START_BLOCK",
+    end_marker="### END_BLOCK",
+) -> str:
     """
     Replace code blocks in file_str marked by custom start and end markers.
     Each diff replaces one marked block in order.

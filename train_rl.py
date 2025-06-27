@@ -10,8 +10,6 @@ from src.rl.reward_model import RewardModel
 logging.basicConfig(level=logging.INFO)
 
 
-
-
 NUM_GENERATIONS = 5
 SEEDS = [1, 2, 3, 4, 5]
 EXPERIMENT_LOG = []
@@ -62,13 +60,15 @@ for generation in range(NUM_GENERATIONS):
     agent.observe(prompt, child_program_code, reward)
 
     # Log for analysis
-    EXPERIMENT_LOG.append({
-        "generation": generation,
-        "prompt": prompt,
-        "code": child_program_code,
-        "cost": result.get("cost", float("inf")),
-        "reward": reward,
-    })
+    EXPERIMENT_LOG.append(
+        {
+            "generation": generation,
+            "prompt": prompt,
+            "code": child_program_code,
+            "cost": result.get("cost", float("inf")),
+            "reward": reward,
+        }
+    )
 
 # Save results
 with open("rl_experiment_log.json", "w") as f:

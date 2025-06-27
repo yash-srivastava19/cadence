@@ -1,4 +1,6 @@
 from src.llm import generate
+
+
 class RLAgent:
     """
     A reinforcement learning agent that learns to improve programs
@@ -13,10 +15,10 @@ class RLAgent:
         """
         self.task = task
         self.model = model  # can be LLM or any policy backbone
-        self.memory = []    # stores (state, action, reward)
+        self.memory = []  # stores (state, action, reward)
         self.reward_model = None
 
-    def sample_action(self, prompt:str, n_samples=4) -> str:
+    def sample_action(self, prompt: str, n_samples=4) -> str:
         """
         Given a string prompt (state), return a generated action (code).
         """
@@ -25,7 +27,6 @@ class RLAgent:
         ranked = self.reward_model.score(prompt, completions)
         best_completion = max(ranked, key=lambda x: x[1])[0]
         return best_completion
-
 
     def observe(self, state: str, action: str, reward: float):
         """

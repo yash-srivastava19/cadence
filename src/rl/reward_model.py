@@ -2,6 +2,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import Ridge
 from sklearn.pipeline import make_pipeline
 
+
 class RewardModel:
     def __init__(self):
         self.model = make_pipeline(TfidfVectorizer(), Ridge())

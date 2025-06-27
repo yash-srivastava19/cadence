@@ -2,6 +2,7 @@ import sqlite3
 
 DATABASE_NAME = "cadence_db.sqlite"
 
+
 def _create_tables():
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
@@ -34,7 +35,9 @@ def _create_tables():
     conn.commit()
     conn.close()
 
+
 _create_tables()
+
 
 def add_instance(seed: int) -> int:
     """
@@ -53,8 +56,15 @@ def add_instance(seed: int) -> int:
     conn.close()
     return instance_id
 
-def add(program_code: str, metric: float, parent_id: int = None, instance_id: int = None,
-        diff: str = None, prompt: str = None) -> int:
+
+def add(
+    program_code: str,
+    metric: float,
+    parent_id: int = None,
+    instance_id: int = None,
+    diff: str = None,
+    prompt: str = None,
+) -> int:
     """
     Adds a new program version to the database.
 
@@ -74,22 +84,28 @@ def add(program_code: str, metric: float, parent_id: int = None, instance_id: in
 
     # Compute generation number
     if parent_id is not None:
-        cursor.execute("SELECT generation_number FROM programs WHERE id = ?", (parent_id,))
+        cursor.execute(
+            "SELECT generation_number FROM programs WHERE id = ?", (parent_id,)
+        )
         parent_gen = cursor.fetchone()
         generation_number = parent_gen[0] + 1 if parent_gen else 0
     else:
         generation_number = 0
 
-    cursor.execute("""
+    cursor.execute(
+        """
         INSERT INTO programs (parent_id, instance_id, generation_number,
                               program_code, metric, diff, prompt)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (parent_id, instance_id, generation_number, program_code, metric, diff, prompt))
+    """,
+        (parent_id, instance_id, generation_number, program_code, metric, diff, prompt),
+    )
 
     program_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return program_id
+
 
 def sample(generation_number: int = 0):
     """
@@ -103,28 +119,35 @@ def sample(generation_number: int = 0):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT id, generation_number, parent_id, program_code, metric, instance_id
         FROM programs
         WHERE generation_number = ?
         ORDER BY RANDOM()
         LIMIT 1
-    """, (generation_number,))
+    """,
+        (generation_number,),
+    )
     parent_program = cursor.fetchone()
 
     if parent_program:
         parent_id = parent_program[0]
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id, generation_number, parent_id, program_code, metric, instance_id
             FROM programs
             WHERE parent_id = ?
-        """, (parent_id,))
+        """,
+            (parent_id,),
+        )
         inspirations = cursor.fetchall()
     else:
         inspirations = []
 
     conn.close()
     return parent_program, inspirations
+
 
 def get_seed_for_instance(instance_id: int) -> int:
     """
@@ -145,6 +168,7 @@ def get_seed_for_instance(instance_id: int) -> int:
     conn.close()
     return row[0] if row else None
 
+
 def get_best_program(generation_limit: int = None):
     """
     Fetches the best program (lowest metric) from the database.
@@ -157,13 +181,16 @@ def get_best_program(generation_limit: int = None):
     cursor = conn.cursor()
 
     if generation_limit is not None:
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id, generation_number, parent_id, program_code, metric
             FROM programs
             WHERE generation_number <= ?
             ORDER BY metric ASC
             LIMIT 1
-        """, (generation_limit,))
+        """,
+            (generation_limit,),
+        )
     else:
         cursor.execute("""
             SELECT id, generation_number, parent_id, program_code, metric
@@ -177,7 +204,7 @@ def get_best_program(generation_limit: int = None):
 
 
 # Optional: testing usage
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Add a test instance (e.g. TSP seed 42)
     instance_id = add_instance(seed=42)
 
@@ -190,7 +217,7 @@ def tsp(cities):
 ### END_BLOCK
 """,
         metric=999.9,
-        instance_id=instance_id
+        instance_id=instance_id,
     )
 
     # Sample it back
