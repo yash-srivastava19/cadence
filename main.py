@@ -15,7 +15,7 @@ task = TSPTask()
 logging.basicConfig(level=logging.INFO)
 
 NUM_GENERATIONS = 6
-ELITISM_INTERVAL = 7
+ELITISM_INTERVAL = 700
 META_PROMPT_EDIT_INTERVAL = 7
 EXPERIMENT_LOG = []
 
@@ -30,9 +30,14 @@ if not existing_parent:
 LOG_PATH = "experiment_log.json"
 
 if os.path.exists(LOG_PATH):
-    with open(LOG_PATH, "r") as f:
-        EXPERIMENT_LOG = json.load(f)
-    completed_generations = {entry["generation"] for entry in EXPERIMENT_LOG}
+    try:
+        with open(LOG_PATH, "r") as f:
+            EXPERIMENT_LOG = json.load(f)
+        completed_generations = {entry["generation"] for entry in EXPERIMENT_LOG}
+    except json.JSONDecodeError:
+        logging.warning("Experiment log file is corrupted. Starting fresh.")
+        EXPERIMENT_LOG = []
+        completed_generations = set()
 else:
     EXPERIMENT_LOG = []
     completed_generations = set()

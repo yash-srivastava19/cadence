@@ -19,8 +19,20 @@ def plot_metric_over_generations(log):
     elif LLM_FILE:
         cost = [entry["cost"] for entry in log]
 
+    for i, cost_value in enumerate(cost):
+        if cost_value >= 1000:
+            cost[i] = 0.0
+            # cost[i] = mean(cost)
+            # raise ValueError(f"Invalid cost value: {cost_value}. Expected a number.")
     plt.figure(figsize=(10, 6))
+    # use the feasibility from the data as whatever points are infeasible, make them red, othere as blue
     plt.plot(generations, cost, marker="o", linestyle="-", color="royalblue")
+    plt.scatter(
+        generations,
+        cost,
+        c=["red" if c == 0.0 else "royalblue" for c in cost],
+        label="Cost",
+    )
     plt.xlabel("Generation")
     plt.ylabel("Evaluation Cost")
     plt.title("Cost Evolution Over Generations")

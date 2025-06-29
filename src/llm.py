@@ -22,7 +22,7 @@ Keep the instruction concise and return only the new instruction block, nothing 
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-pro",
             contents=meta_prompt,
         )
         return response.text

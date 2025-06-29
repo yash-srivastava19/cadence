@@ -198,3 +198,6 @@ RL not actually improving
 
 27/06/2025
 - Added resumed checkpointing. Gemini exhausted. Did some code refactors.
+
+30/06/2025
+- Code refactors + Gemini 2.5 Pro
