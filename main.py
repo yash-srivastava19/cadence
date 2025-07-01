@@ -15,8 +15,8 @@ task = TSPTask()
 logging.basicConfig(level=logging.INFO)
 
 NUM_GENERATIONS = 6
-ELITISM_INTERVAL = 700
-META_PROMPT_EDIT_INTERVAL = 7
+ELITISM_INTERVAL = 20
+META_PROMPT_EDIT_INTERVAL = 10
 EXPERIMENT_LOG = []
 
 
@@ -107,7 +107,7 @@ if __name__ == "__main__":
                 f"Elitism triggered. Using best program ID: {parent_program[0]} (Metric: {parent_program[4]:.4f})"
             )
         else:
-            parent_program, inspirations = sample(generation_number=generation)
+            parent_program, inspirations = sample(generation_number=generation - 1)
             if not parent_program:
                 logging.warning("No parent program found. Skipping generation.")
                 generation += 1
@@ -152,7 +152,7 @@ if __name__ == "__main__":
         # Step 7: Log experiment
         EXPERIMENT_LOG.append(
             {
-                "generation": generation + 1,
+                "generation": generation,
                 "parent_id": parent_program[0],
                 "cost": metric["cost"],
                 "feasibility": metric.get("feasibility_ratio", 0.0),
