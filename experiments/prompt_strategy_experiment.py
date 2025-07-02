@@ -49,7 +49,7 @@ PROMPT_STRATEGIES = {
 TSP_SIZES = {"small": 8, "medium": 20, "large": 40}
 
 RUNS_PER_CONFIG = 3  # Number of runs for each (strategy, size) combination
-GENERATIONS_PER_RUN = 10  # Generations to run for each experiment
+GENERATIONS_PER_RUN = 5  # Generations to run for each experiment
 
 
 class PromptStrategyExperiment:

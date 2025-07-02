@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cadence Evolution Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background: #f5f5f5;
+        }
+
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 0.8rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .zoom-controls {
+            display: flex;
+            gap: 5px;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 80px);
+            position: relative;
+        }
+
+        .sidebar {
+            width: 350px;
+            background: white;
+            border-left: 1px solid #ddd;
+            overflow-y: auto;
+            padding: 1rem;
+            position: absolute;
+            right: 0;
+            top: 0;
+            height: 100%;
+            z-index: 1000;
+        }
+
+        .main-content {
+            flex: 1;
+            background: white;
+            overflow: hidden;
+            margin-right: 350px;
+        }
+
+        .tabs {
+            display: flex;
+            background: #ecf0f1;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .tab {
+            padding: 1rem 2rem;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab.active {
+            background: white;
+            border-bottom-color: #3498db;
+        }
+
+        .tab-content {
+            display: none;
+            height: calc(100% - 60px);
+            position: relative;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        #network-viz {
+            width: 100%;
+            height: 100%;
+        }
+
+        #performance-chart {
+            width: 100%;
+            height: 100%;
+        }
+
+        .node {
+            cursor: pointer;
+            stroke: #333;
+            stroke-width: 1.5px;
+        }
+
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+            stroke-width: 2px;
+        }
+
+        .control-group {
+            margin-bottom: 1rem;
+        }
+
+        #code-viewer {
+            padding: 1rem;
+            background: #2d3748;
+            color: #e2e8f0;
+            border: 1px solid #4a5568;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            height: calc(100% - 2rem);
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .error {
+            color: #e74c3c;
+            text-align: center;
+            padding: 2rem;
+            font-size: 18px;
+        }
+
+        .generation-badge {
+            background: #3498db;
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+        }
+
+        .metric-badge {
+            background: #2ecc71;
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+        }
+
+        .locator-btn {
+            background: #f39c12;
+            border: none;
+            color: white;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .locator-btn:hover {
+            background: #e67e22;
+        }
+
+        .control-group select, .control-group input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .program-info {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+        }
+
+        .program-info h3 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+
+        .code-viewer {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow: auto;
+            max-height: 300px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+
+        .metric-badge {
+            background: #3498db;
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            display: inline-block;
+            margin: 0.2rem;
+        }
+
+        .generation-badge {
+            background: #e74c3c;
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+
+        .locator-btn {
+            background: #f39c12;
+            color: white;
+            border: none;
+            padding: 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 0.5rem;
+        }
+
+        .highlight-controls {
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background: #ecf0f1;
+            border-radius: 4px;
+        }
+
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0.2rem;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .error {
+            color: #e74c3c;
+            background: #ffebee;
+            padding: 1rem;
+            border-radius: 4px;
+            margin: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Evolution Tracker</h1>
+        <div class="header-controls">
+            <div class="zoom-controls">
+                <button class="btn" onclick="zoomIn()">🔍+</button>
+                <button class="btn" onclick="zoomOut()">🔍-</button>
+                <button class="btn" onclick="resetZoom()">⟲</button>
+            </div>
+            <select id="metric-select">
+                <option value="cost">Cost</option>
+                <option value="feasibility">Feasibility</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <div class="control-group">
+                <label>Metric Selection:</label>
+                <select id="metric-select">
+                    <option value="cost">Cost</option>
+                    <option value="feasibility">Feasibility</option>
+                </select>
+            </div>
+
+            <div class="highlight-controls">
+                <label>Highlight Nodes:</label>
+                <button class="btn" onclick="highlightBest()">Best Score</button>
+                <button class="btn" onclick="highlightGeneration()">Generation</button>
+                <button class="btn" onclick="clearHighlight()">Clear</button>
+            </div>
+
+            <div class="control-group">
+                <label>Selected Node:</label>
+                <div id="selected-node-info">
+                    <p>Click a node to see details</p>
+                </div>
+            </div>
+
+            <div id="program-details" class="program-info" style="display: none;">
+                <h3>Program Details</h3>
+                <div id="program-content"></div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="tabs">
+                <div class="tab active" onclick="showTab('network')">Network View</div>
+                <div class="tab" onclick="showTab('performance')">Performance</div>
+                <div class="tab" onclick="showTab('code')">Code View</div>
+            </div>
+
+            <div id="network-tab" class="tab-content active">
+                <div id="network-viz"></div>
+            </div>
+
+            <div id="performance-tab" class="tab-content">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; height: 100%; overflow-y: auto;">
+                    <div style="background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <h3 style="margin-top: 0; text-align: center; color: #333;">Performance Over Time</h3>
+                        <div id="performance-chart" style="height: 300px;"></div>
+                    </div>
+                    <div style="background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <h3 style="margin-top: 0; text-align: center; color: #333;">Generation Distribution</h3>
+                        <div id="distribution-chart" style="height: 300px;"></div>
+                    </div>
+                    <div style="background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <h3 style="margin-top: 0; text-align: center; color: #333;">Metric Comparison</h3>
+                        <div id="comparison-chart" style="height: 300px;"></div>
+                    </div>
+                    <div style="background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <h3 style="margin-top: 0; text-align: center; color: #333;">Improvement Analysis</h3>
+                        <div id="improvement-chart" style="height: 300px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="code-tab" class="tab-content">
+                <div id="code-viewer" class="code-viewer">
+                    Select a node to view its code
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let programs = [];
+        let selectedMetric = 'cost';
+        let selectedNode = null;
+        let simulation = null;
+
+        // Load data on page load
+        window.onload = function() {
+            loadPrograms();
+        };
+
+        function loadPrograms() {
+            fetch('/api/programs')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showError('Error loading programs: ' + data.error);
+                        return;
+                    }
+                    programs = data;
+                    console.log('Loaded programs:', programs.length);
+                    initializeNetwork();
+                    updatePerformanceChart();
+                })
+                .catch(error => {
+                    showError('Failed to load programs: ' + error);
+                });
+        }
+
+        function showError(message) {
+            document.getElementById('network-viz').innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        function initializeNetwork() {
+            if (programs.length === 0) {
+                showError('No programs found. Make sure experiment data is loaded.');
+                return;
+            }
+
+            const width = document.getElementById('network-viz').clientWidth;
+            const height = document.getElementById('network-viz').clientHeight;
+
+            // Clear previous visualization
+            d3.select('#network-viz').selectAll('*').remove();
+
+            const svg = d3.select('#network-viz')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height)
+                .call(d3.zoom()
+                    .scaleExtent([0.1, 4])
+                    .on('zoom', function(event) {
+                        g.attr('transform', event.transform);
+                    }));
+
+            const g = svg.append('g');
+
+            // Create nodes and links
+            const nodes = programs.map(p => ({
+                id: p.id,
+                generation: p.generation,
+                metric: isFinite(p.metric) ? p.metric : 0,
+                code: p.code,
+                parent_id: p.parent_id,
+                diff: p.diff,
+                prompt: p.prompt
+            }));
+
+            const links = programs
+                .filter(p => p.parent_id !== null)
+                .map(p => ({
+                    source: p.parent_id,
+                    target: p.id
+                }));
+
+            // Create scales
+            const validMetrics = nodes.map(n => n.metric).filter(m => isFinite(m));
+            const metricExtent = d3.extent(validMetrics);
+            if (metricExtent[0] === undefined) {
+                metricExtent[0] = 0;
+                metricExtent[1] = 1;
+            }
+
+            const radiusScale = d3.scaleLinear()
+                .domain(metricExtent)
+                .range([5, 20]);
+
+            const colorScale = d3.scaleSequential(d3.interpolateViridis)
+                .domain(metricExtent);
+
+            // Create force simulation
+            simulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(links).id(d => d.id).distance(50))
+                .force('charge', d3.forceManyBody().strength(-100))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(d => radiusScale(d.metric) + 2));
+
+            // Add links
+            const link = g.append('g')
+                .selectAll('line')
+                .data(links)
+                .enter().append('line')
+                .attr('class', 'link');
+
+            // Add nodes
+            const node = g.append('g')
+                .selectAll('circle')
+                .data(nodes)
+                .enter().append('circle')
+                .attr('class', 'node')
+                .attr('r', d => radiusScale(d.metric))
+                .attr('fill', d => colorScale(d.metric))
+                .on('click', function(event, d) {
+                    selectNode(d);
+                })
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+
+            // Add labels
+            const label = g.append('g')
+                .selectAll('text')
+                .data(nodes)
+                .enter().append('text')
+                .text(d => `Gen ${d.generation}`)
+                .attr('font-size', 10)
+                .attr('dx', 15)
+                .attr('dy', 4);
+
+            // Update positions on simulation tick
+            simulation.on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+
+                node
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y);
+
+                label
+                    .attr('x', d => d.x)
+                    .attr('y', d => d.y);
+            });
+
+            // Store references for later use
+            svg.nodes = nodes;
+            svg.nodeElements = node;
+            svg.linkElements = link;
+        }
+
+        function selectNode(nodeData) {
+            selectedNode = nodeData;
+
+            // Update sidebar
+            const metricValue = isFinite(nodeData.metric) ? nodeData.metric.toFixed(2) : '0.00';
+            document.getElementById('selected-node-info').innerHTML = `
+                <div>
+                    <span class="generation-badge">Gen ${nodeData.generation}</span>
+                    <span class="metric-badge">${selectedMetric}: ${metricValue}</span>
+                    <button class="locator-btn" onclick="centerNode(${nodeData.id})">📍</button>
+                </div>
+            `;
+
+            // Show program details
+            document.getElementById('program-details').style.display = 'block';
+            const safeMetric = isFinite(nodeData.metric) ? nodeData.metric.toFixed(4) : '0.0000';
+            document.getElementById('program-content').innerHTML = `
+                <p><strong>ID:</strong> ${nodeData.id}</p>
+                <p><strong>Generation:</strong> ${nodeData.generation}</p>
+                <p><strong>Parent ID:</strong> ${nodeData.parent_id || 'None'}</p>
+                <p><strong>Metric:</strong> ${safeMetric}</p>
+                ${nodeData.diff ? `<p><strong>Diff:</strong><br><div class="code-viewer">${nodeData.diff}</div></p>` : ''}
+            `;
+
+            // Update code view
+            document.getElementById('code-viewer').textContent = nodeData.code || 'No code available';
+
+            // Highlight selected node
+            d3.selectAll('.node').attr('stroke-width', 1.5);
+            d3.selectAll('.node').filter(d => d.id === nodeData.id).attr('stroke-width', 4);
+        }
+
+        function centerNode(nodeId) {
+            const svg = d3.select('#network-viz svg');
+            const node = svg.nodes.find(n => n.id === nodeId);
+            if (node) {
+                const width = svg.attr('width');
+                const height = svg.attr('height');
+                const scale = d3.zoomTransform(svg.node()).k;
+
+                svg.transition()
+                    .duration(750)
+                    .call(d3.zoom().transform,
+                        d3.zoomIdentity
+                            .translate(width / 2 - node.x * scale, height / 2 - node.y * scale)
+                            .scale(scale));
+            }
+        }
+
+        function highlightBest() {
+            if (programs.length === 0) return;
+
+            const validPrograms = programs.filter(p => isFinite(p.metric));
+            if (validPrograms.length === 0) return;
+
+            const best = validPrograms.reduce((best, current) =>
+                current.metric < best.metric ? current : best
+            );
+
+            d3.selectAll('.node')
+                .attr('stroke', d => d.id === best.id ? '#e74c3c' : '#333')
+                .attr('stroke-width', d => d.id === best.id ? 4 : 1.5);
+        }
+
+        function highlightGeneration() {
+            const gen = prompt('Enter generation number to highlight:');
+            if (gen !== null) {
+                const genNum = parseInt(gen);
+                d3.selectAll('.node')
+                    .attr('stroke', d => d.generation === genNum ? '#e74c3c' : '#333')
+                    .attr('stroke-width', d => d.generation === genNum ? 4 : 1.5);
+            }
+        }
+
+        function clearHighlight() {
+            d3.selectAll('.node')
+                .attr('stroke', '#333')
+                .attr('stroke-width', 1.5);
+        }
+
+        function updatePerformanceChart() {
+            if (programs.length === 0) return;
+
+            // Group by generation
+            const generationData = {};
+            programs.forEach(p => {
+                if (!generationData[p.generation]) {
+                    generationData[p.generation] = [];
+                }
+                const metric = isFinite(p.metric) ? p.metric : 0;
+                generationData[p.generation].push(metric);
+            });
+
+            const generations = Object.keys(generationData).map(Number).sort((a, b) => a - b);
+            const avgMetrics = generations.map(gen => {
+                const validMetrics = generationData[gen].filter(m => isFinite(m));
+                return validMetrics.length > 0 ?
+                    validMetrics.reduce((a, b) => a + b, 0) / validMetrics.length : 0;
+            });
+            const bestMetrics = generations.map(gen => {
+                const validMetrics = generationData[gen].filter(m => isFinite(m));
+                return validMetrics.length > 0 ? Math.min(...validMetrics) : 0;
+            });
+
+            // Chart 1: Performance Over Time
+            const trace1 = {
+                x: generations,
+                y: avgMetrics,
+                mode: 'lines+markers',
+                name: 'Average',
+                line: { color: '#3498db' }
+            };
+
+            const trace2 = {
+                x: generations,
+                y: bestMetrics,
+                mode: 'lines+markers',
+                name: 'Best',
+                line: { color: '#e74c3c' }
+            };
+
+            const layout1 = {
+                xaxis: { title: 'Generation' },
+                yaxis: { title: selectedMetric.charAt(0).toUpperCase() + selectedMetric.slice(1) },
+                margin: { t: 20, l: 60, r: 30, b: 60 },
+                showlegend: true
+            };
+
+            Plotly.newPlot('performance-chart', [trace1, trace2], layout1, {responsive: true});
+
+            // Chart 2: Generation Distribution
+            const counts = generations.map(gen => generationData[gen].length);
+            const trace3 = {
+                x: generations,
+                y: counts,
+                type: 'bar',
+                marker: { color: '#2ecc71' }
+            };
+
+            const layout2 = {
+                xaxis: { title: 'Generation' },
+                yaxis: { title: 'Program Count' },
+                margin: { t: 20, l: 60, r: 30, b: 60 }
+            };
+
+            Plotly.newPlot('distribution-chart', [trace3], layout2, {responsive: true});
+
+            // Chart 3: Metric Comparison (Box plot)
+            const allMetrics = programs.map(p => isFinite(p.metric) ? p.metric : 0);
+            const trace4 = {
+                y: allMetrics,
+                type: 'box',
+                name: 'Metric Distribution',
+                marker: { color: '#9b59b6' }
+            };
+
+            const layout3 = {
+                yaxis: { title: selectedMetric.charAt(0).toUpperCase() + selectedMetric.slice(1) },
+                margin: { t: 20, l: 60, r: 30, b: 60 }
+            };
+
+            Plotly.newPlot('comparison-chart', [trace4], layout3, {responsive: true});
+
+            // Chart 4: Improvement Analysis
+            if (generations.length > 1) {
+                const improvements = [];
+                for (let i = 1; i < generations.length; i++) {
+                    const prevBest = bestMetrics[i-1];
+                    const currBest = bestMetrics[i];
+                    improvements.push(currBest - prevBest);
+                }
+
+                const trace5 = {
+                    x: generations.slice(1),
+                    y: improvements,
+                    type: 'bar',
+                    marker: {
+                        color: improvements.map(imp => imp < 0 ? '#2ecc71' : '#e74c3c')
+                    }
+                };
+
+                const layout4 = {
+                    xaxis: { title: 'Generation' },
+                    yaxis: { title: 'Improvement' },
+                    margin: { t: 20, l: 60, r: 30, b: 60 }
+                };
+
+                Plotly.newPlot('improvement-chart', [trace5], layout4, {responsive: true});
+            }
+        }
+
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            // Show selected tab
+            document.querySelector(`#${tabName}-tab`).classList.add('active');
+            event.target.classList.add('active');
+
+            // Refresh performance chart if needed
+            if (tabName === 'performance') {
+                setTimeout(updatePerformanceChart, 100);
+            }
+        }
+
+        // Zoom functions
+        let currentZoom = 1;
+
+        function zoomIn() {
+            currentZoom *= 1.2;
+            applyZoom();
+        }
+
+        function zoomOut() {
+            currentZoom /= 1.2;
+            applyZoom();
+        }
+
+        function resetZoom() {
+            currentZoom = 1;
+            applyZoom();
+        }
+
+        function applyZoom() {
+            const svg = d3.select('#network-viz svg');
+            if (!svg.empty()) {
+                svg.transition()
+                    .duration(300)
+                    .call(d3.zoom().transform,
+                        d3.zoomIdentity.scale(currentZoom)
+                    );
+            }
+        }
+
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        // Metric selection change
+        document.getElementById('metric-select').addEventListener('change', function(e) {
+            selectedMetric = e.target.value;
+            initializeNetwork();
+            updatePerformanceChart();
+        });
+    </script>
+</body>
+</html>

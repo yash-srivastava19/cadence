@@ -203,6 +203,27 @@ def get_best_program(generation_limit: int = None):
     return result
 
 
+def get_all_programs():
+    """
+    Retrieves all programs from the database.
+
+    Returns:
+        list: List of tuples containing program data
+    """
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, generation_number, parent_id, program_code, metric, diff, prompt
+        FROM programs
+        ORDER BY generation_number, id
+    """)
+
+    programs = cursor.fetchall()
+    conn.close()
+    return programs
+
+
 # Optional: testing usage
 if __name__ == "__main__":
     # Add a test instance (e.g. TSP seed 42)
