@@ -202,5 +202,11 @@ RL not actually improving
 30/06/2025
 - Code refactors + Gemini 2.5 Pro
 
-02/07.2025
-- Code refactors + Experiments +
+02/07/2025
+- Code refactors + Experiments
+
+03/07/2025
+ - UI visualization server(Claude). Cadence now supports every feature by open evolve.
+
+07/07/2025
+- Worked on getting the background information about cadence. Used Manus
