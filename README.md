@@ -210,3 +210,6 @@ RL not actually improving
 
 07/07/2025
 - Worked on getting the background information about cadence. Used Manus
+
+08/07/2025
+Tests + Docs + Other build related stuff for Cadence. We're near the end!

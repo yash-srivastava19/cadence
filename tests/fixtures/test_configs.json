@@ -1,0 +1,40 @@
+{
+  "test_experiment_config": {
+    "tsp_sizes": {
+      "small": 5,
+      "medium": 10
+    },
+    "prompt_strategies": {
+      "greedy": {
+        "instruction": "Use greedy nearest neighbor approach",
+        "keywords": ["nearest", "greedy", "closest"]
+      },
+      "search": {
+        "instruction": "Use local search and optimization",
+        "keywords": ["improve", "optimize", "search"]
+      }
+    },
+    "experiment_params": {
+      "runs_per_config": 2,
+      "generations_per_run": 3,
+      "timeout_per_generation": 30
+    }
+  },
+
+  "test_database_config": {
+    "test_database_name": ":memory:",
+    "test_seeds": [1, 2, 3, 42, 100]
+  },
+
+  "test_evaluation_config": {
+    "test_seeds": [1, 2, 3],
+    "timeout_seconds": 10,
+    "max_cost": 1000000
+  },
+
+  "test_llm_config": {
+    "mock_responses": true,
+    "response_delay": 0.1,
+    "failure_rate": 0.0
+  }
+}

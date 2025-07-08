@@ -10,4 +10,139 @@ dependencies = [
   "python-dotenv",
   "google-genai",
   "scikit-learn>=1.7.0",
+  "pytest>=8.4.1",
+  "pytest-cov>=6.2.1",
+  "pytest-mock>=3.10.0",
+  "flask>=3.1.1",
+  "mkdocs>=1.6.1",
+  "mkdocs-material>=9.6.15",
 ]
+
+[project.optional-dependencies]
+dev = [
+  "black>=25.1.0",
+  "isort>=6.0.1",
+  "flake8>=7.3.0",
+  "mypy>=1.5.0",
+  "pre-commit>=4.2.0",
+]
+
+docs = [
+  "sphinx>=7.1.0",
+  "sphinx-rtd-theme>=2.0.0",
+  "myst-parser>=2.0.0",
+  "sphinx-autodoc-typehints>=1.24.0",
+]
+
+test = [
+  "pytest>=8.4.1",
+  "pytest-cov>=6.2.1",
+  "pytest-mock>=3.10.0",
+  "pytest-xdist>=3.3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --tb=short"
+testpaths = [
+    "tests",
+]
+python_files = [
+    "test_*.py",
+    "*_test.py",
+]
+python_classes = [
+    "Test*",
+]
+python_functions = [
+    "test_*",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "llm: marks tests as requiring LLM API access",
+]
+
+# Logging configuration for tests
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(name)s: %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/venv/*",
+    "*/virtualenv/*",
+    "*/.env/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+# PyRight configuration
+[tool.pyright]
+include = ["src", "tests"]
+exclude = ["**/__pycache__"]
+defineConstant = { DEBUG = true }
+stubPath = "typings"
+reportMissingImports = true
+reportMissingTypeStubs = false
+pythonVersion = "3.11"
+pythonPlatform = "All"
+executionEnvironments = [
+  { root = "src", pythonVersion = "3.11" },
+  { root = "tests", pythonVersion = "3.11" }
+]
+
+# Black configuration
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+# isort configuration
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["src"]
+skip_glob = ["*/migrations/*"]

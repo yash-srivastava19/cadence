@@ -8,3 +8,10 @@ venv/
 cadence_db.sqlite
 experiment_log.json
 cost_evolution.png
+experiments/results_*
+experiments/__pycache__
+docs/.venv
+src/__pycache__
+src/rl/__pycache__
+src/tasks/__pycache__
+tests/fixtures/__pycache__
