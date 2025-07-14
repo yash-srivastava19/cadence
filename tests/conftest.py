@@ -25,14 +25,17 @@ def temp_database():
     cursor = conn.cursor()
 
     # Create tables matching the real schema
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS instances (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             seed INTEGER NOT NULL
         )
-    """)
+    """
+    )
 
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS programs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             parent_id INTEGER,
@@ -46,7 +49,8 @@ def temp_database():
             FOREIGN KEY (parent_id) REFERENCES programs(id),
             FOREIGN KEY (instance_id) REFERENCES instances(id)
         )
-    """)
+    """
+    )
 
     conn.commit()
     yield conn

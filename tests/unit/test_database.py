@@ -36,12 +36,14 @@ class TestDatabase:
         # Create tables manually for test
         conn = sqlite3.connect(self.test_db.name)
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS instances (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 seed INTEGER NOT NULL
             )
-        """)
+        """
+        )
         conn.commit()
         conn.close()
 
@@ -67,13 +69,16 @@ class TestDatabase:
         # Setup tables
         conn = sqlite3.connect(self.test_db.name)
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS instances (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 seed INTEGER NOT NULL
             )
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS programs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 parent_id INTEGER,
@@ -87,7 +92,8 @@ class TestDatabase:
                 FOREIGN KEY (parent_id) REFERENCES programs(id),
                 FOREIGN KEY (instance_id) REFERENCES instances(id)
             )
-        """)
+        """
+        )
         conn.commit()
         conn.close()
 
@@ -135,7 +141,8 @@ class TestDatabase:
         # Setup tables and data
         conn = sqlite3.connect(self.test_db.name)
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS programs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 parent_id INTEGER,
@@ -147,21 +154,28 @@ class TestDatabase:
                 prompt TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
 
         # Insert test data
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO programs (program_code, metric, generation_number)
             VALUES ('code1', 100.0, 0)
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             INSERT INTO programs (program_code, metric, generation_number)
             VALUES ('code2', 50.0, 1)
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             INSERT INTO programs (program_code, metric, generation_number)
             VALUES ('code3', 75.0, 2)
-        """)
+        """
+        )
         conn.commit()
         conn.close()
 
@@ -182,7 +196,8 @@ class TestDatabase:
         # Setup tables and data
         conn = sqlite3.connect(self.test_db.name)
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS programs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 parent_id INTEGER,
@@ -194,13 +209,16 @@ class TestDatabase:
                 prompt TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
 
         # Insert parent
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO programs (program_code, metric, generation_number)
             VALUES ('parent_code', 100.0, 0)
-        """)
+        """
+        )
         parent_id = cursor.lastrowid
 
         # Insert children

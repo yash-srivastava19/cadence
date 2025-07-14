@@ -215,4 +215,17 @@ RL not actually improving
 Tests + Docs + Other build related stuff for Cadence. We're near the end!
 
 14/07/2025
-Lesson history + system prompt update.
+Lesson history + system prompt update + scripts for H1 and H2 + black pre-commit.
+
+Checklist:
+-[] Codebase make professional
+-[] Docs refactor
+-[] Demo + Notebook
+
+TODO:
+-[] introduce types support, and pydantic for model validation(typed data structure)
+-[] explore the possiblity of rich and hydra
+-[] notebook explaining everything in the codebase,
+-[] results in a presentable fashion.
+-[] blog.
+-[] demo.

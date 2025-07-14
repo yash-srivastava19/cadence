@@ -8,15 +8,18 @@ def _create_tables():
     cursor = conn.cursor()
 
     # Table for storing input instances (e.g., TSP city seeds)
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS instances (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             seed INTEGER NOT NULL
         )
-    """)
+    """
+    )
 
     # Table for storing program versions
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS programs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             parent_id INTEGER,
@@ -30,7 +33,8 @@ def _create_tables():
             FOREIGN KEY (parent_id) REFERENCES programs(id),
             FOREIGN KEY (instance_id) REFERENCES instances(id)
         )
-    """)
+    """
+    )
 
     conn.commit()
     conn.close()
@@ -192,12 +196,14 @@ def get_best_program(generation_limit: int = None):
             (generation_limit,),
         )
     else:
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id, generation_number, parent_id, program_code, metric
             FROM programs
             ORDER BY metric ASC
             LIMIT 1
-        """)
+        """
+        )
     result = cursor.fetchone()
     conn.close()
     return result
@@ -213,11 +219,13 @@ def get_all_programs():
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT id, generation_number, parent_id, program_code, metric, diff, prompt
         FROM programs
         ORDER BY generation_number, id
-    """)
+    """
+    )
 
     programs = cursor.fetchall()
     conn.close()

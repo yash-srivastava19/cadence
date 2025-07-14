@@ -107,6 +107,7 @@ name = "cadence"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "black" },
     { name = "flask" },
     { name = "google-genai" },
     { name = "matplotlib" },
@@ -143,6 +144,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "black", specifier = ">=25.1.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=25.1.0" },
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=7.3.0" },
     { name = "flask", specifier = ">=3.1.1" },
