@@ -32,6 +32,21 @@ Keep the instruction concise and return only the new instruction block, nothing 
         return base_instruction
 
 
+def generate_lessons(meta_prompt: str) -> str:
+    """
+    Generates a lesson based on the provided history of program generations.
+    """
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=meta_prompt,
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"[LLM Error in Lesson Generation] {e}")
+        return "No lesson generated due to an error."
+
+
 def generate(prompt):
     try:
         response = client.models.generate_content(

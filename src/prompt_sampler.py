@@ -30,7 +30,7 @@ def extract_code_blocks(
     return [match.group(1).strip() for match in pattern.finditer(code)]
 
 
-def build(parent_program, inspirations):
+def build(parent_program, inspirations, lesson=None):
     """
     Builds a structured prompt to encourage novelty and heuristics.
     """
@@ -54,6 +54,8 @@ Only change code inside the blocks marked by:
 
 You MUST output the same number of blocks as in the parent program. Do NOT include anything else.
 """
+    if lesson:
+        prompt += f"### GUIDING LESSON:\n{lesson.strip()}\n\n"
 
     # Add the current (parent) baseline
     prompt += "\n### CURRENT BASELINE SOLUTION:\n"

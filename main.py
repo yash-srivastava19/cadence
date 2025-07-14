@@ -9,6 +9,7 @@ from src.prompt_sampler import build, update_instruction, INSTRUCTION_TEMPLATE
 from src.llm import generate, mutate_instruction
 
 from src.tasks.tsp_task import TSPTask
+from src.meta_prompting import get_lesson_from_history
 
 task = TSPTask()
 
@@ -18,7 +19,8 @@ NUM_GENERATIONS = 6
 ELITISM_INTERVAL = 20
 META_PROMPT_EDIT_INTERVAL = 10
 EXPERIMENT_LOG = []
-
+LESSON_HISTORY = []
+LESSON_INTERVAL = 2
 
 existing_parent, _ = sample(generation_number=0)
 if not existing_parent:
@@ -41,6 +43,15 @@ if os.path.exists(LOG_PATH):
 else:
     EXPERIMENT_LOG = []
     completed_generations = set()
+
+LESSON_LOG_PATH = "lesson_history.json"
+
+if os.path.exists(LESSON_LOG_PATH):
+    with open(LESSON_LOG_PATH) as f:
+        LESSON_HISTORY = json.load(f)
+else:
+    LESSON_HISTORY = []
+
 
 if __name__ == "__main__":
     parser = ArgumentParser(
@@ -71,12 +82,27 @@ if __name__ == "__main__":
         help="Interval for editing the meta prompt (default: 2)",
     )
 
+    parser.add_argument(
+        "--force-rerun",
+        type=bool,
+        default=False,
+        help="Force rerun of all generations even if they are already completed (default: False)",
+    )
+
     args = parser.parse_args()
 
     NUM_GENERATIONS = args.num_generations
     ELITISM_INTERVAL = args.elitism_interval
     META_PROMPT_EDIT_INTERVAL = args.meta_prompt_edit_interval
-
+    if args.force_rerun:
+        logging.info("Force rerun enabled. Resetting logs.")
+        completed_generations = set()
+        if os.path.exists(LOG_PATH):
+            with open(LOG_PATH, "r+") as f:
+                f.truncate(0)  # Clear the log file
+        if os.path.exists(LESSON_LOG_PATH):
+            with open(LESSON_LOG_PATH, "r+") as f:
+                f.truncate(0)  # Clear the lesson history file
     generation = 1
     while generation in range(
         args.start_generation, NUM_GENERATIONS + args.start_generation
@@ -114,8 +140,9 @@ if __name__ == "__main__":
                 continue
             logging.info(f"Sampled parent program ID: {parent_program[0]}")
 
-        # Step 2: Build prompt
-        prompt = build(parent_program, inspirations)
+        # Step 2: Build prompt(Modified)
+        current_lesson = "\n".join(LESSON_HISTORY[-1:]) if LESSON_HISTORY else None
+        prompt = build(parent_program, inspirations, lesson=current_lesson)
 
         # Step 3: Generate diffs
         try:
@@ -126,6 +153,20 @@ if __name__ == "__main__":
 
         # Step 4: Apply diffs
         child_program_code = apply_diff(parent_program[3], diffs)
+
+        if generation % LESSON_INTERVAL == 0:
+            logging.info("Extracting lesson from history...")
+            EXPERIMENT_LOG[-1]["program_code"] = child_program_code
+
+            previous_lesson = LESSON_HISTORY[-1] if LESSON_HISTORY else None
+            lesson = get_lesson_from_history(
+                EXPERIMENT_LOG, previous_lesson=previous_lesson
+            )
+            if lesson:
+                LESSON_HISTORY.append(lesson)
+                logging.info(f"New lesson extracted: {lesson}")
+            with open(LESSON_LOG_PATH, "w") as f:
+                json.dump(LESSON_HISTORY, f, indent=2)
 
         # Step 5: Evaluate
         metric = execute(child_program_code, task)

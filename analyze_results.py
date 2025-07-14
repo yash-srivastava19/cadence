@@ -180,6 +180,6 @@ def plot_metric_over_generations(log):
 
 if __name__ == "__main__":
     log = load_log()
-    plot_multiple_views(log)
+    # plot_multiple_views(log)
     # plot_simple_trend(log)
     # plot_metric_over_generations(log)
