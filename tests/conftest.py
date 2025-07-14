@@ -1,12 +1,15 @@
 """
 Enhanced configuration for pytest with comprehensive fixtures.
+
+This module provides typed fixtures and configuration for testing
+the Cadence evolution system with proper type safety.
 """
 
 import os
 import sqlite3
 import tempfile
 from unittest.mock import patch
-
+from typing import Generator, Any, List, Tuple
 
 import pytest
 from tests.fixtures.sample_code import (
@@ -19,7 +22,7 @@ from tests.fixtures.mock_responses import MockLLMClient, MOCK_RESPONSES
 
 
 @pytest.fixture
-def temp_database():
+def temp_database() -> Generator[sqlite3.Connection, None, None]:
     """Create a temporary in-memory database for testing."""
     conn = sqlite3.connect(":memory:")
     cursor = conn.cursor()
@@ -58,7 +61,7 @@ def temp_database():
 
 
 @pytest.fixture
-def temp_db_file():
+def temp_db_file() -> Generator[str, None, None]:
     """Provide a temporary database file for testing."""
     temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
     temp_db.close()
@@ -71,13 +74,13 @@ def temp_db_file():
 
 
 @pytest.fixture
-def mock_llm_client():
+def mock_llm_client() -> MockLLMClient:
     """Create a mock LLM client for testing."""
     return MockLLMClient()
 
 
 @pytest.fixture
-def mock_llm_generate():
+def mock_llm_generate() -> Generator[Any, None, None]:
     """Mock LLM generate function."""
     with patch("src.llm.generate") as mock:
         mock.return_value = [MOCK_RESPONSES["simple_improvement"]]
@@ -93,53 +96,50 @@ def tsp_task():
 
 
 @pytest.fixture
-def sample_cities_4():
+def sample_cities_4() -> List[Tuple[float, float]]:
     """Sample 4-city TSP instance."""
     return SAMPLE_CITIES_4
 
 
 @pytest.fixture
-def sample_cities_10():
+def sample_cities_10() -> List[Tuple[float, float]]:
     """Sample 10-city TSP instance."""
     return SAMPLE_CITIES_10
 
 
 @pytest.fixture
-def sample_baseline_program():
+def sample_baseline_program() -> str:
     """Sample baseline TSP program."""
     return SAMPLE_TSP_BASELINE
 
 
 @pytest.fixture
-def sample_improved_program():
+def sample_improved_program() -> str:
     """Sample improved TSP program."""
     return SAMPLE_TSP_IMPROVED
 
 
 @pytest.fixture
-def sample_tsp_program():
+def sample_tsp_program() -> str:
     """Provide a sample TSP program for testing (legacy compatibility)."""
     return SAMPLE_TSP_IMPROVED
 
 
-# ...rest of existing fixtures...
-
-
 @pytest.fixture
-def sample_cities():
+def sample_cities() -> List[Tuple[float, float]]:
     """Provide sample city coordinates for testing."""
     return [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.5, 0.5)]
 
 
 # Configure pytest settings
-def pytest_configure(config):
+def pytest_configure(config: Any) -> None:
     """Configure pytest with custom markers."""
     config.addinivalue_line("markers", "integration: mark test as integration test")
     config.addinivalue_line("markers", "slow: mark test as slow running")
     config.addinivalue_line("markers", "llm: mark test as requiring LLM API")
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(config: Any, items: List[Any]) -> None:
     """Add markers to tests based on their names."""
     for item in items:
         # Mark integration tests

@@ -1,59 +1,221 @@
-import os
+"""
+Main execution script for Cadence evolution experiments.
+
+This script orchestrates the evolutionary process with comprehensive
+type safety and Pydantic model validation.
+"""
+
 import logging
 import json
 from argparse import ArgumentParser
+from typing import List, Dict, Any, Optional, Set
+from pathlib import Path
+from datetime import datetime
+
 from src.database import sample, add, get_best_program
-from src.evaluator import execute, INFEASIBLE_COST
+from src.evaluator import execute
 from src.evolve import apply_diff
 from src.prompt_sampler import build, update_instruction, INSTRUCTION_TEMPLATE
+from src.prompt_sampler import extract_code_blocks
 from src.llm import generate, mutate_instruction
-
 from src.tasks.tsp_task import TSPTask
 from src.meta_prompting import get_lesson_from_history
+from src.models import ProgramCode
 
+# Initialize task
 task = TSPTask()
 
-logging.basicConfig(level=logging.INFO)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
-NUM_GENERATIONS = 6
-ELITISM_INTERVAL = 20
-META_PROMPT_EDIT_INTERVAL = 10
-EXPERIMENT_LOG = []
-LESSON_HISTORY = []
-LESSON_INTERVAL = 2
+# Experiment configuration
+NUM_GENERATIONS: int = 6
+ELITISM_INTERVAL: int = 20
+META_PROMPT_EDIT_INTERVAL: int = 10
+LESSON_INTERVAL: int = 2
 
-existing_parent, _ = sample(generation_number=0)
-if not existing_parent:
-    logging.info("No program found in generation 0. Adding task baseline.")
-    metric = execute(task.baseline_program, task)["cost"]
-    add(program_code=task.baseline_program, metric=metric)
-    logging.info(f"Baseline added with cost: {metric}")
+# Global state with proper typing
+EXPERIMENT_LOG: List[Dict[str, Any]] = []
+LESSON_HISTORY: List[str] = []
 
-LOG_PATH = "experiment_log.json"
+# File paths
+LOG_PATH: Path = Path("experiment_log.json")
+LESSON_LOG_PATH: Path = Path("lesson_history.json")
 
-if os.path.exists(LOG_PATH):
-    try:
-        with open(LOG_PATH, "r") as f:
-            EXPERIMENT_LOG = json.load(f)
-        completed_generations = {entry["generation"] for entry in EXPERIMENT_LOG}
-    except json.JSONDecodeError:
-        logging.warning("Experiment log file is corrupted. Starting fresh.")
+
+def initialize_experiment() -> None:
+    """Initialize experiment with baseline program if needed."""
+    global EXPERIMENT_LOG
+
+    existing_parent, _ = sample(generation_number=0)
+    if not existing_parent:
+        logger.info("No program found in generation 0. Adding task baseline.")
+        metric = execute(task.baseline_program, task)["cost"]
+        add(program_code=task.baseline_program, metric=metric)
+        logger.info(f"Baseline added with cost: {metric}")
+
+
+def load_experiment_log() -> Set[int]:
+    """
+    Load experiment log from disk.
+
+    Returns:
+        Set of completed generation numbers
+    """
+    global EXPERIMENT_LOG
+
+    if LOG_PATH.exists():
+        try:
+            with open(LOG_PATH, "r", encoding="utf-8") as f:
+                EXPERIMENT_LOG = json.load(f)
+            completed_generations = {entry["generation"] for entry in EXPERIMENT_LOG}
+            logger.info(f"Loaded {len(EXPERIMENT_LOG)} entries from experiment log")
+            return completed_generations
+        except json.JSONDecodeError:
+            logger.warning("Experiment log file is corrupted. Starting fresh.")
+            EXPERIMENT_LOG = []
+            return set()
+        except Exception as e:
+            logger.error(f"Failed to load experiment log: {e}")
+            EXPERIMENT_LOG = []
+            return set()
+    else:
         EXPERIMENT_LOG = []
-        completed_generations = set()
-else:
-    EXPERIMENT_LOG = []
-    completed_generations = set()
-
-LESSON_LOG_PATH = "lesson_history.json"
-
-if os.path.exists(LESSON_LOG_PATH):
-    with open(LESSON_LOG_PATH) as f:
-        LESSON_HISTORY = json.load(f)
-else:
-    LESSON_HISTORY = []
+        return set()
 
 
-if __name__ == "__main__":
+def load_lesson_history() -> None:
+    """Load lesson history from disk."""
+    global LESSON_HISTORY
+
+    if LESSON_LOG_PATH.exists():
+        try:
+            with open(LESSON_LOG_PATH, "r", encoding="utf-8") as f:
+                LESSON_HISTORY = json.load(f)
+            logger.info(f"Loaded {len(LESSON_HISTORY)} lessons from history")
+        except json.JSONDecodeError:
+            logger.warning("Lesson history file is corrupted. Starting fresh.")
+            LESSON_HISTORY = []
+        except Exception as e:
+            logger.error(f"Failed to load lesson history: {e}")
+            LESSON_HISTORY = []
+    else:
+        LESSON_HISTORY = []
+
+
+def save_experiment_log() -> None:
+    """Save experiment log to disk."""
+    try:
+        with open(LOG_PATH, "w", encoding="utf-8") as f:
+            json.dump(EXPERIMENT_LOG, f, indent=2, ensure_ascii=False)
+        logger.debug("Experiment log saved")
+    except Exception as e:
+        logger.error(f"Failed to save experiment log: {e}")
+
+
+def save_lesson_history() -> None:
+    """Save lesson history to disk."""
+    try:
+        with open(LESSON_LOG_PATH, "w", encoding="utf-8") as f:
+            json.dump(LESSON_HISTORY, f, indent=2, ensure_ascii=False)
+        logger.debug("Lesson history saved")
+    except Exception as e:
+        logger.error(f"Failed to save lesson history: {e}")
+
+
+def run_generation(
+    generation: int, parent_program: ProgramCode, inspirations: List[str]
+) -> Optional[Dict[str, Any]]:
+    """
+    Run a single generation of evolution.
+
+    Args:
+        generation: Generation number
+        parent_program: Parent program code
+        inspirations: List of inspiration programs
+
+    Returns:
+        Generation result dictionary or None if failed
+    """
+    try:
+        # Get lesson if available
+        lesson = None
+        if generation % LESSON_INTERVAL == 0 and LESSON_HISTORY:
+            lesson = LESSON_HISTORY[-1]  # Most recent lesson
+
+        # Build prompt
+        prompt = build(parent_program, inspirations, lesson)
+
+        # Generate child program
+        child_program_blocks = generate(prompt)
+
+        if not child_program_blocks:
+            logger.warning(
+                f"Generation {generation}: No code blocks generated, falling back to parent code blocks"
+            )
+            # Fallback: extract blocks from parent program
+            parent_code = parent_program[3] if parent_program else task.baseline_program
+            child_program_blocks = extract_code_blocks(parent_code)
+            if not child_program_blocks:
+                logger.error(
+                    f"Generation {generation}: Fallback extraction yielded no blocks, aborting generation"
+                )
+                return None
+
+        # Apply diff to create child program
+        child_program_code = apply_diff(parent_program[3], child_program_blocks)
+
+        # Evaluate child program
+        child_result = execute(child_program_code, task)
+
+        # Store in database
+        add(
+            program_code=child_program_code,
+            metric=child_result["cost"],
+            # generation=generation,
+            parent_id=parent_program[0] if parent_program else None,
+        )
+
+        # Create experiment log entry
+        log_entry = {
+            "generation": generation,
+            "program_code": child_program_code,
+            "cost": child_result["cost"],
+            "feasibility": child_result["feasibility"],
+            "parent_id": parent_program[0] if parent_program else None,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        EXPERIMENT_LOG.append(log_entry)
+
+        logger.info(
+            f"Generation {generation}: Cost = {child_result['cost']:.2f}, "
+            f"Feasibility = {child_result['feasibility']:.2f}"
+        )
+
+        return log_entry
+
+    except Exception as e:
+        logger.error(f"Generation {generation} failed: {e}")
+        return None
+
+
+def main() -> None:
+    """Main execution function."""
+    # Initialize experiment
+    initialize_experiment()
+
+    # Load existing data
+    completed_generations = load_experiment_log()
+    load_lesson_history()
+
+    logger.info("Starting Cadence evolution experiment")
+    global NUM_GENERATIONS, ELITISM_INTERVAL, META_PROMPT_EDIT_INTERVAL
+
+    # Parse command line arguments
     parser = ArgumentParser(
         description="Run the evolutionary program synthesis experiment."
     )
@@ -73,135 +235,106 @@ if __name__ == "__main__":
         "--elitism_interval",
         type=int,
         default=ELITISM_INTERVAL,
-        help="Interval for elitism (default: 5)",
+        help="Interval for elitism (default: 20)",
     )
     parser.add_argument(
         "--meta_prompt_edit_interval",
         type=int,
         default=META_PROMPT_EDIT_INTERVAL,
-        help="Interval for editing the meta prompt (default: 2)",
+        help="Interval for editing the meta prompt (default: 10)",
     )
-
     parser.add_argument(
         "--force-rerun",
-        type=bool,
-        default=False,
-        help="Force rerun of all generations even if they are already completed (default: False)",
+        action="store_true",
+        help="Force rerun of all generations even if they are already completed",
     )
 
     args = parser.parse_args()
 
+    # Update global configuration from arguments
     NUM_GENERATIONS = args.num_generations
     ELITISM_INTERVAL = args.elitism_interval
     META_PROMPT_EDIT_INTERVAL = args.meta_prompt_edit_interval
+
     if args.force_rerun:
-        logging.info("Force rerun enabled. Resetting logs.")
+        logger.info("Force rerun enabled. Resetting logs.")
         completed_generations = set()
-        if os.path.exists(LOG_PATH):
-            with open(LOG_PATH, "r+") as f:
-                f.truncate(0)  # Clear the log file
-        if os.path.exists(LESSON_LOG_PATH):
-            with open(LESSON_LOG_PATH, "r+") as f:
-                f.truncate(0)  # Clear the lesson history file
-    generation = 1
-    while generation in range(
+        if LOG_PATH.exists():
+            LOG_PATH.unlink()
+        if LESSON_LOG_PATH.exists():
+            LESSON_LOG_PATH.unlink()
+
+    # Main evolution loop
+    for generation in range(
         args.start_generation, NUM_GENERATIONS + args.start_generation
     ):
-        # Checkpointing.
+        # Skip completed generations
         if generation in completed_generations:
-            logging.info(f"Skipping generation {generation} already completed.")
-            generation += 1
+            logger.info(f"Skipping generation {generation} - already completed.")
             continue
 
-        logging.info(f"=== Generation {generation} ===")
+        logger.info(f"=== Generation {generation} ===")
 
+        # Evolve meta prompt periodically
         if generation > 0 and generation % META_PROMPT_EDIT_INTERVAL == 0:
-            logging.info("Evolving meta prompt...")
-            new_instruction = mutate_instruction(INSTRUCTION_TEMPLATE)
-            update_instruction(new_instruction)
-            logging.info(f"Updated instruction:\n{new_instruction}")
+            logger.info("Evolving meta prompt...")
+            try:
+                new_instruction = mutate_instruction(INSTRUCTION_TEMPLATE)
+                update_instruction(new_instruction)
+                logger.info(f"Updated instruction: {new_instruction}")
+            except Exception as e:
+                logger.error(f"Failed to update instruction: {e}")
 
-        # Step 1: Select parent program (with elitism every ELITISM_INTERVAL generations)
-        if generation > 0 and generation % ELITISM_INTERVAL == 0:
-            parent_program = get_best_program()
-            inspirations = []  # Best program may not have children
-            if not parent_program:
-                logging.warning("No best program found. Skipping generation.")
-                generation += 1
-                continue
-            logging.info(
-                f"Elitism triggered. Using best program ID: {parent_program[0]} (Metric: {parent_program[4]:.4f})"
-            )
-        else:
-            parent_program, inspirations = sample(generation_number=generation - 1)
-            if not parent_program:
-                logging.warning("No parent program found. Skipping generation.")
-                generation += 1
-                continue
-            logging.info(f"Sampled parent program ID: {parent_program[0]}")
+        # Select parent program (with elitism)
+        parent_program = None
+        inspirations: List[str] = []
 
-        # Step 2: Build prompt(Modified)
-        current_lesson = "\n".join(LESSON_HISTORY[-1:]) if LESSON_HISTORY else None
-        prompt = build(parent_program, inspirations, lesson=current_lesson)
-
-        # Step 3: Generate diffs
         try:
-            diffs = generate(prompt)
+            if generation > 0 and generation % ELITISM_INTERVAL == 0:
+                parent_program = get_best_program()
+                if parent_program:
+                    logger.info(
+                        f"Elitism: Using best program ID {parent_program[0]} (Cost: {parent_program[4]:.4f})"
+                    )
+                else:
+                    logger.warning("No best program found for elitism")
+                    continue
+            else:
+                parent_program, inspirations = sample(generation_number=generation - 1)
+                if parent_program:
+                    logger.info(f"Sampled parent program ID: {parent_program[0]}")
+                else:
+                    logger.warning("No parent program found")
+                    continue
         except Exception as e:
-            logging.error(f"LLM generation failed: {e}")
-            break
+            logger.error(f"Failed to select parent: {e}")
+            continue
 
-        # Step 4: Apply diffs
-        child_program_code = apply_diff(parent_program[3], diffs)
+        # Run generation
+        result = run_generation(generation, parent_program, inspirations)
+        if result:
+            # Extract lessons periodically
+            if generation % LESSON_INTERVAL == 0:
+                logger.info("Extracting lesson from history...")
+                try:
+                    previous_lesson = LESSON_HISTORY[-1] if LESSON_HISTORY else None
+                    lesson = get_lesson_from_history(
+                        EXPERIMENT_LOG, previous_lesson=previous_lesson
+                    )
+                    if lesson:
+                        LESSON_HISTORY.append(lesson)
+                        logger.info(f"New lesson extracted: {lesson}")
+                        save_lesson_history()
+                except Exception as e:
+                    logger.error(f"Failed to extract lesson: {e}")
 
-        if generation % LESSON_INTERVAL == 0:
-            logging.info("Extracting lesson from history...")
-            EXPERIMENT_LOG[-1]["program_code"] = child_program_code
-
-            previous_lesson = LESSON_HISTORY[-1] if LESSON_HISTORY else None
-            lesson = get_lesson_from_history(
-                EXPERIMENT_LOG, previous_lesson=previous_lesson
-            )
-            if lesson:
-                LESSON_HISTORY.append(lesson)
-                logging.info(f"New lesson extracted: {lesson}")
-            with open(LESSON_LOG_PATH, "w") as f:
-                json.dump(LESSON_HISTORY, f, indent=2)
-
-        # Step 5: Evaluate
-        metric = execute(child_program_code, task)
-
-        if not metric["feasibility"] or metric["cost"] >= INFEASIBLE_COST:
-            logging.warning(
-                f"Child program is infeasible or has high cost: {metric['cost']}"
-            )
+            # Save experiment log
+            save_experiment_log()
         else:
-            logging.info(f"Valid Result: Cost: {metric['cost']}")
-        logging.info(
-            f"Evaluation metric for child: {metric['cost']:.4f} | Feasibility: {metric.get('feasibility_ratio', 0.0):.2f}"
-        )
+            logger.warning(f"Generation {generation} failed")
 
-        # Step 6: Store in DB
-        add(
-            parent_id=parent_program[0],
-            program_code=child_program_code,
-            metric=metric["cost"],
-            diff="\n\n".join(diffs),
-            prompt=prompt,
-        )
+    logger.info("Experiment complete!")
 
-        # Step 7: Log experiment
-        EXPERIMENT_LOG.append(
-            {
-                "generation": generation,
-                "parent_id": parent_program[0],
-                "cost": metric["cost"],
-                "feasibility": metric.get("feasibility_ratio", 0.0),
-            }
-        )
 
-        generation += 1
-        with open(LOG_PATH, "w") as f:
-            json.dump(EXPERIMENT_LOG, f, indent=2)
-
-    logging.info("Experiment complete. Log saved to experiment_log.json")
+if __name__ == "__main__":
+    main()

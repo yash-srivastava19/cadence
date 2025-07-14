@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
 Simple Flask UI for Cadence Experiment Visualization
+
+This module provides a Flask web interface for visualizing
+Cadence evolution experiments with comprehensive type safety.
 """
 
 import json
 import os
 import sys
-from flask import Flask, render_template, jsonify, request
+from typing import Dict, List, Any, Tuple
+from flask import Flask, render_template, jsonify, request, Response
 
 # Add parent directory to path to import cadence modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -15,13 +19,21 @@ from src.database import get_all_programs
 
 app = Flask(__name__)
 
-# Global data storage
-experiment_data = {}
-config_data = {}
+# Global data storage with proper typing
+experiment_data: Dict[str, Any] = {}
+config_data: Dict[str, Any] = {}
 
 
-def load_experiment_data(results_dir):
-    """Load experiment data from results directory"""
+def load_experiment_data(results_dir: str) -> List[Tuple[Any, ...]]:
+    """
+    Load experiment data from results directory.
+
+    Args:
+        results_dir: Path to the results directory
+
+    Returns:
+        List of program tuples from database
+    """
     global experiment_data, config_data
 
     # Load config
@@ -46,19 +58,27 @@ def load_experiment_data(results_dir):
 
 
 @app.route("/")
-def index():
-    """Main visualization page"""
+def index() -> str:
+    """Main visualization page."""
     return render_template("index.html")
 
 
 @app.route("/api/config")
-def get_config():
-    """Get experiment configuration"""
+def get_config() -> Response:
+    """Get experiment configuration."""
     return jsonify(config_data)
 
 
-def safe_metric_value(value):
-    """Convert metric value to JSON-safe format"""
+def safe_metric_value(value: Any) -> float:
+    """
+    Convert metric value to JSON-safe format.
+
+    Args:
+        value: The metric value to convert
+
+    Returns:
+        JSON-safe float value
+    """
     if value is None:
         return 0.0
     if isinstance(value, (int, float)):
@@ -71,12 +91,12 @@ def safe_metric_value(value):
 
 
 @app.route("/api/programs")
-def get_programs():
-    """Get all programs from database"""
+def get_programs() -> Response:
+    """Get all programs from database."""
     try:
         programs = get_all_programs()
         # Convert to JSON-serializable format
-        programs_json = []
+        programs_json: List[Dict[str, Any]] = []
         for prog in programs:
             programs_json.append(
                 {
@@ -95,8 +115,8 @@ def get_programs():
 
 
 @app.route("/api/program/<int:program_id>")
-def get_program(program_id):
-    """Get specific program details"""
+def get_program(program_id: int) -> Response:
+    """Get specific program details."""
     try:
         programs = get_all_programs()
         for prog in programs:
@@ -118,27 +138,27 @@ def get_program(program_id):
 
 
 @app.route("/api/metrics")
-def get_metrics():
-    """Get available metrics"""
+def get_metrics() -> Response:
+    """Get available metrics."""
     return jsonify(["cost", "feasibility"])
 
 
 @app.route("/api/experiment_results")
-def get_experiment_results():
-    """Get experiment results"""
+def get_experiment_results() -> Response:
+    """Get experiment results."""
     return jsonify(experiment_data)
 
 
 @app.route("/api/performance/<int:program_id>")
-def get_performance(program_id):
-    """Get performance data for a specific program lineage"""
+def get_performance(program_id: int) -> Response:
+    """Get performance data for a specific program lineage."""
     try:
         programs = get_all_programs()
 
         # Find all ancestors and descendants
-        lineage = []
+        lineage: List[Dict[str, Any]] = []
 
-        def add_to_lineage(pid):
+        def add_to_lineage(pid: int) -> None:
             for prog in programs:
                 if prog[0] == pid:
                     lineage.append(
@@ -161,8 +181,8 @@ def get_performance(program_id):
 
 
 @app.route("/load_experiment", methods=["POST"])
-def load_experiment():
-    """Load experiment from directory"""
+def load_experiment() -> Response:
+    """Load experiment from directory."""
     data = request.get_json()
     results_dir = data.get("results_dir")
 

@@ -46,7 +46,7 @@ def run_llm_evolution(n_generations, seeds_per_eval=5):
     global EXPERIMENT_LOG, HASHES
     task = TSPTask()
     if not os.path.exists("experiment_log.json"):
-        baseline_metric = execute(task.baseline_program)["cost"]
+        baseline_metric = execute(task.baseline_program, task)["cost"]
         add(program_code=task.baseline_program, metric=baseline_metric)
         print(f"Baseline added with cost: {baseline_metric:.2f}")
 

@@ -1,11 +1,12 @@
+from typing import List, Tuple
 import math
 
 
-def distance(a, b):
+def distance(a: List | Tuple, b: List | Tuple) -> float:
     return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
 
 
-def nearest_neighbor(cities):
+def nearest_neighbor(cities: List[List[float]]) -> List[int]:
     n = len(cities)
     unvisited = set(range(1, n))
     tour = [0]
@@ -17,5 +18,5 @@ def nearest_neighbor(cities):
     return tour
 
 
-def reversed_tour(cities):
+def reversed_tour(cities: List[List[float]]) -> List[int]:
     return list(reversed(range(len(cities))))
