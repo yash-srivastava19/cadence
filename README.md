@@ -217,15 +217,17 @@ Tests + Docs + Other build related stuff for Cadence. We're near the end!
 14/07/2025
 Lesson history + system prompt update + scripts for H1 and H2 + black pre-commit.
 
+16/07/2025
+Docs revamp + notebook + other minor changes
 Checklist:
 -[x]Codebase make professional
--[]Docs refactor
--[]Demo + Notebook
+-[X]Docs refactor
+-[X]Demo + Notebook
 
 TODO:
 -[x]introduce types support, and pydantic for model validation(typed data structure)
--[]explore the possiblity of rich and hydra
--[]notebook explaining everything in the codebase,
--[]results in a presentable fashion.
+-[x]explore the possiblity of rich and hydra
+-[X]notebook explaining everything in the codebase,
+-[x]results in a presentable fashion.
 -[]blog.
--[]demo.
+-[x]demo.

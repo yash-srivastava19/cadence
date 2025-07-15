@@ -1,3 +1,20 @@
 site_name: Cadence
 theme:
   name: readthedocs
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Configuration: configuration.md
+  - Architecture: architecture.md
+  - Task Interface: tasks.md
+  - Evolution Pipeline: evolution.md
+  - LLM Interaction: llm-interaction.md
+  - Code Mutation Examples: examples.md
+  - Experiments: experiments.md
+  - Performance Evaluation: performance-evaluation.md
+  - Results Visualization: results-visualization.md
+  - Extending Cadence: extending-custom-task.md
+  - Advanced Features: advanced-features.md
+  - Web Interface: web-interface.md
+  - API Reference: api/index.md
+  - Contributing: contributing.md
