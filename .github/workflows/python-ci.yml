@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  lint:
+  code_standards:
     runs-on: ubuntu-latest
 
     steps:
