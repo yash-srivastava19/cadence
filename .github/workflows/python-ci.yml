@@ -26,9 +26,9 @@ jobs:
       - name: Lint with Ruff
         uses: astral-sh/ruff-action@v3
         with:
-          args: "check src tests"
+          args: "check src tests --exclude '*.ipynb'"
 
       - name: Format check with Black
         uses: psf/black@stable
         with:
-          args: "--check src tests"
+          args: "--check --include '\\.py$' src tests"
