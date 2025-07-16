@@ -10,7 +10,7 @@ import json
 import os
 import sys
 from typing import Dict, List, Any, Tuple
-from flask import Flask, render_template, jsonify, request, Response
+from flask import Flask, render_template, jsonify, request, Response, make_response
 
 # Add parent directory to path to import cadence modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -66,7 +66,7 @@ def index() -> str:
 @app.route("/api/config")
 def get_config() -> Response:
     """Get experiment configuration."""
-    return jsonify(config_data)
+    return make_response(jsonify(config_data))
 
 
 def safe_metric_value(value: Any) -> float:
@@ -109,9 +109,9 @@ def get_programs() -> Response:
                     "prompt": prog[6] if len(prog) > 6 else "",
                 }
             )
-        return jsonify(programs_json)
+        return make_response(jsonify(programs_json))
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return make_response(jsonify({"error": str(e)}), 500)
 
 
 @app.route("/api/program/<int:program_id>")
@@ -132,21 +132,21 @@ def get_program(program_id: int) -> Response:
                         "prompt": prog[6] if len(prog) > 6 else "",
                     }
                 )
-        return jsonify({"error": "Program not found"}), 404
+        return make_response(jsonify({"error": "Program not found"}), 404)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return make_response(jsonify({"error": str(e)}), 500)
 
 
 @app.route("/api/metrics")
 def get_metrics() -> Response:
     """Get available metrics."""
-    return jsonify(["cost", "feasibility"])
+    return make_response(jsonify(["cost", "feasibility"]))
 
 
 @app.route("/api/experiment_results")
 def get_experiment_results() -> Response:
     """Get experiment results."""
-    return jsonify(experiment_data)
+    return make_response(jsonify(experiment_data))
 
 
 @app.route("/api/performance/<int:program_id>")
@@ -175,9 +175,9 @@ def get_performance(program_id: int) -> Response:
         add_to_lineage(program_id)
         lineage.sort(key=lambda x: x["generation"])
 
-        return jsonify(lineage)
+        return make_response(jsonify(lineage))
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return make_response(jsonify({"error": str(e)}), 500)
 
 
 @app.route("/load_experiment", methods=["POST"])
@@ -191,9 +191,11 @@ def load_experiment() -> Response:
 
     try:
         programs = load_experiment_data(results_dir)
-        return jsonify({"success": True, "programs_count": len(programs)})
+        return make_response(
+            jsonify({"success": True, "programs_count": len(programs)})
+        )
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return make_response(jsonify({"error": str(e)}), 500)
 
 
 if __name__ == "__main__":
