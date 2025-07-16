@@ -1,5 +1,10 @@
 # Cadence - Program Evolution via Language Models
 
+[![CI](https://github.com/yash-srivastava19/cadence/actions/workflows/python-ci.yml/badge.svg)](https://github.com/yash-srivastava19/cadence/actions)
+[![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://yash-srivastava19.github.io/cadence)
+[![Coverage](https://img.shields.io/codecov/c/github/yash-srivastava19/cadence/main.svg)](https://codecov.io/gh/yash-srivastava19/cadence)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Cadence implements an evolutionary system that uses large language models (LLMs) to iteratively generate, mutate, and improve programs for solving computational problems. The current implementation focuses on optimizing solutions to the Traveling Salesman Problem (TSP).
 
 ## Overview
@@ -24,6 +29,17 @@ The system evolves programs over generations using the following loop:
 * Meta-prompting: periodically updates instructions to steer LLM behavior
 * Modular task abstraction to support other optimization problems in the future
 
+## Table of Contents
+- [Overview](#overview)
+- [Features](#features)
+- [Getting Started](#getting-started)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Directory Structure](#directory-structure)
+- [Contributing](#contributing)
+- [Code of Conduct](#code-of-conduct)
+- [License](#license)
+
 ## Getting Started
 
 ### 1. Clone the Repository
@@ -47,23 +63,24 @@ source venv/bin/activate
 uv pip install
 ```
 
-### 4. Add API Keys
+## Configuration
 
-Create a `.env` file with your model API key. I used Gemini, so in the .env file, add this:
-
+Create a `.env` file to hold your API credentials (for Gemini or other providers):
+```bash
+echo "GEMINI_API_KEY=your-key" >> .env
 ```
-GEMINI_API_KEY=your-key
-```
 
-### 5. Run the Evolution Script
+## Usage
+
+### Run the Evolution Script
 
 ```bash
-python main.py
+python main.py --task tsp --generations 10 --output evolution.sqlite
 ```
 
 This will evolve TSP solvers over multiple generations and save the progress in `experiment_log.json`.
 
-### 6. Visualize Results
+### Visualize Results
 
 ```bash
 python analyze_results.py
