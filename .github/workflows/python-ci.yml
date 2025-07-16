@@ -27,3 +27,13 @@ jobs:
       - name: Run Pre-commit
         run: |
           pre-commit run --all-files
+
+      - name: Run tests
+        run: pytest --cov --cov-branch --cov-report=xml
+
+
+      - name: Upload Coverage Reports
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: yash-srivastava19/cadence
