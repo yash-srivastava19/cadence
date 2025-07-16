@@ -7,11 +7,11 @@ type safety and Pydantic model validation.
 
 import logging
 import json
-from argparse import ArgumentParser
+import hydra
+from omegaconf import DictConfig
 from typing import List, Dict, Any, Optional, Set
 from pathlib import Path
 from datetime import datetime
-
 from src.database import sample, add, get_best_program
 from src.evaluator import execute
 from src.evolve import apply_diff
@@ -26,29 +26,20 @@ from src.models import ProgramCode
 task = TSPTask()
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
 
-# Experiment configuration
-NUM_GENERATIONS: int = 6
-ELITISM_INTERVAL: int = 20
-META_PROMPT_EDIT_INTERVAL: int = 10
-LESSON_INTERVAL: int = 2
-
-# Global state with proper typing
+# # Global state with proper typing
 EXPERIMENT_LOG: List[Dict[str, Any]] = []
 LESSON_HISTORY: List[str] = []
 
-# File paths
+# # File paths
 LOG_PATH: Path = Path("experiment_log.json")
 LESSON_LOG_PATH: Path = Path("lesson_history.json")
 
 
 def initialize_experiment() -> None:
     """Initialize experiment with baseline program if needed."""
-    global EXPERIMENT_LOG
+    # global EXPERIMENT_LOG
 
     existing_parent, _ = sample(generation_number=0)
     if not existing_parent:
@@ -65,7 +56,7 @@ def load_experiment_log() -> Set[int]:
     Returns:
         Set of completed generation numbers
     """
-    global EXPERIMENT_LOG
+    # global EXPERIMENT_LOG
 
     if LOG_PATH.exists():
         try:
@@ -89,7 +80,7 @@ def load_experiment_log() -> Set[int]:
 
 def load_lesson_history() -> None:
     """Load lesson history from disk."""
-    global LESSON_HISTORY
+    # global LESSON_HISTORY
 
     if LESSON_LOG_PATH.exists():
         try:
@@ -127,7 +118,10 @@ def save_lesson_history() -> None:
 
 
 def run_generation(
-    generation: int, parent_program: ProgramCode, inspirations: List[str]
+    generation: int,
+    parent_program: ProgramCode,
+    inspirations: List[str],
+    LESSON_INTERVAL: int = 2,
 ) -> Optional[Dict[str, Any]]:
     """
     Run a single generation of evolution.
@@ -175,7 +169,6 @@ def run_generation(
         add(
             program_code=child_program_code,
             metric=child_result["cost"],
-            # generation=generation,
             parent_id=parent_program[0] if parent_program else None,
         )
 
@@ -203,7 +196,8 @@ def run_generation(
         return None
 
 
-def main() -> None:
+@hydra.main(version_base=None, config_path="conf", config_name="main_config")
+def main(cfg: DictConfig) -> None:
     """Main execution function."""
     # Initialize experiment
     initialize_experiment()
@@ -213,50 +207,7 @@ def main() -> None:
     load_lesson_history()
 
     logger.info("Starting Cadence evolution experiment")
-    global NUM_GENERATIONS, ELITISM_INTERVAL, META_PROMPT_EDIT_INTERVAL
-
-    # Parse command line arguments
-    parser = ArgumentParser(
-        description="Run the evolutionary program synthesis experiment."
-    )
-    parser.add_argument(
-        "--start_generation",
-        type=int,
-        default=0,
-        help="checkpointing index (default: 0)",
-    )
-    parser.add_argument(
-        "--num_generations",
-        type=int,
-        default=NUM_GENERATIONS,
-        help="Total number of generations to run (default: 6)",
-    )
-    parser.add_argument(
-        "--elitism_interval",
-        type=int,
-        default=ELITISM_INTERVAL,
-        help="Interval for elitism (default: 20)",
-    )
-    parser.add_argument(
-        "--meta_prompt_edit_interval",
-        type=int,
-        default=META_PROMPT_EDIT_INTERVAL,
-        help="Interval for editing the meta prompt (default: 10)",
-    )
-    parser.add_argument(
-        "--force-rerun",
-        action="store_true",
-        help="Force rerun of all generations even if they are already completed",
-    )
-
-    args = parser.parse_args()
-
-    # Update global configuration from arguments
-    NUM_GENERATIONS = args.num_generations
-    ELITISM_INTERVAL = args.elitism_interval
-    META_PROMPT_EDIT_INTERVAL = args.meta_prompt_edit_interval
-
-    if args.force_rerun:
+    if cfg.FORCE_RERUN:
         logger.info("Force rerun enabled. Resetting logs.")
         completed_generations = set()
         if LOG_PATH.exists():
@@ -266,7 +217,7 @@ def main() -> None:
 
     # Main evolution loop
     for generation in range(
-        args.start_generation, NUM_GENERATIONS + args.start_generation
+        cfg.START_GENERATION, cfg.NUM_GENERATIONS + cfg.START_GENERATION
     ):
         # Skip completed generations
         if generation in completed_generations:
@@ -276,7 +227,7 @@ def main() -> None:
         logger.info(f"=== Generation {generation} ===")
 
         # Evolve meta prompt periodically
-        if generation > 0 and generation % META_PROMPT_EDIT_INTERVAL == 0:
+        if generation > 0 and generation % cfg.META_PROMPT_EDIT_INTERVAL == 0:
             logger.info("Evolving meta prompt...")
             try:
                 new_instruction = mutate_instruction(INSTRUCTION_TEMPLATE)
@@ -290,7 +241,7 @@ def main() -> None:
         inspirations: List[str] = []
 
         try:
-            if generation > 0 and generation % ELITISM_INTERVAL == 0:
+            if generation > 0 and generation % cfg.ELITISM_INTERVAL == 0:
                 parent_program = get_best_program()
                 if parent_program:
                     logger.info(
@@ -311,10 +262,15 @@ def main() -> None:
             continue
 
         # Run generation
-        result = run_generation(generation, parent_program, inspirations)
+        result = run_generation(
+            generation,
+            parent_program,
+            inspirations,
+            LESSON_INTERVAL=cfg.LESSON_INTERVAL,
+        )
         if result:
             # Extract lessons periodically
-            if generation % LESSON_INTERVAL == 0:
+            if generation % cfg.LESSON_INTERVAL == 0:
                 logger.info("Extracting lesson from history...")
                 try:
                     previous_lesson = LESSON_HISTORY[-1] if LESSON_HISTORY else None

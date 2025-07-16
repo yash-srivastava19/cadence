@@ -1,0 +1,9 @@
+NUM_GENERATIONS: 6
+ELITISM_INTERVAL: 20
+META_PROMPT_EDIT_INTERVAL: 10
+LESSON_INTERVAL: 2
+FORCE_RERUN: true
+START_GENERATION: 0
+
+defaults:
+  - override hydra/job_logging: custom

@@ -16,3 +16,5 @@ src/rl/__pycache__
 src/tasks/__pycache__
 tests/fixtures/__pycache__
 lesson_history.json
+outputs/
+multirun/

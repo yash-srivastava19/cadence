@@ -1,0 +1,6 @@
+SIZES: [10, 15, 20, 25]
+GENERATIONS: 20
+SEEDS: 10
+
+defaults:
+  - override hydra/job_logging: custom

@@ -1,0 +1,5 @@
+SEEDS: 3
+GENERATIONS: 4
+
+defaults:
+  - override hydra/job_logging: custom

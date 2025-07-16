@@ -13,11 +13,11 @@ Usage:
 
 import os
 import json
-import argparse
 import matplotlib.pyplot as plt
 from hashlib import sha1
-from tqdm import tqdm
-
+from tqdm.rich import trange
+import hydra
+from omegaconf import DictConfig
 from src.tasks.tsp_task import TSPTask
 from src.tasks.tsp_reference import nearest_neighbor, reversed_tour
 from src.evaluator import generate_test_instance, compute_total_distance
@@ -31,7 +31,7 @@ EXPERIMENT_LOG = []
 HASHES = set()
 
 
-def run_baselines(n_seeds):
+def run_baselines(n_seeds: int):
     nn_scores, rev_scores = [], []
     for seed in range(n_seeds):
         cities = generate_test_instance(seed=seed)
@@ -42,7 +42,7 @@ def run_baselines(n_seeds):
     return nn_scores, rev_scores
 
 
-def run_llm_evolution(n_generations, seeds_per_eval=5):
+def run_llm_evolution(n_generations):
     global EXPERIMENT_LOG, HASHES
     task = TSPTask()
     if not os.path.exists("experiment_log.json"):
@@ -50,7 +50,7 @@ def run_llm_evolution(n_generations, seeds_per_eval=5):
         add(program_code=task.baseline_program, metric=baseline_metric)
         print(f"Baseline added with cost: {baseline_metric:.2f}")
 
-    for generation in tqdm(range(n_generations)):
+    for generation in trange(n_generations):
         parent, inspirations = sample(generation_number=generation)
         if not parent:
             print(f"[!] No parent for generation {generation}")
@@ -113,21 +113,17 @@ def plot_results(nn_scores, rev_scores, log_path="experiment_log.json"):
     print("Saved plot to h1_results.png")
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--generations", type=int, default=20, help="Number of generations to evolve"
-    )
-    parser.add_argument(
-        "--seeds", type=int, default=10, help="Number of test seeds for baselines"
-    )
-    args = parser.parse_args()
-
+@hydra.main(version_base=None, config_path="conf", config_name="h1_config")
+def main(cfg: DictConfig) -> None:
     print("[1] Running baseline heuristics...")
-    nn, rev = run_baselines(args.seeds)
+    nn_scores, rev_scores = run_baselines(cfg.SEEDS)
 
     print("[2] Running LLM evolution...")
-    run_llm_evolution(args.generations)
+    run_llm_evolution(cfg.GENERATIONS)
 
     print("[3] Plotting results...")
-    plot_results(nn, rev)
+    plot_results(nn_scores, rev_scores)
+
+
+if __name__ == "__main__":
+    main()

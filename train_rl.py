@@ -1,5 +1,6 @@
 import logging
 import json
+from rich.logging import RichHandler
 from src.tasks.tsp_task import TSPTask
 from src.evaluator import execute
 from src.prompt_sampler import build
@@ -7,8 +8,12 @@ from src.rl.agent import RLAgent
 from src.database import sample, add
 from src.rl.reward_model import RewardModel
 
-logging.basicConfig(level=logging.INFO)
-
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[RichHandler()],
+    datefmt="[%X]",
+)
 
 NUM_GENERATIONS = 5
 SEEDS = [1, 2, 3, 4, 5]
