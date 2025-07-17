@@ -1,12 +1,26 @@
-# Cadence - Program Evolution via Language Models
+# Cadence: Program Evolution via Large Language Models
 
+# Badges
 [![CI](https://github.com/yash-srivastava19/cadence/actions/workflows/python-ci.yml/badge.svg)](https://github.com/yash-srivastava19/cadence/actions)
 [![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://yash-srivastava19.github.io/cadence)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Cadence implements an evolutionary system that uses large language models (LLMs) to iteratively generate, mutate, and improve programs for solving computational problems. The current implementation focuses on optimizing solutions to the Traveling Salesman Problem (TSP).
 
-## Overview
+## Architecture
+
+```mermaid
+flowchart TD
+    A[Sample Parent Program] --> B[Build Prompt + Lesson]
+    B --> C[LLM Generation of Code Diffs]
+    C --> D[Apply Diff to Parent]
+    D --> E[Evaluate on Test Suite]
+    E --> F[Log to Database]
+    F --> G{Generation Complete}
+    G -->|Not Final| A
+    G -->|Final| H[Extract Lesson]
+    H --> B
+```
 
 The system evolves programs over generations using the following loop:
 
@@ -19,7 +33,7 @@ The system evolves programs over generations using the following loop:
 7. Periodically promote the best-performing program to guide future generations.
 8. Optionally mutate the instructions used in prompts to encourage better code.
 
-## Features
+## Key Features
 
 * TSP solution evolution using only standard Python (no external math libraries)
 * Multi-seed deterministic evaluation for stable cost metrics
@@ -29,14 +43,14 @@ The system evolves programs over generations using the following loop:
 * Modular task abstraction to support other optimization problems in the future
 
 ## Table of Contents
-- [Overview](#overview)
-- [Features](#features)
+- [Architecture](#architecture)
+- [Key Features](#key-features)
 - [Getting Started](#getting-started)
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [Directory Structure](#directory-structure)
+- [Citation](#citation)
 - [Contributing](#contributing)
-- [Code of Conduct](#code-of-conduct)
 - [License](#license)
 
 ## Getting Started
@@ -169,6 +183,18 @@ metric = execute(child_program_code, task)
 * Try to avoid relying on `random` inside the generated programs themselves.
 
 
+
+## Citation
+If you use Cadence in your work, please cite:
+```bibtex
+@software{cadence2025,
+  author = {Yash Srivastava},
+  title = {{Cadence: Program Evolution via Large Language Models}},
+  year = {2025},
+  url = {https://github.com/yash-srivastava19/cadence},
+  version = {main}
+}
+```
 
 ## License
 

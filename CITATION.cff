@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+title: "Cadence: Program Evolution via Language Models"
+version: "0.1.0"
+date-released: "2025-07-21"
+authors:
+  - family-names: "Srivastava"
+    given-names: "Yash"
+homepage: "https://github.com/yash-srivastava19/cadence"
+repository-code: "https://github.com/yash-srivastava19/cadence"
+message: "If you use Cadence in your work, please cite it using the metadata provided."
