@@ -1,5 +1,8 @@
 SEEDS: 3
-GENERATIONS: 4
+GENERATIONS: 20
+LESSON_INTERVAL: 4
+API_MAX_RETRIES: 2  # Number of retries for LLM generate
+API_TIMEOUT: 60     # Timeout (seconds) for each LLM generate call
 
 defaults:
   - override hydra/job_logging: custom

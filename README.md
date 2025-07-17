@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/yash-srivastava19/cadence/actions/workflows/python-ci.yml/badge.svg)](https://github.com/yash-srivastava19/cadence/actions)
 [![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://yash-srivastava19.github.io/cadence)
-[![Coverage](https://img.shields.io/codecov/c/github/yash-srivastava19/cadence/main.svg)](https://codecov.io/gh/yash-srivastava19/cadence)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Cadence implements an evolutionary system that uses large language models (LLMs) to iteratively generate, mutate, and improve programs for solving computational problems. The current implementation focuses on optimizing solutions to the Traveling Salesman Problem (TSP).
@@ -236,6 +235,11 @@ Lesson history + system prompt update + scripts for H1 and H2 + black pre-commit
 
 16/07/2025
 Docs revamp + notebook + other minor changes
+
+17/07/2025
+fallback on gemini flash, retries + timeout on LLM calls +  adding lesson intervals and other parameters to config file.
+
+
 Checklist:
 -[x]Codebase make professional
 -[X]Docs refactor

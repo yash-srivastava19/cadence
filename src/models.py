@@ -102,7 +102,7 @@ class ExperimentConfig(BaseModel):
     evaluation_seeds: List[int] = Field(default_factory=lambda: [1, 2, 3, 4, 5])
 
     # LLM parameters
-    llm_model: str = Field("gemini-2.5-pro", description="LLM model name")
+    llm_model: str = Field("gemini-2.0-flash", description="LLM model name")
     # llm_temperature: float = Field(0.7, ge=0.0, le=2.0, description="LLM temperature")
     max_retries: int = Field(3, ge=0, description="Max LLM API retries")
 

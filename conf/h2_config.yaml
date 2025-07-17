@@ -1,6 +1,9 @@
 SIZES: [10, 15, 20, 25]
-GENERATIONS: 20
+GENERATIONS: 5
 SEEDS: 10
+API_MAX_RETRIES: 2
+API_TIMEOUT: 60
+LESSON_INTERVAL: 2
 
 defaults:
   - override hydra/job_logging: custom
