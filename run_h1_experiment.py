@@ -237,38 +237,53 @@ def plot_results(nn_scores, rev_scores, log_path="experiment_log.json"):
     ax1.set_title("Hypothesis 1: LLM Evolution vs Baselines")
     ax1.legend(loc="upper right")
     ax1.grid(True)
-    # Bottom: cost delta (parent_cost - child_cost) for all feasible entries
+    # Bottom: compare parent vs child cost at lesson intervals
+    # Only include generations where a lesson was applied
     valid = [
         e
         for e in logs
-        if e.get("parent_cost") is not None
+        if e.get("lesson")
+        and e.get("parent_cost") is not None
         and e.get("child_cost") is not None
-        and e["child_cost"] < INFEASIBLE_COST
     ]
-    delta_gens = [e["generation"] for e in valid]
-    deltas = [e["parent_cost"] - e["child_cost"] for e in valid]
-    if delta_gens:
-        ax2.bar(delta_gens, deltas, color=["green" if d > 0 else "red" for d in deltas])
-        # Leave bars unlabeled; list lessons below
-        lessons = [f"Gen {e['generation']}: {e.get('lesson', '')}" for e in valid]
-        # Adjust layout for extra text area
-        fig.subplots_adjust(hspace=0.6, bottom=0.25)
-        # Display lessons as text below the delta plot
-        lesson_text = "\n".join(lessons)
-        ax2.text(
-            0,
-            -0.5,
-            lesson_text,
-            transform=ax2.transAxes,
-            fontsize=8,
-            va="top",
-            wrap=True,
+    gens = [e["generation"] for e in valid]
+    parent_costs = [e["parent_cost"] for e in valid]
+    child_costs = [e["child_cost"] for e in valid]
+    if gens:
+        width = 0.35
+        x = gens
+        ax2.bar(
+            [g - width / 2 for g in x],
+            parent_costs,
+            width,
+            label="Parent Cost",
+            color="gray",
         )
+        ax2.bar(
+            [g + width / 2 for g in x],
+            child_costs,
+            width,
+            label="Child Cost",
+            color="blue",
+        )
+        ax2.set_xticks(x)
+        ax2.legend(loc="upper right")
+    ax2.set_xlabel("Generation")
+    ax2.set_ylabel("Cost")
+    ax2.set_title("Parent vs Child Cost at Lesson Intervals")
+    ax2.grid(True)
     ax2.set_xlabel("Generation")
     ax2.set_ylabel("Δ Cost")
     ax2.set_title("Lesson-driven Cost Improvements")
     ax2.grid(True)
     plt.tight_layout()
+    # Display extracted lessons in the footer
+    lessons = [e["lesson"] for e in valid]
+    # Prepare footer text mapping generation to lesson
+    footer_text = "\n".join(f"{g}: {lesson}" for g, lesson in zip(gens, lessons))
+    # Adjust layout to make room for footer
+    fig.subplots_adjust(bottom=0.2)
+    fig.text(0.5, 0.05, footer_text, ha="center", va="bottom", wrap=True)
     fig.savefig("h1_results.png")
     print("Saved combined plot to h1_results.png")
 
