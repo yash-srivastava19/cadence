@@ -132,8 +132,12 @@ def run_size_experiment(
             for attempt in range(API_MAX_RETRIES):
                 try:
                     with ThreadPoolExecutor(max_workers=1) as executor:
+                        # Pass N and previous_lesson to lesson extractor
                         future = executor.submit(
-                            get_lesson_from_history, log, prev_lesson
+                            get_lesson_from_history,
+                            log,
+                            lesson_interval,
+                            previous_lesson=prev_lesson,
                         )
                         lesson = future.result(timeout=API_TIMEOUT)
                     break
@@ -234,6 +238,16 @@ def main(cfg: DictConfig):
     plt.tight_layout()
     fig.savefig("h2_scaling_analysis.png")
     print("Saved h2_scaling_analysis.png and h2_scaling_summary.json")
+    # Print summary table
+    print("\nScaling Summary:")
+    print("| City Count | NN Avg Cost | LLM Cost | Relative Improvement |")
+    print("| ---------- | ----------- | -------- | -------------------- |")
+    for entry in scaling_summary:
+        size = entry["size"]
+        base = entry["baseline_mean"]
+        llm = entry["llm_final"]
+        rel = entry["rel_improvement"] * 100
+        print(f"| {size} | {base:.2f} | {llm:.2f} | {rel:.1f}% |")
 
 
 if __name__ == "__main__":

@@ -210,17 +210,10 @@ Keep the instruction concise and return only the new instruction block, nothing 
         try:
             response = self._make_request(meta_prompt)
             lesson = response.text.strip()
-
-            # Validate lesson quality
-            if len(lesson) < 20:
-                logger.warning("Generated lesson too short")
+            # Accept any non-empty lesson
+            if not lesson:
+                logger.warning("Generated empty lesson, using default guidance")
                 return "Focus on improving algorithm efficiency and solution quality."
-
-            # Check for malformed responses (e.g., character-by-character corruption)
-            if lesson.count("\n") > len(lesson) // 3:
-                logger.warning("Detected malformed lesson response")
-                return "Apply more sophisticated optimization heuristics."
-
             logger.debug("Successfully generated lesson")
             return lesson
 

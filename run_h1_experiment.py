@@ -74,8 +74,24 @@ def run_llm_evolution(
         except Exception:
             LESSON_HISTORY = []
     if not os.path.exists("experiment_log.json"):
+        # Seed baseline into database and experiment log
         baseline_metric = execute(task.baseline_program, task)["cost"]
         add(program_code=task.baseline_program, metric=baseline_metric)
+        # Log baseline as generation 0 for lesson extraction
+        EXPERIMENT_LOG.append(
+            {
+                "generation": 0,
+                "program_code": task.baseline_program,
+                "cost": baseline_metric,
+                "parent_cost": None,
+                "child_cost": baseline_metric,
+                "feasibility": 1.0,
+                "hash": None,
+                "parent_code": None,
+                "child_code": task.baseline_program,
+                "lesson": None,
+            }
+        )
         print(f"Baseline added with cost: {baseline_metric:.2f}")
 
     for generation in trange(1, n_generations + 1):
@@ -87,13 +103,8 @@ def run_llm_evolution(
         # Determine lesson for this generation, if any
         # Determine and pass the latest lesson into the prompt (modeling main.py behavior)
         lesson = None
-        if generation % lesson_interval == 0:
-            # Use most recent lesson or None
-            previous_lesson = LESSON_HISTORY[-1] if LESSON_HISTORY else None
-            lesson = previous_lesson
-        if generation % lesson_interval == 0 and LESSON_HISTORY:
-            lesson = LESSON_HISTORY[-1]
-            logger.info(f"Extracting lesson for generation {generation}: {lesson}")
+        lesson = LESSON_HISTORY[-1] if LESSON_HISTORY else None
+        logger.info(f"Using lesson for generation {generation}: {lesson}")
         # Build prompt including lesson when available
         prompt = build(parent, inspirations, lesson)
         diffs = None
@@ -134,6 +145,10 @@ def run_llm_evolution(
         # Log generation details including parent vs child
         entry = {
             "generation": generation,
+            # Required by lesson extractor
+            "program_code": child_code,
+            "cost": metric["cost"],
+            # Legacy fields for plotting
             "parent_cost": parent_cost,
             "child_cost": metric["cost"],
             "feasibility": metric.get("feasibility_ratio", 0.0),
@@ -152,6 +167,10 @@ def run_llm_evolution(
             for attempt in range(API_MAX_RETRIES):
                 try:
                     with ThreadPoolExecutor(max_workers=1) as executor:
+                        # Use default N=2 to avoid overly large history
+                        # Pass full history length to analyze all past entries
+                        # Extract lesson using default history window and previous lesson
+                        # Call lesson extractor with default history window
                         future = executor.submit(
                             get_lesson_from_history,
                             EXPERIMENT_LOG,
@@ -218,34 +237,33 @@ def plot_results(nn_scores, rev_scores, log_path="experiment_log.json"):
     ax1.set_title("Hypothesis 1: LLM Evolution vs Baselines")
     ax1.legend(loc="upper right")
     ax1.grid(True)
-    # Bottom: delta cost (parent_cost - child_cost)
-    # Bottom: lesson-driven cost deltas only (feasible)
-    delta_gens, deltas = [], []
-    for entry in logs:
-        lesson = entry.get("lesson")
-        p = entry.get("parent_cost")
-        c = entry.get("child_cost")
-        # Only plot when a lesson was applied and cost is feasible
-        if not lesson or p is None or c is None or c >= INFEASIBLE_COST:
-            continue
-        delta_gens.append(entry["generation"])
-        deltas.append(p - c)
+    # Bottom: cost delta (parent_cost - child_cost) for all feasible entries
+    valid = [
+        e
+        for e in logs
+        if e.get("parent_cost") is not None
+        and e.get("child_cost") is not None
+        and e["child_cost"] < INFEASIBLE_COST
+    ]
+    delta_gens = [e["generation"] for e in valid]
+    deltas = [e["parent_cost"] - e["child_cost"] for e in valid]
     if delta_gens:
-        bars = ax2.bar(
-            delta_gens, deltas, color=["green" if d > 0 else "red" for d in deltas]
+        ax2.bar(delta_gens, deltas, color=["green" if d > 0 else "red" for d in deltas])
+        # Leave bars unlabeled; list lessons below
+        lessons = [f"Gen {e['generation']}: {e.get('lesson', '')}" for e in valid]
+        # Adjust layout for extra text area
+        fig.subplots_adjust(hspace=0.6, bottom=0.25)
+        # Display lessons as text below the delta plot
+        lesson_text = "\n".join(lessons)
+        ax2.text(
+            0,
+            -0.5,
+            lesson_text,
+            transform=ax2.transAxes,
+            fontsize=8,
+            va="top",
+            wrap=True,
         )
-        # Annotate each bar with the lesson text
-        for bar, gen in zip(bars, delta_gens):
-            lesson = next(e["lesson"] for e in logs if e["generation"] == gen)
-            ax2.annotate(
-                lesson,
-                xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
-                xytext=(0, 5),
-                textcoords="offset points",
-                ha="center",
-                va="bottom",
-                fontsize=8,
-            )
     ax2.set_xlabel("Generation")
     ax2.set_ylabel("Δ Cost")
     ax2.set_title("Lesson-driven Cost Improvements")
