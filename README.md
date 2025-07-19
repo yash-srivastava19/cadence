@@ -153,10 +153,10 @@ python ui/launch_ui.py
 ```
 Then open your browser at http://localhost:5000 to explore real-time metrics, cost evolution plots, and logs.
 
-![alt text](image.png)
+<img width="512" height="512" alt="Screenshot 2025-07-19 192512" src="https://github.com/user-attachments/assets/65b1abcf-5354-46f4-92cd-417aa19c0753" />
 
-![alt text](image-1.png)
-<!-- TODO: Add UI screenshots here -->
+
+<img width="512" height="512" alt="Screenshot 2025-07-19 192526" src="https://github.com/user-attachments/assets/8dcf8042-edc7-4841-8a75-81d98ab2cdfc" />
 
 ## Directory Structure
 
