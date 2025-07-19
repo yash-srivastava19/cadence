@@ -100,6 +100,30 @@ python ui/launch_ui.py
 
 Then open http://localhost:5000 in your browser.
 
+### Using Hydra Configuration
+
+Cadence leverages Hydra for flexible, YAML-driven settings. All experiment scripts accept `--config-name` and override parameters at the CLI.
+
+```bash
+# List available config options
+python run_h1_experiment.py --help
+
+# Override parameters without editing YAML
+python run_h1_experiment.py SEEDS=5 GENERATIONS=50 LESSON_INTERVAL=4
+
+# Point to alternate config directory
+python run_h1_experiment.py --config-path ./conf --config-name custom_h1
+```
+
+Hydra creates an `outputs/` folder by default; to write to project root, set in your YAML:
+```yaml
+hydra:
+  run:
+    dir: .
+  output:
+    subdir: null
+```
+
 ## Verification
 
 ### Test Installation

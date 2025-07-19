@@ -55,65 +55,129 @@ The system evolves programs over generations using the following loop:
 
 ## Getting Started
 
-### 1. Clone the Repository
+### Quickstart
+
+Run the out-of-the-box examples:
 
 ```bash
-git clone https://github.com/yash-srivastava19/cadence
-cd cadence
+# Hypothesis 1: Cost evolution
+python run_h1_experiment.py --config_name h1_config
+
+# Hypothesis 2: Scaling analysis
+python run_h2_experiment.py --config_name h2_config
 ```
 
-### 2. Create a Virtual Environment
+Results (`h1_results.png`, `h2_scaling_analysis.png`) and JSON summaries will appear in the project root.
+
+### Requirements & Installation
+
+1. Clone the repo and enter directory:
+   ```bash
+   git clone https://github.com/yash-srivastava19/cadence.git
+   cd cadence
+   ```
+2. Create and activate a virtual environment:
+   ```bash
+   python -m venv .venv
+   .venv/bin/Activate
+   ```
+
+3. Install dependencies (using `uv` for reproducible installs):
+   ```bash
+    uv sync
+   ```
+
+## Configuration with Hydra
+
+All experiment scripts leverage [Hydra](https://hydra.cc/) for flexible, YAML-driven configuration. Sample `conf/h1_config.yaml`:
+
+```yaml
+SEEDS: 10
+GENERATIONS: 20
+LESSON_INTERVAL: 4
+API_MAX_RETRIES: 3
+API_TIMEOUT: 60
+hydra:
+  run:
+    dir: .                     # write outputs to project root
+  output:
+    subdir: null               # disable timestamped folders
+```
+
+Override on the command line without editing YAML:
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+# Change number of seeds and interval at runtime
+git checkout main
+python run_h1_experiment.py SEEDS=5 LESSON_INTERVAL=2
 ```
 
-### 3. Install Dependencies with uv (recommended)
+## Usage Examples
 
+### Evolve a TSP Solver in Python
 
+```python
+from src.tasks.tsp_task import TSPTask
+from src.prompt_sampler import build
+from src.llm import generate
+from src.evolve import apply_diff
+
+# Initialize problem with 10 cities
+task = TSPTask(n_cities=10)
+base_code = task.baseline_program
+# Build a prompt without lessons
+prompt = build((None, None, None, base_code, None), [], None)
+# Call LLM to get diff
+diffs = generate(prompt)
+# Apply diff to generate a new child solution
+child_code = apply_diff(base_code, diffs)
+
+print("Baseline code:\n", base_code)
+print("Evolved code:\n", child_code)
+```
+
+### Extracting Lessons Programmatically
+
+```python
+from src.meta_prompting import get_lesson_from_history
+# Assume 'logs' is a list of experiment entries with 'generation' and 'cost'
+lesson = get_lesson_from_history(logs, previous_lesson=None)
+print("Heuristic lesson:", lesson)
+```
+
+### Web Interface
+
+Cadence provides a built-in Flask-based UI for live monitoring of experiments. Launch it with:
 ```bash
-uv pip install
+python ui/launch_ui.py
 ```
+Then open your browser at http://localhost:5000 to explore real-time metrics, cost evolution plots, and logs.
 
-## Configuration
+![alt text](image.png)
 
-Create a `.env` file to hold your API credentials (for Gemini or other providers):
-```bash
-echo "GEMINI_API_KEY=your-key" >> .env
-```
-
-## Usage
-
-### Run the Evolution Script
-
-```bash
-python main.py --task tsp --generations 10 --output evolution.sqlite
-```
-
-This will evolve TSP solvers over multiple generations and save the progress in `experiment_log.json`.
-
-### Visualize Results
-
-```bash
-python analyze_results.py
-```
-
-This will generate a line plot showing how the TSP cost evolved over generations.
+![alt text](image-1.png)
+<!-- TODO: Add UI screenshots here -->
 
 ## Directory Structure
 
+```text
+cadence/
+├── conf/                      # Hydra configuration files
+│   ├── h1_config.yaml
+│   └── h2_config.yaml
+├── src/                       # Core library modules
+│   ├── database.py
+│   ├── evaluator.py
+│   ├── evolve.py
+│   ├── llm.py
+│   ├── prompt_sampler.py
+│   └── tasks/                 # Problem definitions (TSP, etc.)
+└── run_h1_experiment.py      # Hypothesis 1 script
+    run_h2_experiment.py      # Hypothesis 2 script
 ```
-src/
-├── database.py          # SQLite DB for storing programs
-├── evolve.py            # Applies diffs to code blocks
-├── evaluator.py         # Evaluates cost on multiple TSP inputs
-├── llm.py               # Handles LLM interaction (OpenAI or Gemini)
-├── prompt_sampler.py    # Builds structured prompt for LLM
-├── task.py              # Task abstraction interface
-└── tasks/
-    └── tsp_task.py      # TSP task logic
-```
+
+## Evolution UI
+Cadence aslo comes with an UI to visualize the
 
 ## Notes
 
@@ -184,8 +248,13 @@ metric = execute(child_program_code, task)
 
 
 
+## License
+
+This project is licensed under the MIT License.
+
 ## Citation
-If you use Cadence in your work, please cite:
+
+If you use Cadence in your research or projects, please cite:
 ```bibtex
 @software{cadence2025,
   author = {Yash Srivastava},
@@ -196,85 +265,4 @@ If you use Cadence in your work, please cite:
 }
 ```
 
-## License
-
-MIT License
-
 ---
-
-
-### worklog
-18/05/2025:
-worked on researching what kind of problems exists that fit the description, and laid down the structure(and boilerplate) for the project, named it cadence. Some of the interesting problems I found out were:
-
-1. root finding.
-2. prime factorization.
-3. inverse of a matrix.
-4. fft optimization.
-5. minimum makesplan scheduling with precedence.
-6. rectangle packing.
-7. collatz conjecture iteration count.
-8. digital root calculation.
-
-Will try to find more that fits this description, and work on one file at a time. We have the foundations laid down, just need to fill in an run experiments.
-
-19/05/2025:
-Worked on basic versions of all the db, eval, llm, sampler(not evolve because it will be based on problem). Used SQLite for DB, and apply_diff uses `re`. The work is going on nice, and now would like to continue and run them in a pipeline.
-
-15/06/2025:
-Working for TSP problem, however not evolving too much. Improved the DB, evaluator, prompts and other functions, and using gemini for program evals. working on improving the strategy to make cost go down.
-
-Made the task general so that they can be used for a variety of problems. Added async calls and logging. CLI added too and updated the README.
-
-22/06/2025
-RL not actually improving
-- RL + LLM reward modelling.
-- `train_rl` barebones is now ready.
-- examples are now added, will add more.
-- Fallback when no parent code is there.
-- analyze result now works for RL and LLM case.
-
-
-26/06/2025
-- Need to focus on improving the prompt and output strategy. Novelty, heuristics and all were considered and added.
-
-27/06/2025
-- Added resumed checkpointing. Gemini exhausted. Did some code refactors.
-
-30/06/2025
-- Code refactors + Gemini 2.5 Pro
-
-02/07/2025
-- Code refactors + Experiments
-
-03/07/2025
- - UI visualization server(Claude). Cadence now supports every feature by open evolve.
-
-07/07/2025
-- Worked on getting the background information about cadence. Used Manus
-
-08/07/2025
-Tests + Docs + Other build related stuff for Cadence. We're near the end!
-
-14/07/2025
-Lesson history + system prompt update + scripts for H1 and H2 + black pre-commit.
-
-16/07/2025
-Docs revamp + notebook + other minor changes
-
-17/07/2025
-fallback on gemini flash, retries + timeout on LLM calls +  adding lesson intervals and other parameters to config file.
-
-
-Checklist:
--[x]Codebase make professional
--[X]Docs refactor
--[X]Demo + Notebook
-
-TODO:
--[x]introduce types support, and pydantic for model validation(typed data structure)
--[x]explore the possiblity of rich and hydra
--[X]notebook explaining everything in the codebase,
--[x]results in a presentable fashion.
--[]blog.
--[x]demo.

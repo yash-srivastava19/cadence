@@ -47,7 +47,7 @@ Cadence implements a novel approach to automated program synthesis and optimizat
 
 ```bash
 # Clone and setup
-git clone https://github.com/your-org/cadence
+git clone https://github.com/yash-srivastava19/cadence
 cd cadence
 uv sync
 

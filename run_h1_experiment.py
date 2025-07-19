@@ -212,9 +212,9 @@ def plot_results(nn_scores, rev_scores, log_path="experiment_log.json"):
     feas_g, feas_c = zip(*feasible) if feasible else ([], [])
     infeas_g, _ = zip(*infeasible) if infeasible else ([], [])
 
-    # Create subplots: cost evolution and delta improvements
-    fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(10, 10), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
+    # Create subplots: cost evolution, cost comparisons, and lessons
+    fig, (ax1, ax2, ax3) = plt.subplots(
+        3, 1, figsize=(10, 12), sharex=True, gridspec_kw={"height_ratios": [3, 1, 1]}
     )
     # Top: cost evolution
     ax1.plot(feas_g, feas_c, marker="o", label="LLM Evolved (feasible)")
@@ -276,14 +276,12 @@ def plot_results(nn_scores, rev_scores, log_path="experiment_log.json"):
     ax2.set_ylabel("Δ Cost")
     ax2.set_title("Lesson-driven Cost Improvements")
     ax2.grid(True)
-    plt.tight_layout()
-    # Display extracted lessons in the footer
+    # Lesson section below
     lessons = [e["lesson"] for e in valid]
-    # Prepare footer text mapping generation to lesson
     footer_text = "\n".join(f"{g}: {lesson}" for g, lesson in zip(gens, lessons))
-    # Adjust layout to make room for footer
-    fig.subplots_adjust(bottom=0.2)
-    fig.text(0.5, 0.05, footer_text, ha="center", va="bottom", wrap=True)
+    ax3.axis("off")
+    ax3.text(0.01, 0.5, footer_text, va="center", ha="left", wrap=True)
+    plt.tight_layout()
     fig.savefig("h1_results.png")
     print("Saved combined plot to h1_results.png")
 

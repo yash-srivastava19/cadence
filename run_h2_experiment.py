@@ -18,6 +18,7 @@ from src.prompt_sampler import build
 from src.llm import generate
 from src.meta_prompting import get_lesson_from_history
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from src.evaluator import INFEASIBLE_COST
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +61,9 @@ def run_size_experiment(
     baseline_hash = sha1(baseline_code.encode()).hexdigest()
     log.append(
         {
-            "gen": 0,
+            "generation": 0,
             "cost": baseline_res["cost"],
-            "feas": baseline_res["feasibility"],
+            "feasibility": baseline_res["feasibility"],
             "hash": baseline_hash,
         }
     )
@@ -118,9 +119,9 @@ def run_size_experiment(
 
         log.append(
             {
-                "gen": gen,
+                "generation": gen,
                 "cost": metric["cost"],
-                "feas": metric["feasibility"],
+                "feasibility": metric["feasibility"],
                 "hash": code_hash,
                 "lesson": None,
             }
@@ -221,23 +222,70 @@ def main(cfg: DictConfig):
         linestyle="-",
         label="Nearest Neighbor",
     )
+    # Plot feasible LLM costs only (exclude infeasible outliers)
+    feas_llm_sizes = [
+        s for s, c in zip(cfg.SIZES, final_costs["llm"]) if c < INFEASIBLE_COST
+    ]
+    feas_llm_costs = [c for c in final_costs["llm"] if c < INFEASIBLE_COST]
     ax1.plot(
-        cfg.SIZES, final_costs["llm"], marker="s", linestyle="--", label="LLM Evolution"
+        feas_llm_sizes,
+        feas_llm_costs,
+        marker="s",
+        linestyle="--",
+        label="LLM Evolution (feasible)",
     )
     ax1.set_ylabel("Average Tour Cost")
     ax1.set_title("Hypothesis 2: Scaling Laws in LLM-based TSP")
     ax1.legend(loc="best")
     ax1.grid(True)
+    ax1.ticklabel_format(style="plain", axis="y")
+    # Mark infeasible LLM runs so they don't skew axis
+    infeas_sizes = [
+        s for s, c in zip(cfg.SIZES, final_costs["llm"]) if c >= INFEASIBLE_COST
+    ]
+    if infeas_sizes:
+        feas_llm = [c for c in final_costs["llm"] if c < INFEASIBLE_COST]
+        y_marker = min(feas_llm + final_costs["nn"]) * 0.9
+        ax1.scatter(
+            infeas_sizes,
+            [y_marker] * len(infeas_sizes),
+            marker="x",
+            color="red",
+            label="Infeasible",
+        )
     # Bottom: relative improvement
-    rels = [entry["rel_improvement"] for entry in scaling_summary]
-    ax2.plot(cfg.SIZES, rels, marker="o", color="purple")
+    # Plot relative improvements for feasible runs only
+    feas_sizes = [
+        e["size"] for e in scaling_summary if e["llm_final"] < INFEASIBLE_COST
+    ]
+    feas_rels = [
+        e["rel_improvement"] * 100
+        for e in scaling_summary
+        if e["llm_final"] < INFEASIBLE_COST
+    ]
+    ax2.plot(
+        feas_sizes,
+        feas_rels,
+        marker="o",
+        color="purple",
+        label="Rel Improvement (feasible)",
+    )
     ax2.set_xlabel("City Count")
-    ax2.set_ylabel("Relative Improvement")
+    ax2.set_ylabel("Relative Improvement (%)")
     ax2.set_title("LLM Relative Improvement vs Baseline")
     ax2.grid(True)
+    ax2.ticklabel_format(style="plain", axis="y")
     plt.tight_layout()
-    fig.savefig("h2_scaling_analysis.png")
-    print("Saved h2_scaling_analysis.png and h2_scaling_summary.json")
+    fig.subplots_adjust(bottom=0.2)
+    # Footer: show extracted lessons
+    if LESSON_HISTORY:
+        footer = "\n".join(
+            f"{i + 1}: {lesson}" for i, lesson in enumerate(LESSON_HISTORY)
+        )
+        fig.text(0.5, 0.02, footer, ha="center", va="bottom", wrap=True)
+    out = os.path.abspath("h2_scaling_analysis.png")
+    fig.savefig(out)
+    print(f"Saved scaling analysis plot to {out}")
     # Print summary table
     print("\nScaling Summary:")
     print("| City Count | NN Avg Cost | LLM Cost | Relative Improvement |")
