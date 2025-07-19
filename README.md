@@ -176,8 +176,6 @@ cadence/
     run_h2_experiment.py      # Hypothesis 2 script
 ```
 
-## Evolution UI
-Cadence aslo comes with an UI to visualize the
 
 ## Notes
 
