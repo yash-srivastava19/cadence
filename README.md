@@ -2,7 +2,7 @@
 
 # Badges
 [![CI](https://github.com/yash-srivastava19/cadence/actions/workflows/python-ci.yml/badge.svg)](https://github.com/yash-srivastava19/cadence/actions)
-[![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://yash-srivastava19.github.io/cadence)
+[![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://cadence.readthedocs.io/en/latest/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Cadence implements an evolutionary system that uses large language models (LLMs) to iteratively generate, mutate, and improve programs for solving computational problems. The current implementation focuses on optimizing solutions to the Traveling Salesman Problem (TSP).
