@@ -1,11 +1,19 @@
 # Cadence: Program Evolution via Large Language Models
 
-# Badges
 [![CI](https://github.com/yash-srivastava19/cadence/actions/workflows/python-ci.yml/badge.svg)](https://github.com/yash-srivastava19/cadence/actions)
 [![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://cadence.readthedocs.io/en/latest/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Cadence implements an evolutionary system that uses large language models (LLMs) to iteratively generate, mutate, and improve programs for solving computational problems. The current implementation focuses on optimizing solutions to the Traveling Salesman Problem (TSP).
+Cadence is an evolutionary system that uses large language models to iteratively generate, mutate, and improve programs for hard computational problems.
+
+## What it is
+Cadence treats code generation as an evolutionary loop. It samples parent programs, proposes child variants with an LLM, evaluates them on a fixed test suite, stores results, and feeds the best lessons back into future generations. The current implementation focuses on the Traveling Salesman Problem.
+
+## Why it matters
+Most LLM coding workflows are one-shot. Cadence explores a more iterative approach where programs improve over generations through evaluation, selection, and mutation. That makes it useful both as a practical experiment and as a framework for studying program evolution with LLMs.
+
+## Current status
+Active research project with working experiments, documentation, and a modular foundation for extending beyond TSP.
 
 ## Architecture
 
