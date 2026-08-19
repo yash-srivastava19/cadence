@@ -12,6 +12,7 @@ from src.evaluator import (
     execute,
     INFEASIBLE_COST,
 )
+from src.tasks.tsp_task import TSPTask
 
 
 class TestEvaluator:
@@ -105,9 +106,7 @@ def tsp(cities):
     return list(range(len(cities)))
 """
 
-        # Mock task
-        task = MagicMock()
-        task.function_name = "tsp"
+        task = TSPTask()
 
         result = execute(program_code, task, seeds=[1, 2, 3])
         assert result["feasibility"] > 0
@@ -120,9 +119,7 @@ def invalid_function(cities):
     return "not a list"
 """
 
-        # Mock task
-        task = MagicMock()
-        task.function_name = "tsp"
+        task = TSPTask()
 
         result = execute(program_code, task, seeds=[1, 2, 3])
         assert result["feasibility"] == 0.0
@@ -135,9 +132,7 @@ def wrong_name(cities):
     return list(range(len(cities)))
 """
 
-        # Mock task
-        task = MagicMock()
-        task.function_name = "tsp"
+        task = TSPTask()
 
         result = execute(program_code, task, seeds=[1, 2, 3])
         assert result["feasibility"] == 0.0
@@ -150,9 +145,7 @@ def tsp(cities):
     return list(range(len(cities))  # Missing closing parenthesis
 """
 
-        # Mock task
-        task = MagicMock()
-        task.function_name = "tsp"
+        task = TSPTask()
 
         result = execute(program_code, task, seeds=[1, 2, 3])
         assert result["feasibility"] == 0.0
@@ -176,9 +169,7 @@ def tsp(cities):
     return list(range(len(cities)))
 """
 
-        # Mock task
-        task = MagicMock()
-        task.function_name = "tsp"
+        task = TSPTask()
 
         result = execute(program_code, task, seeds=[1, 2, 3])
 
