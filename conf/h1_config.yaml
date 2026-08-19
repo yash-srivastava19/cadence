@@ -1,6 +1,7 @@
 SEEDS: 3
 GENERATIONS: 30
 LESSON_INTERVAL: 5
+ELITISM_INTERVAL: 5   # breed from the best-known program every N generations
 API_MAX_RETRIES: 2  # Number of retries for LLM generate
 API_TIMEOUT: 100     # Timeout (seconds) for each LLM generate call
 

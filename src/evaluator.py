@@ -286,14 +286,55 @@ class Evaluator:
             }
 
 
-# Legacy function for backwards compatibility
+def evaluate_on_task(
+    func: Callable, task: Task, seed: int
+) -> Dict[str, Union[float, bool, str, None]]:
+    """
+    Run a function on one task-generated instance and score it with the task.
+
+    Args:
+        func: Function extracted from the evolved program
+        task: Task supplying the instance and the scoring rule
+        seed: Random seed for deterministic instance generation
+
+    Returns:
+        Dictionary with cost, feasible flag, and optional error. Costs that are
+        infeasible or non-finite are normalized to INFEASIBLE_COST so that
+        aggregates stay comparable across runs and tasks.
+    """
+    try:
+        input_data = task.generate_inputs(seed)
+        output = func(input_data)
+        result = task.evaluate(output, input_data)
+    except Exception as e:
+        return {"cost": INFEASIBLE_COST, "feasible": False, "error": str(e)}
+
+    if not result.feasible or not math.isfinite(result.cost):
+        return {
+            "cost": INFEASIBLE_COST,
+            "feasible": False,
+            "error": result.error or "Infeasible result",
+        }
+
+    return {"cost": result.cost, "feasible": True, "error": None}
+
+
 def execute(
     child_program_code: str, task: Task, seeds: Optional[List[int]] = None
 ) -> Dict[str, float]:
     """
-    Legacy evaluation function independent of Task methods.
-    Executes the generated code, evaluates with execute_single_seed across seeds,
-    aggregates cost and feasibility ratio.
+    Execute a program and score it against a task across several seeds.
+
+    Instances come from ``task.generate_inputs`` and are scored by
+    ``task.evaluate``, so any Task subclass is evaluated on its own terms.
+
+    Args:
+        child_program_code: Program source to evaluate
+        task: Task to evaluate against
+        seeds: Seeds for test instances, defaults to [1, 2, 3, 4, 5]
+
+    Returns:
+        Dictionary with the mean cost and the fraction of seeds that were feasible
     """
     # Prepare seeds
     if seeds is None:
@@ -312,7 +353,7 @@ def execute(
     try:
         with ThreadPoolExecutor(max_workers=min(len(seeds), 4)) as executor:
             futures = [
-                executor.submit(execute_single_seed, seed, func) for seed in seeds
+                executor.submit(evaluate_on_task, func, task, seed) for seed in seeds
             ]
             results = [f.result() for f in futures]
         # Aggregate results

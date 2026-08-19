@@ -35,6 +35,10 @@ ProgramRow = Tuple[
 ]
 InstanceRow = Tuple[int, int]
 
+# Candidates drawn per parent tournament. Raising this increases selection
+# pressure; 1 restores uniform random sampling.
+DEFAULT_TOURNAMENT_SIZE: int = 3
+
 logger = logging.getLogger(__name__)
 
 
@@ -315,16 +319,24 @@ class Database:
             logger.error(f"Failed to get program {program_id}: {e}")
             return None
 
-    def sample_parent(self, generation: int = 0) -> Optional[ProgramEntry]:
+    def sample_parent(
+        self, generation: int = 0, tournament_size: int = DEFAULT_TOURNAMENT_SIZE
+    ) -> Optional[ProgramEntry]:
         """
-        Sample a random parent program from a generation.
+        Sample a parent program from a generation, biased toward lower metrics.
+
+        Draws `tournament_size` candidates uniformly at random from the generation
+        and returns the best of them. Uniform random selection (tournament_size=1)
+        applies no selection pressure at all, which lets a good lineage die out.
 
         Args:
             generation: Generation number to sample from
+            tournament_size: Candidates drawn per tournament; 1 is uniform random
 
         Returns:
-            Random ProgramEntry from the generation, None if none exist
+            Best ProgramEntry among the drawn candidates, None if none exist
         """
+        size = max(1, tournament_size)
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
@@ -333,12 +345,16 @@ class Database:
                     """
                     SELECT id, generation_number, parent_id, program_code,
                            metric, instance_id, diff, prompt, created_at
-                    FROM programs
-                    WHERE generation_number = ?
-                    ORDER BY RANDOM()
+                    FROM (
+                        SELECT * FROM programs
+                        WHERE generation_number = ?
+                        ORDER BY RANDOM()
+                        LIMIT ?
+                    )
+                    ORDER BY metric ASC
                     LIMIT 1
                 """,
-                    (generation,),
+                    (generation, size),
                 )
 
                 row = cursor.fetchone()
@@ -654,12 +670,14 @@ def add(
     )
 
 
-def sample(generation_number: int = 0) -> Tuple[Optional[Tuple], List[Tuple]]:
+def sample(
+    generation_number: int = 0, tournament_size: int = DEFAULT_TOURNAMENT_SIZE
+) -> Tuple[Optional[Tuple], List[Tuple]]:
     """Legacy function - sample parent and get children."""
     from .models import DatabaseConfig
 
     db = Database(DatabaseConfig(database_path=DATABASE_NAME))
-    parent = db.sample_parent(generation_number)
+    parent = db.sample_parent(generation_number, tournament_size)
     if parent:
         children = db.get_children(parent.id)
         parent_tuple = (
