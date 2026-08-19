@@ -23,7 +23,7 @@ from omegaconf import DictConfig
 from src.tasks.tsp_task import TSPTask
 from src.tasks.tsp_reference import nearest_neighbor, reversed_tour
 from src.evaluator import generate_test_instance, compute_total_distance
-from src.database import add, sample
+from src.database import add, sample, get_best_program
 from src.evolve import apply_diff
 from src.evaluator import execute
 from src.prompt_sampler import build
@@ -62,7 +62,11 @@ def run_baselines(n_seeds: int):
 
 
 def run_llm_evolution(
-    n_generations, lesson_interval, API_MAX_RETRIES=2, API_TIMEOUT=60
+    n_generations,
+    lesson_interval,
+    API_MAX_RETRIES=2,
+    API_TIMEOUT=60,
+    elitism_interval=5,
 ):
     global EXPERIMENT_LOG, HASHES, LESSON_HISTORY
     task = TSPTask()
@@ -95,7 +99,24 @@ def run_llm_evolution(
         print(f"Baseline added with cost: {baseline_metric:.2f}")
 
     for generation in trange(1, n_generations + 1):
-        parent, inspirations = sample(generation_number=generation)
+        # Parents come from the previous generation: add() stores the baseline at
+        # generation 0 and each child at parent.generation + 1. Sampling the current
+        # generation number finds an empty set on a fresh database and skips every
+        # generation, so the run only appeared to work against a pre-populated db.
+        parent, inspirations = None, []
+
+        # Elitism: periodically breed from the best program found so far. Without
+        # it a good lineage can be lost to drift entirely.
+        if elitism_interval and generation % elitism_interval == 0:
+            parent = get_best_program()
+            if parent:
+                logger.info(
+                    f"Elitism: breeding from best program {parent[0]} "
+                    f"(cost {parent[4]:.4f})"
+                )
+
+        if not parent:
+            parent, inspirations = sample(generation_number=generation - 1)
         if not parent:
             print(f"[!] No parent for generation {generation}")
             continue
@@ -151,7 +172,7 @@ def run_llm_evolution(
             # Legacy fields for plotting
             "parent_cost": parent_cost,
             "child_cost": metric["cost"],
-            "feasibility": metric.get("feasibility_ratio", 0.0),
+            "feasibility": metric.get("feasibility", 0.0),
             "hash": code_hash,
             "parent_code": parent[3],
             "child_code": child_code,
@@ -293,7 +314,11 @@ def main(cfg: DictConfig) -> None:
 
     print("[2] Running LLM evolution...")
     run_llm_evolution(
-        cfg.GENERATIONS, cfg.LESSON_INTERVAL, cfg.API_MAX_RETRIES, cfg.API_TIMEOUT
+        cfg.GENERATIONS,
+        cfg.LESSON_INTERVAL,
+        cfg.API_MAX_RETRIES,
+        cfg.API_TIMEOUT,
+        cfg.ELITISM_INTERVAL,
     )
 
     print("[3] Plotting results...")
