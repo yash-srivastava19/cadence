@@ -1,0 +1,18 @@
+# Normalize all text files to LF in the repository and in the working tree.
+# This repo was originally cloned on Windows, which rewrote every file to CRLF
+# and made all 81 tracked files show as modified when opened on Linux.
+* text=auto eol=lf
+
+# Windows-only helper scripts must keep CRLF to run correctly.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files: never touch line endings.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.sqlite binary
+*.whl binary
