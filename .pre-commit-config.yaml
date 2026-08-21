@@ -16,8 +16,3 @@ repos:
 
       - id: ruff-format
         types_or: [ python, pyi ]
-
-  - repo: https://github.com/psf/black
-    rev: 24.3.0
-    hooks:
-      - id: black

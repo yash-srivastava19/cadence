@@ -1,0 +1,76 @@
+import pytest
+
+from cadence.objectives import MissingMetric, Pareto, WeightedSum
+
+
+class TestWeightedSum:
+    def test_a_higher_total_wins(self):
+        objective = WeightedSum(value=1.0)
+        assert objective.dominates({"value": 2.0}, {"value": 1.0})
+        assert not objective.dominates({"value": 1.0}, {"value": 2.0})
+
+    def test_a_negative_weight_turns_a_cost_into_a_gain(self):
+        objective = WeightedSum(weight=-1.0)
+        assert objective.dominates({"weight": 1.0}, {"weight": 5.0})
+
+    def test_weights_trade_metrics_off(self):
+        objective = WeightedSum(value=1.0, weight=-2.0)
+        assert objective.dominates(
+            {"value": 10.0, "weight": 1.0}, {"value": 9.0, "weight": 1.0}
+        )
+        assert not objective.dominates(
+            {"value": 10.0, "weight": 3.0}, {"value": 9.0, "weight": 1.0}
+        )
+
+    def test_a_tie_is_not_domination(self):
+        objective = WeightedSum(value=1.0)
+        assert not objective.dominates({"value": 1.0}, {"value": 1.0})
+
+    def test_it_ignores_metrics_it_was_not_given_weights_for(self):
+        objective = WeightedSum(value=1.0)
+        assert objective.dominates(
+            {"value": 2.0, "noise": 99.0}, {"value": 1.0, "noise": 0.0}
+        )
+
+    def test_a_missing_metric_says_which(self):
+        with pytest.raises(MissingMetric, match="value"):
+            WeightedSum(value=1.0).dominates({"other": 1.0}, {"value": 1.0})
+
+    def test_it_needs_at_least_one_weight(self):
+        with pytest.raises(ValueError):
+            WeightedSum()
+
+
+class TestPareto:
+    def test_better_on_every_metric_dominates(self):
+        objective = Pareto(value=1, weight=-1)
+        assert objective.dominates(
+            {"value": 10.0, "weight": 1.0}, {"value": 5.0, "weight": 3.0}
+        )
+
+    def test_better_on_one_and_equal_on_the_rest_dominates(self):
+        objective = Pareto(value=1, weight=-1)
+        assert objective.dominates(
+            {"value": 10.0, "weight": 1.0}, {"value": 5.0, "weight": 1.0}
+        )
+
+    def test_a_trade_off_is_incomparable(self):
+        objective = Pareto(value=1, weight=-1)
+        cheap = {"value": 5.0, "weight": 1.0}
+        rich = {"value": 10.0, "weight": 9.0}
+        assert not objective.dominates(cheap, rich)
+        assert not objective.dominates(rich, cheap)
+
+    def test_identical_metrics_do_not_dominate_each_other(self):
+        objective = Pareto(value=1)
+        assert not objective.dominates({"value": 1.0}, {"value": 1.0})
+
+    def test_a_sense_of_zero_is_refused(self):
+        with pytest.raises(ValueError):
+            Pareto(value=0)
+
+    def test_a_missing_metric_says_which(self):
+        with pytest.raises(MissingMetric, match="weight"):
+            Pareto(value=1, weight=-1).dominates(
+                {"value": 1.0}, {"value": 1.0, "weight": 1.0}
+            )
