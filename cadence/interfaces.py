@@ -1,9 +1,21 @@
 from collections.abc import Mapping
-from typing import Any, Protocol, runtime_checkable
+from typing import Annotated, Any, Protocol, runtime_checkable
 
-__all__ = ["Metrics", "Task", "Objective"]
+from pydantic import BaseModel, ConfigDict, StringConstraints
+
+__all__ = ["Metrics", "Directive", "Task", "Objective"]
 
 Metrics = Mapping[str, float]
+NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class Directive(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
+
+    parent: NonBlank
+    code: NonBlank
+    hint: NonBlank
+    inspirations: tuple[str, ...] = ()
 
 
 @runtime_checkable
