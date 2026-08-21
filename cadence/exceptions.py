@@ -1,5 +1,22 @@
-__all__ = ["CadenceError"]
+__all__ = [
+    "CadenceError",
+    "ModelError",
+    "RetryableModelError",
+    "TerminalModelError",
+    "PatchError",
+]
 
 
-class CadenceError(Exception):
-    """Base class for every Cadence error."""
+class CadenceError(Exception): ...
+
+
+class ModelError(CadenceError): ...
+
+
+class RetryableModelError(ModelError): ...
+
+
+class TerminalModelError(ModelError): ...
+
+
+class PatchError(CadenceError): ...
