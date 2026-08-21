@@ -1,0 +1,71 @@
+from collections.abc import Mapping
+from typing import Annotated
+
+from pydantic import Field, StringConstraints
+
+from cadence.events import Channel, Fact
+from cadence.verdict import Verdict
+
+__all__ = [
+    "cadence",
+    "Event",
+    "RunStarted",
+    "RunFinished",
+    "TrialStarted",
+    "ModelCalled",
+    "ProposalReceived",
+    "PatchRejected",
+    "TrialMeasured",
+    "TrialAbandoned",
+]
+
+NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+cadence = Channel("cadence")
+
+
+class Event(Fact, channel=cadence):
+    run_id: NonBlank
+
+
+class RunStarted(Event):
+    method: NonBlank
+    budget: Mapping[str, float] = Field(default_factory=dict)
+
+
+class RunFinished(Event):
+    trials: int = Field(ge=0)
+    best: str | None = None
+
+
+class TrialStarted(Event):
+    trial_id: NonBlank
+    parent: str | None = None
+
+
+class ModelCalled(Event):
+    trial_id: NonBlank
+    backend: NonBlank
+    tokens_in: int = Field(ge=0)
+    tokens_out: int = Field(ge=0)
+    latency_ms: float = Field(ge=0, allow_inf_nan=False)
+
+
+class ProposalReceived(Event):
+    trial_id: NonBlank
+    files_changed: int = Field(ge=0)
+
+
+class PatchRejected(Event):
+    trial_id: NonBlank
+    reason: NonBlank
+
+
+class TrialMeasured(Event):
+    trial_id: NonBlank
+    verdict: Verdict
+
+
+class TrialAbandoned(Event):
+    trial_id: NonBlank
+    reason: NonBlank
