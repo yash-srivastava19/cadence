@@ -18,3 +18,4 @@ tests/fixtures/__pycache__
 lesson_history.json
 outputs/
 multirun/
+.arc/

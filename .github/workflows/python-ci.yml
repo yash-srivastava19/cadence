@@ -4,7 +4,6 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   code_standards:
@@ -23,7 +22,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev]
 
-      # Run all pre-commit hooks (includes ruff, black, and others as configured)
       - name: Run Pre-commit
         run: |
           pre-commit run --all-files
+
+      - name: Run tests
+        env:
+          GEMINI_API_KEY: not-a-real-key
+        run: |
+          pytest tests/ -q \
+            --deselect tests/unit/test_llm.py::TestLLM::test_generate_success
