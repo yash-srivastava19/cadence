@@ -24,6 +24,7 @@ dependencies = [
   "python-statemachine>=3.2.1",
   "blinker>=1.9.0",
   "whatthepatch>=1.0.7",
+  "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]

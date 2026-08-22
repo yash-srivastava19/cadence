@@ -20,3 +20,5 @@ lesson_history.json
 outputs/
 multirun/
 .arc/
+
+.env
