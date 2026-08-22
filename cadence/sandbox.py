@@ -27,6 +27,7 @@ __all__ = [
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 KILLED_BY_TIMEOUT = "wall clock"
+UNSERIALIZABLE = 3
 GRACE_SECONDS = 0.5
 
 
@@ -101,8 +102,13 @@ source = json.loads(sys.stdin.read())
 namespace = {}
 exec(source["code"], namespace)
 result = namespace[source["entry_point"]](*json.loads(source["inputs"]))
-sys.stdout.write(json.dumps(result))
-"""
+try:
+    encoded = json.dumps(result)
+except TypeError as error:
+    sys.stderr.write(str(error))
+    sys.exit(UNSERIALIZABLE)
+sys.stdout.write(encoded)
+""".replace("UNSERIALIZABLE", str(UNSERIALIZABLE))
 
 
 class Subprocess:
