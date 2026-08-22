@@ -4,6 +4,7 @@ __all__ = [
     "RetryableModelError",
     "TerminalModelError",
     "PatchError",
+    "NoCandidates",
 ]
 
 
@@ -20,3 +21,6 @@ class TerminalModelError(ModelError): ...
 
 
 class PatchError(CadenceError): ...
+
+
+class NoCandidates(CadenceError): ...
