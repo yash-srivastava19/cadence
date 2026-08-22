@@ -9,21 +9,6 @@ jobs:
   code_standards:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_DB: cadence
-          POSTGRES_USER: cadence
-          POSTGRES_PASSWORD: cadence
-        ports:
-          - 5433:5432
-        options: >-
-          --health-cmd "pg_isready -U cadence -d cadence"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 30
-
     steps:
       - uses: actions/checkout@v4
 
@@ -44,17 +29,13 @@ jobs:
       - name: Check the documentation against the code
         run: pytest tests/test_docs.py -q
 
-      # Every test mocks its model calls, so a placeholder key is enough.
-      - name: Create the roles and the test database
-        env:
-          PGPASSWORD: cadence
+      # The same compose file and the same .env a developer uses.
+      - name: Start the database
         run: |
-          for script in ops/initdb/*.sql; do
-            psql -v ON_ERROR_STOP=1 -h localhost -p 5433 -U cadence -d cadence -f "$script"
-          done
+          cp .env.example .env
+          docker compose up -d --wait
 
       - name: Run tests
-        env:
-          TEST_DATABASE_URL: postgresql://cadence:cadence@localhost:5433/cadence_test
-          TEST_DATABASE_APP_URL: postgresql://cadence_app:cadence_app@localhost:5433/cadence_test
-        run: pytest tests/ -q
+        run: |
+          set -a && . ./.env && set +a
+          pytest tests/ -q
