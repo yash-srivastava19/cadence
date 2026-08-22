@@ -51,20 +51,20 @@ class TestParsingAPatch:
 class TestTheRecipeRebuildsThePrompt:
     def test_rendering_the_recipe_reproduces_the_prompt(self):
         model = a_model(ANSWER)
-        proposal = model.propose(a_directive())
+        proposal = model.propose(a_directive()).proposal
         assert render(proposal.recipe) == proposal.prompt
 
     def test_the_prompt_carries_the_parent_code(self):
-        proposal = a_model(ANSWER).propose(a_directive())
+        proposal = a_model(ANSWER).propose(a_directive()).proposal
         assert "def solve(): return []" in proposal.prompt
 
     def test_the_prompt_carries_the_hint(self):
-        proposal = a_model(ANSWER).propose(a_directive(hint="use a heap"))
+        proposal = a_model(ANSWER).propose(a_directive(hint="use a heap")).proposal
         assert "use a heap" in proposal.prompt
 
     def test_a_different_hint_gives_a_different_prompt(self):
-        first = a_model(ANSWER).propose(a_directive(hint="one"))
-        second = a_model(ANSWER).propose(a_directive(hint="two"))
+        first = a_model(ANSWER).propose(a_directive(hint="one")).proposal
+        second = a_model(ANSWER).propose(a_directive(hint="two")).proposal
         assert first.prompt != second.prompt
 
     def test_an_unknown_template_is_refused_at_construction(self):
@@ -74,27 +74,27 @@ class TestTheRecipeRebuildsThePrompt:
 
 class TestProposing:
     def test_it_returns_the_parsed_patch(self):
-        proposal = a_model(ANSWER).propose(a_directive())
+        proposal = a_model(ANSWER).propose(a_directive()).proposal
         assert proposal.patch[0] == "--- a/solve.py"
 
     def test_it_keeps_the_raw_response(self):
-        proposal = a_model(ANSWER).propose(a_directive())
+        proposal = a_model(ANSWER).propose(a_directive()).proposal
         assert proposal.raw_response == ANSWER
 
     def test_it_sends_the_prompt_it_recorded(self):
         model = a_model(ANSWER)
-        proposal = model.propose(a_directive())
+        proposal = model.propose(a_directive()).proposal
         assert model.backend.prompts == [proposal.prompt]
 
     def test_an_unparseable_answer_raises_rather_than_returning_nothing(self):
         with pytest.raises(PatchError):
-            a_model("no diff here").propose(a_directive())
+            a_model("no diff here").propose(a_directive()).proposal
 
 
 class TestRetryClassification:
     def test_a_retryable_error_is_retried(self):
         model = a_model(RetryableModelError("429"), ANSWER)
-        proposal = model.propose(a_directive())
+        proposal = model.propose(a_directive()).proposal
         assert proposal.patch[0] == "--- a/solve.py"
         assert len(model.backend.prompts) == 2
 
@@ -104,13 +104,13 @@ class TestRetryClassification:
             attempts=3,
         )
         with pytest.raises(RetryableModelError):
-            model.propose(a_directive())
+            model.propose(a_directive()).proposal
         assert len(model.backend.prompts) == 3
 
     def test_a_terminal_error_is_not_retried(self):
         model = a_model(TerminalModelError("401"), ANSWER)
         with pytest.raises(TerminalModelError):
-            model.propose(a_directive())
+            model.propose(a_directive()).proposal
         assert len(model.backend.prompts) == 1
 
 
