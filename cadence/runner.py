@@ -1,5 +1,6 @@
 import json
 from collections.abc import Sequence
+from statistics import fmean
 
 from cadence.entities import Candidate
 from cadence.interfaces import Metrics, Task
@@ -100,5 +101,4 @@ def _tail(stderr: str, lines: int = 3) -> str:
 
 
 def _mean(readings: Sequence[Metrics]) -> Metrics:
-    names = set(readings[0])
-    return {name: sum(r[name] for r in readings) / len(readings) for name in names}
+    return {name: fmean(r[name] for r in readings) for name in readings[0]}

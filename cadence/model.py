@@ -1,3 +1,4 @@
+import re
 from collections.abc import Mapping
 from typing import Any, NamedTuple
 
@@ -22,7 +23,7 @@ Reply with a unified diff inside a ```diff fenced block, and nothing else.\
 
 TEMPLATES: Mapping[str, str] = {"improve": IMPROVE}
 
-FENCE = "```"
+DIFF_BLOCK = re.compile(r"```diff\n(?P<body>.*?)```", re.DOTALL)
 
 
 def render(recipe: Mapping[str, Any]) -> str:
@@ -32,15 +33,10 @@ def render(recipe: Mapping[str, Any]) -> str:
 
 
 def parse_patch(text: str) -> tuple[str, ...]:
-    opening = f"{FENCE}diff"
-    start = text.find(opening)
-    if start < 0:
-        raise PatchError("the response has no ```diff block")
-    body = text[start + len(opening) :]
-    end = body.find(FENCE)
-    if end < 0:
-        raise PatchError("the ```diff block is never closed")
-    lines = tuple(line for line in body[:end].strip("\n").splitlines())
+    block = DIFF_BLOCK.search(text)
+    if block is None:
+        raise PatchError("the response has no closed ```diff block")
+    lines = tuple(block["body"].strip("\n").splitlines())
     if not any(line.strip() for line in lines):
         raise PatchError("the ```diff block is empty")
     return lines

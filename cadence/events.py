@@ -6,7 +6,7 @@ from typing import Any, ClassVar
 from blinker import ANY, Signal
 from pydantic import BaseModel, ConfigDict, Field
 
-__all__ = ["Channel", "Fact", "Recorder"]
+__all__ = ["Channel", "Fact", "Recorder", "Emitter"]
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,17 @@ class Fact(BaseModel):
 
     def emit(self) -> None:
         self.channel.publish(self)
+
+
+class Emitter:
+    def __init__(self, **fields: Any) -> None:
+        self.fields = fields
+
+    def about(self, **more: Any) -> "Emitter":
+        return Emitter(**self.fields, **more)
+
+    def emit(self, fact: type[Fact], **fields: Any) -> None:
+        fact(**self.fields, **fields).emit()
 
 
 class Recorder:

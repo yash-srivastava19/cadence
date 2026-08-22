@@ -36,11 +36,11 @@ class TestParsingAPatch:
         assert "Here is my change:" not in parse_patch(ANSWER)
 
     def test_a_response_with_no_block_is_a_patch_error(self):
-        with pytest.raises(PatchError, match="no ```diff block"):
+        with pytest.raises(PatchError, match="```diff block"):
             parse_patch("I would change the loop, but here is prose instead.")
 
     def test_an_unclosed_block_is_a_patch_error(self):
-        with pytest.raises(PatchError, match="never closed"):
+        with pytest.raises(PatchError, match="```diff block"):
             parse_patch("```diff\n--- a/x\n")
 
     def test_an_empty_block_is_a_patch_error(self):
