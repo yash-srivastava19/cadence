@@ -11,6 +11,7 @@ cost_evolution.png
 experiments/results_*
 experiments/__pycache__
 docs/.venv
+docs/site/
 src/__pycache__
 src/rl/__pycache__
 src/tasks/__pycache__
