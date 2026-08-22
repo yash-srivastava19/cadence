@@ -195,7 +195,7 @@ config = {"population_size": 10}
 config.update(load_config("config.json"))
 
 # From environment
-config["api_key"] = os.getenv("GOOGLE_API_KEY")
+config["api_key"] = os.getenv("GEMINI_API_KEY")
 
 # From CLI
 config.update(parse_args())

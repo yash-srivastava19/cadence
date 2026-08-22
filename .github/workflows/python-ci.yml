@@ -10,25 +10,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .[dev]
+          pip install -e .[dev,test]
 
-      - name: Run Pre-commit
-        run: |
-          pre-commit run --all-files
+      - name: Run pre-commit
+        run: pre-commit run --all-files
 
+      # Kept as its own step so a docs failure reads as a docs failure. Every
+      # Python example in docs/ and the README is compiled, every symbol it
+      # imports is resolved against the source tree, every script it tells you
+      # to run is checked to exist, and every environment variable it tells you
+      # to set is checked to be one the code actually reads.
+      - name: Check the documentation against the code
+        run: pytest tests/test_docs.py -q
+
+      # No exclusions. The suite used to deselect one test by hard-coded node id,
+      # which hid a broken mock rather than a test needing credentials -- and
+      # would have stopped excluding anything the moment the test was renamed.
+      # Every test mocks its model calls, so a placeholder key is enough.
       - name: Run tests
         env:
           GEMINI_API_KEY: not-a-real-key
-        run: |
-          pytest tests/ -q \
-            --deselect tests/unit/test_llm.py::TestLLM::test_generate_success
+        run: pytest tests/ -q

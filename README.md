@@ -1,274 +1,165 @@
-# Cadence: Program Evolution via Large Language Models
+# Cadence
 
 [![CI](https://github.com/yash-srivastava19/cadence/actions/workflows/python-ci.yml/badge.svg)](https://github.com/yash-srivastava19/cadence/actions)
 [![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://cadence.readthedocs.io/en/latest/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Cadence is an evolutionary system that uses large language models to iteratively generate, mutate, and improve programs for hard computational problems.
+Cadence improves a program by rewriting it over and over. A language model
+proposes an edit, Cadence runs the result against a scoring function you
+provide, keeps what scored better, and repeats.
 
-## What it is
-Cadence treats code generation as an evolutionary loop. It samples parent programs, proposes child variants with an LLM, evaluates them on a fixed test suite, stores results, and feeds the best lessons back into future generations. The current implementation focuses on the Traveling Salesman Problem.
+You supply two things: a program with the editable region marked, and a way to
+score it. Cadence supplies the loop.
 
-## Why it matters
-Most LLM coding workflows are one-shot. Cadence explores a more iterative approach where programs improve over generations through evaluation, selection, and mutation. That makes it useful both as a practical experiment and as a framework for studying program evolution with LLMs.
-
-## Current status
-Active research project with working experiments, documentation, and a modular foundation for extending beyond TSP.
-
-## Architecture
-
-```mermaid
-flowchart TD
-    A[Sample Parent Program] --> B[Build Prompt + Lesson]
-    B --> C[LLM Generation of Code Diffs]
-    C --> D[Apply Diff to Parent]
-    D --> E[Evaluate on Test Suite]
-    E --> F[Log to Database]
-    F --> G{Generation Complete}
-    G -->|Not Final| A
-    G -->|Final| H[Extract Lesson]
-    H --> B
-```
-
-The system evolves programs over generations using the following loop:
-
-1. Sample a parent program and its previously generated children.
-2. Construct a prompt that includes the parent, children, and instructions.
-3. Use an LLM to generate modified versions of marked code blocks.
-4. Apply the generated diffs to produce a child program.
-5. Evaluate the child program's performance on a fixed test suite.
-6. Log and store the program and its performance in a database.
-7. Periodically promote the best-performing program to guide future generations.
-8. Optionally mutate the instructions used in prompts to encourage better code.
-
-## Key Features
-
-* TSP solution evolution using only standard Python (no external math libraries)
-* Multi-seed deterministic evaluation for stable cost metrics
-* SQLite-backed storage of program generations and performance
-* Parallel evaluation for faster feedback
-* Meta-prompting: periodically updates instructions to steer LLM behavior
-* Modular task abstraction to support other optimization problems in the future
-
-## Table of Contents
-- [Architecture](#architecture)
-- [Key Features](#key-features)
-- [Getting Started](#getting-started)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Directory Structure](#directory-structure)
-- [Citation](#citation)
-- [Contributing](#contributing)
-- [License](#license)
-
-## Getting Started
-
-### Quickstart
-
-Run the out-of-the-box examples:
+## Quickstart
 
 ```bash
-# Hypothesis 1: Cost evolution
-python run_h1_experiment.py --config_name h1_config
+git clone https://github.com/yash-srivastava19/cadence
+cd cadence
+uv sync
+source .venv/bin/activate
+export GEMINI_API_KEY="your-key-here"
 
-# Hypothesis 2: Scaling analysis
-python run_h2_experiment.py --config_name h2_config
+python run_h1_experiment.py
 ```
 
-Results (`h1_results.png`, `h2_scaling_analysis.png`) and JSON summaries will appear in the project root.
+That evolves a Traveling Salesman heuristic for 30 generations against two
+hand-written baselines, then writes `h1_results.png` and
+`experiment_log.json`. It costs roughly 30 Gemini calls.
 
-### Requirements & Installation
+The environment variable is `GEMINI_API_KEY`. A `.env` at the project root
+works too — `src/llm.py` calls `load_dotenv()` on import.
 
-1. Clone the repo and enter directory:
-   ```bash
-   git clone https://github.com/yash-srivastava19/cadence.git
-   cd cadence
-   ```
-2. Create and activate a virtual environment:
-   ```bash
-   python -m venv .venv
-   .venv/bin/Activate
-   ```
+> **Where did my results go?** Hydra changes the working directory before the
+> script runs, so output lands in `outputs/<date>/<time>/`, including a fresh
+> empty `cadence_db.sqlite`. Pass `hydra.run.dir=.` to keep everything in the
+> project root.
 
-3. Install dependencies (using `uv` for reproducible installs):
-   ```bash
-    uv sync
-   ```
+## How one generation works
 
-## Configuration with Hydra
+1. **Sample a parent** — from the previous generation, or, every
+   `ELITISM_INTERVAL` generations, the best program found so far.
+2. **Build a prompt** from the parent, its siblings, and the current lesson.
+3. **Ask the model to rewrite the marked block.**
+4. **Swap the block into the parent**, positionally.
+5. **Score the child** on five fixed seeds, in parallel.
+6. **Store it** in SQLite with its cost, its parent, and its lineage.
 
-All experiment scripts leverage [Hydra](https://hydra.cc/) for flexible, YAML-driven configuration. Sample `conf/h1_config.yaml`:
+Every `LESSON_INTERVAL` generations Cadence asks the model what it has learned
+so far and prepends that to later prompts. Every `META_PROMPT_EDIT_INTERVAL`
+generations it rewrites its own instruction text.
 
-```yaml
-SEEDS: 10
-GENERATIONS: 20
-LESSON_INTERVAL: 4
-API_MAX_RETRIES: 3
-API_TIMEOUT: 60
-hydra:
-  run:
-    dir: .                     # write outputs to project root
-  output:
-    subdir: null               # disable timestamped folders
-```
+## Using it on your own problem
 
-Override on the command line without editing YAML:
-
-```bash
-# Change number of seeds and interval at runtime
-git checkout main
-python run_h1_experiment.py SEEDS=5 LESSON_INTERVAL=2
-```
-
-## Usage Examples
-
-### Evolve a TSP Solver in Python
-
-```python
-from src.tasks.tsp_task import TSPTask
-from src.prompt_sampler import build
-from src.llm import generate
-from src.evolve import apply_diff
-
-# Initialize problem with 10 cities
-task = TSPTask(n_cities=10)
-base_code = task.baseline_program
-# Build a prompt without lessons
-prompt = build((None, None, None, base_code, None), [], None)
-# Call LLM to get diff
-diffs = generate(prompt)
-# Apply diff to generate a new child solution
-child_code = apply_diff(base_code, diffs)
-
-print("Baseline code:\n", base_code)
-print("Evolved code:\n", child_code)
-```
-
-### Extracting Lessons Programmatically
-
-```python
-from src.meta_prompting import get_lesson_from_history
-# Assume 'logs' is a list of experiment entries with 'generation' and 'cost'
-lesson = get_lesson_from_history(logs, previous_lesson=None)
-print("Heuristic lesson:", lesson)
-```
-
-### Web Interface
-
-Cadence provides a built-in Flask-based UI for live monitoring of experiments. Launch it with:
-```bash
-python ui/launch_ui.py
-```
-Then open your browser at http://localhost:5000 to explore real-time metrics, cost evolution plots, and logs.
-
-<img width="512" height="512" alt="Screenshot 2025-07-19 192512" src="https://github.com/user-attachments/assets/65b1abcf-5354-46f4-92cd-417aa19c0753" />
-
-
-<img width="512" height="512" alt="Screenshot 2025-07-19 192526" src="https://github.com/user-attachments/assets/8dcf8042-edc7-4841-8a75-81d98ab2cdfc" />
-
-## Directory Structure
-
-```text
-cadence/
-├── conf/                      # Hydra configuration files
-│   ├── h1_config.yaml
-│   └── h2_config.yaml
-├── src/                       # Core library modules
-│   ├── database.py
-│   ├── evaluator.py
-│   ├── evolve.py
-│   ├── llm.py
-│   ├── prompt_sampler.py
-│   └── tasks/                 # Problem definitions (TSP, etc.)
-└── run_h1_experiment.py      # Hypothesis 1 script
-    run_h2_experiment.py      # Hypothesis 2 script
-```
-
-
-## Notes
-
-* All code blocks must be marked with `### START_BLOCK` and `### END_BLOCK`.
-* Prompts are built to explicitly instruct the LLM to only change marked blocks.
-* Evaluation is deterministic using seeded inputs.
-* The project uses `uv` for reproducible dependency management and performance.
-
-## Extending
-
-To make cadence work for problems beyond TSP, you can define your own custom tasks by implementing the `Task` interface. This makes the system problem-agnostic while keeping the core workflow intact.
-
-### Step 1: Create a New Task File
-
-Create a new Python file in `src/tasks/`, for example:
-
-```bash
-touch src/tasks/knapsack_task.py
-```
-
-### Step 2: Implement the Task Interface
-
-Each task must subclass `Task` and implement the following:
+Implement four members of `Task`:
 
 ```python
 from src.task import Task
+from src.models import EvaluationResult
 
-class YourTask(Task):
+
+class MyTask(Task):
     @property
-    def function_name(self):
-        # Name of the function LLM is expected to generate
+    def function_name(self) -> str:
         return "solve"
 
     def generate_inputs(self, seed: int):
-        # Generate deterministic input using the seed
-        return ...
+        ...  # deterministic for a given seed
 
-    def evaluate(self, output, input_data) -> float:
-        # Return a numerical metric (lower is better)
-        return ...
+    def evaluate(self, output, input_data) -> EvaluationResult:
+        ...  # lower cost is better
+
+    @property
+    def baseline_program(self) -> str:
+        return "### START_BLOCK\ndef solve(data):\n    ...\n### END_BLOCK"
 ```
 
-* `function_name`: This must match the name of the function the LLM is expected to define.
-* `generate_inputs(seed)`: Generate problem input. This can be a list, tuple, or dict.
-* `evaluate(output, input_data)`: Accepts output from the evolved program and returns a numeric cost.
+Everything between `### START_BLOCK` and `### END_BLOCK` is what the model
+rewrites. Everything outside is fixed.
 
-### Step 3: Use the Task in `main.py`
+**[docs/tasks.md](docs/tasks.md) is the full guide**, with a complete worked
+knapsack example and the rules about cost direction, determinism, and checking
+that your scoring function can tell a good program from a bad one.
 
-Import your task class and instantiate it:
+## Configuration
 
-```python
-from tasks.knapsack_task import KnapsackTask
-task = KnapsackTask()
+Every setting is a [Hydra](https://hydra.cc/) key in `conf/`. Override on the
+command line rather than editing files:
+
+```bash
+python run_h1_experiment.py GENERATIONS=60 LESSON_INTERVAL=3
 ```
 
-Then pass it into the `execute()` function:
+There are no `CADENCE_*` environment variables and no `--generations` style
+flags. [docs/configuration.md](docs/configuration.md) lists every key that
+each script actually reads.
 
-```python
-metric = execute(child_program_code, task)
+## Web interface
+
+```bash
+python ui/launch_ui.py
 ```
 
-### Tips
+Then open <http://localhost:5000>. It reads `./cadence_db.sqlite` relative to
+where you launch it, which is why it looks empty if your run wrote to a Hydra
+output directory.
 
-* Use only standard Python libraries (`math`, `itertools`, `re`, etc.).
-* Keep test inputs deterministic via seeds.
-* Define a cost metric that is meaningful, consistent, and scalar.
-* Try to avoid relying on `random` inside the generated programs themselves.
+## What Cadence does not do yet
 
+Stated plainly, because finding out later wastes your time:
 
+- **One provider.** Google Gemini only, defaulting to `gemini-2.0-flash`.
+- **One objective.** A single float, minimised. No Pareto, no multi-objective.
+- **One operator.** Whole-block replacement. No crossover, no full rewrite.
+- **No sandbox.** Candidates run via `exec()` in the same process as the loop,
+  with access to your files, environment, and network. Point Cadence only at
+  code you would run by hand on the same machine.
+- **No timeout.** A candidate with an infinite loop hangs the run. `Evaluator`
+  accepts `timeout` and `max_memory_mb` and ignores both.
 
-## License
+## Layout
 
-This project is licensed under the MIT License.
+```text
+conf/                  Hydra configs, one per entry script
+src/                   the library that runs today
+  task.py              the Task interface
+  evaluator.py         execute() -- source in, cost out
+  evolve.py            apply_diff() -- block replacement
+  llm.py               Gemini provider and legacy helpers
+  prompt_sampler.py    build() -- prompt assembly
+  database.py          SQLite storage and parent sampling
+  tasks/               TSPTask
+cadence/               the framework replacing src/ -- not usable yet
+docs/                  documentation, tested by tests/test_docs.py
+ui/                    Flask dashboard
+main.py                the full loop, with lessons and meta-prompting
+run_h1_experiment.py   evolution against baselines
+run_h2_experiment.py   scaling across problem sizes
+```
+
+## Documentation
+
+The docs are tested. `tests/test_docs.py` compiles every Python example,
+resolves every symbol they import against the source tree, checks that every
+script they name exists, and fails the build on any environment variable
+nothing reads. A page that drifts from the code breaks CI.
+
+| Page | For |
+| --- | --- |
+| [Getting started](docs/getting-started.md) | Your first run, and what the output means |
+| [Tasks](docs/tasks.md) | Your own problem |
+| [Configuration](docs/configuration.md) | Every key, and what is hardcoded |
+| [Evolution pipeline](docs/evolution.md) | What each generation does |
+| [Examples](docs/examples.md) | Working snippets |
+| [Experiments](docs/experiments.md) | Reproducing H1 and H2 |
+| [API reference](docs/api/index.md) | Signatures |
+| [Architecture](docs/architecture.md) | Where this is going |
+| [Contributing](docs/contributing.md) | Sending a patch |
 
 ## Citation
 
-If you use Cadence in your research or projects, please cite:
-```bibtex
-@software{cadence2025,
-  author = {Yash Srivastava},
-  title = {{Cadence: Program Evolution via Large Language Models}},
-  year = {2025},
-  url = {https://github.com/yash-srivastava19/cadence},
-  version = {main}
-}
-```
+See [CITATION.cff](CITATION.cff).
 
----
+## Licence
+
+MIT. See [LICENSE](LICENSE).

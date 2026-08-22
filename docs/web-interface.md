@@ -345,226 +345,40 @@ def custom_metrics():
 
 ## Configuration
 
-### Web Server Configuration
+There is none. `ui/app.py` hardcodes everything:
 
-```python
-# ui/config.py
-class WebConfig:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-key'
-    HOST = os.environ.get('CADENCE_HOST') or '127.0.0.1'
-    PORT = int(os.environ.get('CADENCE_PORT') or 5000)
-    DEBUG = os.environ.get('CADENCE_DEBUG') == 'true'
+| Setting | Value | Where |
+| --- | --- | --- |
+| Host | `0.0.0.0` | `app.run()`, `ui/launch_ui.py` |
+| Port | `5000` | same |
+| Debug | `True` | same |
+| Database | `cadence_db.sqlite`, relative to the working directory | `get_all_programs()`, `src/database.py` |
 
-    # Database
-    DATABASE_URL = os.environ.get('DATABASE_URL') or 'sqlite:///cadence_db.sqlite'
+<!-- docs-test: allow-env CADENCE_HOST,CADENCE_PORT,CADENCE_DEBUG,CADENCE_DB_PATH -->
+No `CADENCE_HOST`, `CADENCE_PORT`, `CADENCE_DEBUG`, or `CADENCE_DB_PATH`
+exists. To change any of these, edit `ui/launch_ui.py`.
 
-    # Real-time updates
-    WEBSOCKET_ENABLED = True
-    UPDATE_INTERVAL = 1.0  # seconds
-
-    # Security
-    CORS_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
-```
-
-### Client Configuration
-
-```javascript
-// static/js/config.js
-const CONFIG = {
-    API_BASE_URL: '/api',
-    WEBSOCKET_URL: window.location.origin,
-    UPDATE_INTERVALS: {
-        dashboard: 2000,    // 2 seconds
-        network: 5000,      // 5 seconds
-        charts: 3000        // 3 seconds
-    },
-    VISUALIZATION: {
-        network: {
-            nodeSize: [5, 50],
-            linkDistance: 100,
-            charge: -300
-        },
-        charts: {
-            animation: true,
-            responsive: true,
-            theme: 'light'
-        }
-    }
-};
-```
-
-## Deployment
-
-### Production Deployment
-
-```python
-# ui/wsgi.py
-from ui.app import create_app
-import os
-
-app = create_app(os.environ.get('FLASK_ENV') or 'production')
-
-if __name__ == "__main__":
-    app.run()
-```
-
-```bash
-# Using Gunicorn
-pip install gunicorn
-gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:5000 ui.wsgi:app
-
-# Using uWSGI
-pip install uwsgi
-uwsgi --http :5000 --gevent 1000 --http-websockets --master --wsgi-file ui/wsgi.py --callable app
-```
-
-### Docker Deployment
-
-```dockerfile
-# Dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY . .
-
-EXPOSE 5000
-
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "ui.wsgi:app"]
-```
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  cadence-ui:
-    build: .
-    ports:
-      - "5000:5000"
-    environment:
-      - CADENCE_DB_PATH=/data/cadence.sqlite
-      - CADENCE_HOST=0.0.0.0
-    volumes:
-      - ./data:/data
-    restart: unless-stopped
-```
-
-### Reverse Proxy Configuration
-
-```nginx
-# nginx.conf
-server {
-    listen 80;
-    server_name cadence.example.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # WebSocket support
-    location /socket.io/ {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-    }
-
-    # Static files
-    location /static/ {
-        alias /app/ui/static/;
-        expires 1y;
-        add_header Cache-Control public;
-    }
-}
-```
+`debug=True` means the Flask reloader and the interactive debugger are on.
+That is fine on your own machine and unsafe anywhere else, so do not expose
+this port.
 
 ## Troubleshooting
 
-### Common Issues
+**The dashboard is empty while a run is going**
 
-**Port Already in Use**
-```bash
-# Find process using port
-lsof -i :5000
+The most common cause is Hydra. It changes the working directory to
+`outputs/<date>/<time>/`, so a run writes its database *there* while the UI
+reads `./cadence_db.sqlite` from wherever you launched it. Either launch the
+UI from the run's output directory, or start runs with `hydra.run.dir=.` —
+see [Configuration](configuration.md#where-output-goes-and-the-gotcha).
 
-# Kill process
-kill -9 <PID>
+**Port 5000 is already in use**
 
-# Use different port
-python ui/launch_ui.py --port 8080
-```
+On macOS, AirPlay Receiver holds port 5000. Turn it off in System Settings, or
+edit the port in `ui/launch_ui.py`.
 
-**WebSocket Connection Failed**
-```javascript
-// Check connection status
-socket.on('connect', () => {
-    console.log('Connected to server');
-});
+**`ModuleNotFoundError: No module named 'app'`**
 
-socket.on('disconnect', () => {
-    console.log('Disconnected from server');
-});
-
-socket.on('connect_error', (error) => {
-    console.error('Connection error:', error);
-});
-```
-
-**Database Access Issues**
-```python
-# Check database permissions
-import sqlite3
-try:
-    conn = sqlite3.connect('cadence_db.sqlite')
-    conn.close()
-    print("Database accessible")
-except Exception as e:
-    print(f"Database error: {e}")
-```
-
-### Performance Optimization
-
-**Large Datasets**
-```python
-# Implement pagination
-@app.route('/api/programs')
-def get_programs():
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
-
-    programs = query_programs_paginated(page, per_page)
-    return jsonify(programs)
-```
-
-**Memory Usage**
-```python
-# Use generators for large datasets
-def stream_evolution_data():
-    for generation in get_generations():
-        yield json.dumps(generation) + '\n'
-
-@app.route('/api/evolution/stream')
-def stream_evolution():
-    return Response(stream_evolution_data(),
-                   mimetype='application/json')
-```
-
-**Caching**
-```python
-from flask_caching import Cache
-
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})
-
-@app.route('/api/metrics/summary')
-@cache.cached(timeout=60)  # Cache for 1 minute
-def metrics_summary():
-    return calculate_metrics_summary()
-```
+`ui/launch_ui.py` does `from app import app`, which relies on `ui/` being on
+`sys.path`. Run it as `python ui/launch_ui.py` from the project root, not as
+`python -m ui.launch_ui`.

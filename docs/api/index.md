@@ -1,373 +1,218 @@
-# API Reference
+# API reference
 
-Complete reference for all Cadence modules, classes, and functions.
+Every signature on this page is checked against the source by
+`tests/test_docs.py`. If a name here does not exist, CI fails.
 
-## Core Modules
+Two layers are documented separately, because they are at different stages:
 
-### src.task
+- **`src/`** — what runs today. Everything below.
+- **`cadence/`** — the framework being built to replace it. Not usable yet;
+  see [Architecture](../architecture.md).
 
-Abstract base class for defining optimization problems.
+## `src.evaluator`
 
-#### Task
-
-```python
-class Task(ABC):
-    """Abstract base class for defining optimization problems."""
-```
-
-**Abstract Methods:**
-
-- `function_name() -> str`: Name of the function to extract from evolved code
-- `generate_inputs(seed: int)`: Generate deterministic input for given seed
-- `evaluate(output, input_data) -> float`: Evaluate output and return scalar cost
-- `baseline_program() -> str`: Return default working solution with marked blocks
-
-**Methods:**
-
-- `is_feasible(output, *args) -> bool`: Check if output is feasible for the task
-
-### src.evolve
-
-Functions for applying code modifications during evolution.
-
-#### apply_diff
+Turning source code into a cost.
 
 ```python
-def apply_diff(parent_program: str, diffs: list[str]) -> str:
-    """Apply list of diff code blocks into parent_program using START/END markers."""
+from src.evaluator import execute, evaluate_on_task, INFEASIBLE_COST
 ```
 
-**Parameters:**
-- `parent_program`: Source code with marked evolution blocks
-- `diffs`: List of code strings to replace marked blocks
+| Name | Signature | Returns |
+| --- | --- | --- |
+| `execute` | `(child_program_code, task, seeds=None)` | `{"cost": float, "feasibility": float}` |
+| `evaluate_on_task` | `(func, task, seed)` | `{"cost", "feasible", "error"}` |
+| `INFEASIBLE_COST` | constant | `1e8` |
 
-**Returns:**
-- Modified program with diffs applied to marked blocks
+`execute()` is the supported entry point. It runs `exec()` on the source,
+retrieves `task.function_name`, scores it on `seeds` (default
+`[1, 2, 3, 4, 5]`) across `min(len(seeds), 4)` threads, and returns the mean
+cost with the fraction of seeds that were feasible.
 
-#### _apply_diff_in_strs
+`evaluate_on_task()` scores a single seed and **keeps the error text**, which
+`execute()` discards when aggregating. Use it to debug a task.
+
+Also present, TSP-specific despite living in the generic module:
+`euclidean_distance(a, b)`, `compute_total_distance(tour, cities)`,
+`generate_test_instance(n=None, seed=None)`, and
+`execute_single_seed(seed, func, n_cities=10)`.
+
+`Evaluator` is a class with `evaluate_code(code, task, seeds=None)`. It
+duplicates `execute()`, nothing in the repository calls it, and its `timeout`
+and `max_memory_mb` constructor arguments are stored but never read. Prefer
+`execute()`.
+
+## `src.task`
 
 ```python
-def _apply_diff_in_strs(
-    file_str: str,
-    diffs: list[str],
-    start_marker: str = "### START_BLOCK",
-    end_marker: str = "### END_BLOCK"
-) -> str:
-    """Replace code blocks marked by custom start and end markers."""
+from src.task import Task
 ```
 
-**Parameters:**
-- `file_str`: Source code string
-- `diffs`: List of replacement code blocks
-- `start_marker`: Block start marker (default: "### START_BLOCK")
-- `end_marker`: Block end marker (default: "### END_BLOCK")
+The abstract base every problem implements. Four required members and two
+optional ones — [Tasks](../tasks.md) is the guide.
 
-**Returns:**
-- Modified code with replacements applied
+| Member | Kind | Signature |
+| --- | --- | --- |
+| `function_name` | abstract property | `-> str` |
+| `generate_inputs` | abstract method | `(seed) -> Any` |
+| `evaluate` | abstract method | `(output, input_data) -> EvaluationResult` |
+| `baseline_program` | abstract property | `-> str` |
+| `task_type` | property | `-> TaskType`, defaults to `CUSTOM` |
+| `is_feasible` | method | `(output, input_data=None, **kwargs) -> bool`, defaults `True` |
+| `create_instance` | method | `(seed, **kwargs) -> TaskInstance` |
+| `validate_output_format` | method | `(output) -> bool`, defaults `True` |
 
-### src.llm
-
-Interface for Large Language Model interactions.
-
-#### LLM
+## `src.tasks.tsp_task`
 
 ```python
-class LLM:
-    """Interface for Large Language Model providers."""
-
-    def __init__(self, provider: str = "google", model: str = "gemini-pro"):
-        """Initialize LLM with specified provider and model."""
+from src.tasks.tsp_task import TSPTask
 ```
 
-**Methods:**
+`TSPTask(n_cities=10)` — raises `ValueError` below three cities.
+`function_name` is `"tsp"`, `task_type` is `TaskType.TSP`. `generate_inputs`
+returns a list of `(x, y)` tuples in the range 0–100.
+
+`get_optimal_tour_length(cities)` currently returns `None` for every input.
+
+## `src.evolve`
 
 ```python
-def generate(self, prompt: str, **kwargs) -> str:
-    """Generate text completion from prompt."""
-
-def generate_diffs(
-    self,
-    parent_code: str,
-    children_code: list[str],
-    instructions: str
-) -> list[str]:
-    """Generate code diffs for program evolution."""
-
-def count_tokens(self, text: str) -> int:
-    """Count tokens in text string."""
+from src.evolve import apply_diff, extract_blocks, count_blocks
 ```
 
-**Parameters:**
-- `prompt`: Input text prompt
-- `parent_code`: Current program code
-- `children_code`: List of previous child programs
-- `instructions`: Evolution instructions for the LLM
+| Name | Signature |
+| --- | --- |
+| `apply_diff` | `(parent_program, diffs) -> str` |
+| `apply_single_diff` | `(parent_program, diff, block_index=0, start_marker=..., end_marker=...)` |
+| `extract_blocks` | `(code, start_marker=..., end_marker=...) -> List[str]` |
+| `count_blocks` | `(code, start_marker=..., end_marker=...) -> int` |
+| `validate_block_structure` | `(code, start_marker=..., end_marker=...) -> bool` |
 
-### src.database
+Markers default to `### START_BLOCK` and `### END_BLOCK`.
 
-Database operations for storing evolution data.
+`apply_diff` replaces the Nth marked block with the Nth string in `diffs` —
+positional whole-block substitution, not a textual diff. Extra strings are
+ignored; missing ones leave blocks unchanged. Raises `EvolutionError`.
 
-#### Database
+## `src.llm`
 
 ```python
-class Database:
-    """SQLite database interface for storing evolution data."""
-
-    def __init__(self, db_path: str = "cadence_db.sqlite"):
-        """Initialize database connection."""
+from src.llm import LLMProvider, LLMConfig, generate
 ```
 
-**Methods:**
+`LLMConfig` is a dataclass: `model="gemini-2.0-flash"`, `timeout=30.0`,
+`max_retries=3`.
+
+`LLMProvider(config=None)` reads `GEMINI_API_KEY` at construction and raises
+`LLMError` if it is unset.
+
+| Method | Signature | Returns |
+| --- | --- | --- |
+| `generate_code` | `(prompt)` | `List[CodeBlock]` |
+| `mutate_instruction` | `(base_instruction)` | `str` |
+| `generate_lesson` | `(meta_prompt)` | `str` |
+| `validate_response` | `(response_text)` | `bool` |
+
+Module-level `generate(prompt) -> List[str]`,
+`mutate_instruction(base_instruction) -> str`,
+`generate_lessons(meta_prompt) -> str`, and `extract_valid_blocks(text)` wrap
+these for callers that do not hold a provider.
+
+## `src.prompt_sampler`
 
 ```python
-def add_program(
-    self,
-    code: str,
-    generation: int,
-    parent_id: int = None,
-    cost: float = None,
-    feasible: bool = None
-) -> int:
-    """Add program to database and return program ID."""
-
-def get_program(self, program_id: int) -> dict:
-    """Retrieve program by ID."""
-
-def get_generation_programs(self, generation: int) -> list[dict]:
-    """Get all programs from specific generation."""
-
-def get_best_programs(self, limit: int = 10) -> list[dict]:
-    """Get best performing programs."""
-
-def update_program_metrics(
-    self,
-    program_id: int,
-    cost: float,
-    feasible: bool,
-    execution_time: float = None
-):
-    """Update program performance metrics."""
-
-def get_evolution_history(self) -> list[dict]:
-    """Get complete evolution history."""
+from src.prompt_sampler import build, update_instruction
 ```
 
-### src.evaluator
+`build(parent_program, inspirations, lesson=None) -> str`.
 
-Program evaluation and execution.
+`parent_program` is annotated `Dict[str, Any]` but accepts a tuple or list
+too, which is what the runtime passes: index `3` is the code, index `4` is the
+cost. Raises `PromptError` on empty code.
 
-#### Evaluator
+`update_instruction(new_instruction)` mutates the module-level instruction
+template used by later `build()` calls.
+
+## `src.meta_prompting`
 
 ```python
-class Evaluator:
-    """Evaluates program performance on tasks."""
-
-    def __init__(self, task: Task, timeout: int = 30):
-        """Initialize evaluator with task and timeout."""
+from src.meta_prompting import get_lesson_from_history
 ```
 
-**Methods:**
+| Name | Signature |
+| --- | --- |
+| `get_lesson_from_history` | `(logs, N=2, previous_lesson=None, llm_provider=None) -> Optional[str]` |
+| `format_generation_entry` | `(entry, feedback=None) -> str` |
+| `update_lesson_history` | `(lesson_history, new_lesson, generation)` |
+| `get_recent_lessons_text` | `(lesson_history, n=3) -> str` |
+
+`format_generation_entry` emits `Cost: {cost} | Feasibility: {feasibility}`
+plus the code — summary statistics, no failure detail.
+
+## `src.database`
 
 ```python
-def evaluate_program(
-    self,
-    program_code: str,
-    num_seeds: int = 5
-) -> dict:
-    """Evaluate program on multiple test cases."""
-
-def extract_function(self, code: str, function_name: str):
-    """Extract named function from code string."""
-
-def safe_execute(self, func, inputs, timeout: int = None):
-    """Safely execute function with timeout and error handling."""
+from src.database import Database, add, sample, get_best_program
 ```
 
-**Returns:**
-- Dictionary with evaluation results including cost, feasibility, and metrics
+### Module functions
 
-### src.prompt_sampler
+These are what the entry scripts use. They open a `Database` on
+`cadence_db.sqlite` per call.
 
-Prompt generation for LLM interactions.
+| Name | Signature |
+| --- | --- |
+| `add` | `(program_code, metric, parent_id=None, instance_id=None, diff=None, prompt=None) -> int` |
+| `sample` | `(generation_number=0, tournament_size=3) -> (Optional[Tuple], List[Tuple])` |
+| `get_best_program` | `(generation_limit=None) -> Optional[Tuple]` |
+| `get_all_programs` | `() -> List[Tuple]` |
+| `add_instance` | `(seed) -> int` |
 
-#### PromptSampler
+Tuples are `(id, generation, parent_id, code, metric)`.
 
-```python
-class PromptSampler:
-    """Generates prompts for LLM-based code evolution."""
+### `Database`
 
-    def __init__(self, task: Task):
-        """Initialize with task instance."""
-```
+`Database(config=None)` takes a `DatabaseConfig`. Methods return
+`ProgramEntry` objects rather than tuples.
 
-**Methods:**
+| Method | Signature |
+| --- | --- |
+| `add_program` | `(code, metric, generation, parent_id=None, instance_id=None, diff=None, prompt=None) -> int` |
+| `get_program` | `(program_id) -> Optional[ProgramEntry]` |
+| `sample_parent` | `(generation=0, tournament_size=3) -> Optional[ProgramEntry]` |
+| `get_children` | `(parent_id) -> List[ProgramEntry]` |
+| `get_best_program` | `(generation_limit=None) -> Optional[ProgramEntry]` |
+| `get_generation_summary` | `(generation) -> Optional[GenerationSummary]` |
+| `get_all_programs` | `() -> List[ProgramEntry]` |
+| `add_instance` | `(instance) -> int` |
+| `create_run` | `(run_id, experiment_config)` |
+| `get_run_summary` | `(run_id) -> Optional[Dict[str, Any]]` |
 
-```python
-def sample_prompt(
-    self,
-    parent_program: str,
-    children_programs: list[str] = None,
-    instructions: str = None
-) -> str:
-    """Generate evolution prompt for LLM."""
+Raises `DatabaseError`.
 
-def generate_instructions(self, generation: int, best_cost: float) -> str:
-    """Generate dynamic instructions based on evolution progress."""
+## `src.models`
 
-def format_code_block(self, code: str, language: str = "python") -> str:
-    """Format code for inclusion in prompts."""
-```
+Pydantic models. The ones you will touch:
 
-## Task Implementations
+| Model | Fields |
+| --- | --- |
+| `EvaluationResult` | `cost`, `feasible`, `error=None`, `execution_time=None`, `memory_usage=None` |
+| `ProgramEntry` | `id`, `generation`, `parent_id`, `code`, `metric`, `instance_id`, `diff`, `prompt`, `timestamp` |
+| `DatabaseConfig` | `database_path="cadence_db.sqlite"`, `connection_timeout=30.0`, `enable_wal_mode=True` |
+| `TaskType` | `TSP`, `KNAPSACK`, `CUSTOM` |
 
-### src.tasks.tsp_task
+`EvaluationResult` is frozen and rejects a negative `cost`.
 
-Traveling Salesman Problem implementation.
+## Exceptions
 
-#### TSPTask
-
-```python
-class TSPTask(Task):
-    """Traveling Salesman Problem task implementation."""
-
-    def __init__(self, n_cities: int = 10):
-        """Initialize TSP task with specified number of cities."""
-```
-
-**Properties:**
-- `function_name`: Returns "tsp"
-- `baseline_program`: Basic TSP solution template
-
-**Methods:**
-
-```python
-def generate_inputs(self, seed: int) -> list[tuple[float, float]]:
-    """Generate random city coordinates."""
-
-def evaluate(self, output: list[int], cities: list[tuple]) -> dict:
-    """Evaluate TSP tour and return cost."""
-
-def is_feasible(self, output: list[int], cities: list[tuple]) -> bool:
-    """Check if tour is a valid permutation."""
-```
-
-## Utility Functions
-
-### Helper Functions
-
-```python
-def extract_code_blocks(code: str, markers: tuple[str, str]) -> list[str]:
-    """Extract code between specified markers."""
-
-def validate_program_syntax(code: str) -> tuple[bool, str]:
-    """Validate Python syntax and return (is_valid, error_message)."""
-
-def calculate_distance(city1: tuple[float, float], city2: tuple[float, float]) -> float:
-    """Calculate Euclidean distance between two cities."""
-
-def normalize_tour(tour: list[int]) -> list[int]:
-    """Normalize tour to start from city 0."""
-```
+| Exception | Raised by |
+| --- | --- |
+| `EvaluationError` | `src.evaluator` |
+| `EvolutionError` | `src.evolve` |
+| `LLMError` | `src.llm` |
+| `PromptError` | `src.prompt_sampler` |
+| `DatabaseError` | `src.database` |
 
 ## Configuration
 
-### Environment Variables
-
-- `GOOGLE_API_KEY`: Google Gemini API key
-- `CADENCE_DB_PATH`: Database file path (default: "cadence_db.sqlite")
-- `CADENCE_LOG_LEVEL`: Logging level (DEBUG, INFO, WARN, ERROR)
-- `CADENCE_TIMEOUT`: Default execution timeout in seconds
-
-### Configuration Files
-
-Configuration can be loaded from JSON files:
-
-```python
-{
-    "evolution": {
-        "population_size": 20,
-        "generations": 100,
-        "mutation_rate": 0.8
-    },
-    "llm": {
-        "provider": "google",
-        "model": "gemini-pro",
-        "temperature": 0.7,
-        "max_tokens": 2048
-    },
-    "evaluation": {
-        "timeout": 30,
-        "num_seeds": 10,
-        "parallel": true
-    }
-}
-```
-
-## Error Handling
-
-### Custom Exceptions
-
-```python
-class CadenceError(Exception):
-    """Base exception for Cadence-specific errors."""
-
-class TaskError(CadenceError):
-    """Raised when task operations fail."""
-
-class LLMError(CadenceError):
-    """Raised when LLM operations fail."""
-
-class DatabaseError(CadenceError):
-    """Raised when database operations fail."""
-
-class EvaluationError(CadenceError):
-    """Raised when program evaluation fails."""
-```
-
-### Error Codes
-
-- `TASK_001`: Invalid task configuration
-- `LLM_001`: API key not found
-- `LLM_002`: Rate limit exceeded
-- `LLM_003`: Invalid response format
-- `DB_001`: Database connection failed
-- `DB_002`: Query execution failed
-- `EVAL_001`: Program compilation failed
-- `EVAL_002`: Execution timeout
-- `EVAL_003`: Runtime error
-
-## Type Hints
-
-Complete type definitions for all public APIs:
-
-```python
-from typing import Dict, List, Optional, Tuple, Union, Any
-
-ProgramCode = str
-Cost = float
-Generation = int
-ProgramID = int
-EvaluationResult = Dict[str, Union[float, bool, Dict[str, Any]]]
-Cities = List[Tuple[float, float]]
-Tour = List[int]
-```
-
-## Constants
-
-```python
-# Default configuration values
-DEFAULT_POPULATION_SIZE = 10
-DEFAULT_GENERATIONS = 50
-DEFAULT_TIMEOUT = 30
-DEFAULT_NUM_SEEDS = 5
-
-# Database schema version
-DB_VERSION = "1.0.0"
-
-# Supported LLM providers
-SUPPORTED_PROVIDERS = ["google", "openai"]
-
-# Code block markers
-START_MARKER = "### START_BLOCK"
-END_MARKER = "### END_BLOCK"
-```
+There are no `CADENCE_*` environment variables. The only one Cadence reads is
+`GEMINI_API_KEY` — see [Configuration](../configuration.md).

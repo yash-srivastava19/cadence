@@ -227,7 +227,7 @@ tests/
 │   ├── test_evolve.py
 │   └── test_llm.py
 ├── integration/       # Integration tests
-│   ├── test_evolution_system.py
+│   ├── test_evaluator.py
 │   └── test_database_integration.py
 ├── performance/       # Performance tests
 │   └── test_benchmarks.py
@@ -307,45 +307,37 @@ def example():
 **Integration Test Example:**
 ```python
 import pytest
+
+from src.evaluator import execute
 from src.tasks.tsp_task import TSPTask
-from src.database import Database
-from src.llm import MockLLM
-from src.evolution_system import EvolutionSystem
 
-class TestEvolutionSystem:
-    """Integration tests for the complete evolution system."""
 
+class TestEvaluation:
     @pytest.fixture
-    def evolution_system(self, tmp_path):
-        """Create evolution system with mocked dependencies."""
-        db_path = tmp_path / "test.sqlite"
-        task = TSPTask(n_cities=5)
-        llm = MockLLM()
+    def task(self):
+        return TSPTask(n_cities=8)
 
-        return EvolutionSystem(
-            task=task,
-            database_path=str(db_path),
-            llm=llm
-        )
+    def test_baseline_is_feasible(self, task):
+        result = execute(task.baseline_program, task)
+        assert result["feasibility"] == 1.0
+        assert result["cost"] < 1e8
 
-    def test_single_generation_evolution(self, evolution_system):
-        """Test evolving for one generation."""
-        result = evolution_system.evolve(generations=1)
-
-        assert result["generations_completed"] == 1
-        assert result["best_cost"] is not None
-        assert result["population_size"] > 0
-
-    def test_evolution_improves_over_time(self, evolution_system):
-        """Test that evolution generally improves solutions."""
-        result = evolution_system.evolve(generations=10)
-
-        initial_cost = result["cost_history"][0]
-        final_cost = result["cost_history"][-1]
-
-        # Allow for some variance, but expect general improvement
-        assert final_cost <= initial_cost * 1.1
+    def test_broken_program_is_infeasible(self, task):
+        broken = "### START_BLOCK\ndef tsp(cities):\n    return [0, 0, 0]\n### END_BLOCK"
+        assert execute(broken, task)["cost"] == 1e8
 ```
+
+There is no `MockLLM` and no `EvolutionSystem`. Tests that need a model
+should mock `src.llm.generate` with `pytest-mock`, which is already a
+dependency:
+
+```python
+def test_generation_uses_the_prompt(mocker):
+    fake = mocker.patch("src.llm.generate", return_value=["def tsp(c): return []"])
+    ...
+    assert fake.called
+```
+
 
 ### Test Configuration
 
@@ -493,7 +485,7 @@ Brief description of changes
 
 1. **Implement LLM Interface**
    ```python
-   from src.llm import BaseLLM
+   from src.llm import LLMProvider
 
    class NewProviderLLM(BaseLLM):
        def __init__(self, api_key: str, model: str):

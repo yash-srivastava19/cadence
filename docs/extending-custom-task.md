@@ -1,61 +1,13 @@
-# Extending Cadence with a Custom Task
+# Extending Cadence
 
-Cadence is designed to be easily extensible. You can define your own optimization or code synthesis problem by subclassing the abstract `Task` interface.
+Cadence works on any problem you can score. To add one, implement the `Task`
+interface: `function_name`, `generate_inputs`, `evaluate`, and
+`baseline_program`.
 
-## 1. Create a New Task Class
+**[Tasks](tasks.md) is the full guide**, with a complete worked knapsack
+example, the rules about cost direction and determinism, and how to check that
+your scoring function can tell a good program from a bad one before you spend
+anything on a run.
 
-Inherit from `src.task.Task` and implement required methods:
-
-```python
-# src/tasks/my_custom_task.py
-from src.task import Task
-from src.models import EvaluationResult
-
-class MyCustomTask(Task):
-    @property
-    def function_name(self) -> str:
-        return "solve"
-
-    @property
-    def task_type(self):
-        return TaskType.CUSTOM  # or define a new TaskType
-
-    def generate_inputs(self, seed: int):
-        # Generate test inputs deterministically
-        random.seed(seed)
-        return ...
-
-    def evaluate(self, output, inputs) -> EvaluationResult:
-        try:
-            # Score your output, lower is better
-            cost = ...
-            return EvaluationResult(cost=cost, feasible=True)
-        except Exception as e:
-            return EvaluationResult(cost=float('inf'), feasible=False, error=str(e))
-
-    @property
-    def baseline_program(self) -> str:
-        # Provide a working template with evolution markers
-        return '''### START_BLOCK
-# initial code
-def solve(inputs):
-    ...
-### END_BLOCK'''
-```
-
-## 2. Register and Use in Experiments
-
-Import your task in `main.py` or experiment scripts:
-
-```python
-from src.tasks.my_custom_task import MyCustomTask
-
-task = MyCustomTask()
-# Run evolution, evaluation, etc.
-```
-
-## 3. Tips and Best Practices
-
-- Keep `generate_inputs` fast and deterministic.
-- Provide clear baseline code with marked blocks.
-- Use `EvaluationResult` for rich feedback (cost, feasible, error).
+This page used to carry a second, shorter copy of that walkthrough. Two
+versions of the one thing every user must write is one version too many.

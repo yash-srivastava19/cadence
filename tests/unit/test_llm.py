@@ -2,10 +2,29 @@
 Tests for the LLM module.
 """
 
-from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
+from unittest.mock import patch
 import os
 
 from src.llm import mutate_instruction, generate, extract_valid_blocks
+
+
+def _api_response(text: str) -> SimpleNamespace:
+    """A stand-in for the google-genai response object.
+
+    Deliberately not a MagicMock. `_make_request` reads `prompt_token_count`,
+    `candidates_token_count` and `finish_reason` off whatever comes back and
+    feeds them to `LLMResponse`, whose fields are typed. A MagicMock auto-creates
+    those attributes as Mocks, pydantic rejects them, the retry loop swallows the
+    error, and `generate()` falls back to parsing the prompt -- so the test ends
+    up asserting on a path that never called the model at all.
+    """
+    return SimpleNamespace(
+        text=text,
+        prompt_token_count=None,
+        candidates_token_count=None,
+        finish_reason=None,
+    )
 
 
 class TestLLM:
@@ -15,9 +34,9 @@ class TestLLM:
     def test_mutate_instruction_success(self, mock_client):
         """Test successful instruction mutation."""
         # Mock successful response
-        mock_response = MagicMock()
-        mock_response.text = "Improved instruction text"
-        mock_client.models.generate_content.return_value = mock_response
+        mock_client.models.generate_content.return_value = _api_response(
+            "Improved instruction text"
+        )
 
         base_instruction = "Original instruction"
         result = mutate_instruction(base_instruction)
@@ -41,12 +60,12 @@ class TestLLM:
         # Should return original instruction on failure
         assert result == base_instruction
 
-    @patch("src.llm.client")
+    @patch("src.llm._default_provider._client")
     def test_generate_success(self, mock_client):
         """Test successful code generation."""
         # Mock successful response with code blocks
-        mock_response = MagicMock()
-        mock_response.text = """
+        mock_client.models.generate_content.return_value = _api_response(
+            """
 Here's the improved code:
 
 ### START_BLOCK
@@ -61,7 +80,7 @@ def another_function():
     return "more code"
 ### END_BLOCK
 """
-        mock_client.models.generate_content.return_value = mock_response
+        )
 
         prompt = "Improve this code"
         result = generate(prompt)
@@ -72,7 +91,7 @@ def another_function():
         assert 'return "better code"' in result[0]
         assert 'return "more code"' in result[1]
 
-    @patch("src.llm.client")
+    @patch("src.llm._default_provider._client")
     def test_generate_failure(self, mock_client):
         """Test code generation with API failure."""
         # Mock API failure
@@ -84,13 +103,13 @@ def another_function():
         # Should return empty list on failure
         assert result == []
 
-    @patch("src.llm.client")
+    @patch("src.llm._default_provider._client")
     def test_generate_no_blocks(self, mock_client):
         """Test generation with no valid blocks."""
         # Mock response with no code blocks
-        mock_response = MagicMock()
-        mock_response.text = "Here's some text but no code blocks"
-        mock_client.models.generate_content.return_value = mock_response
+        mock_client.models.generate_content.return_value = _api_response(
+            "Here's some text but no code blocks"
+        )
 
         prompt = "Improve this code"
         result = generate(prompt)
