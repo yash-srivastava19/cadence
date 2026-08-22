@@ -45,14 +45,16 @@ jobs:
         run: pytest tests/test_docs.py -q
 
       # Every test mocks its model calls, so a placeholder key is enough.
-      - name: Create the application role
+      - name: Create the roles and the test database
         env:
           PGPASSWORD: cadence
         run: |
-          psql -h localhost -p 5433 -U cadence -d cadence -f ops/initdb/01-roles.sql
+          for script in ops/initdb/*.sql; do
+            psql -v ON_ERROR_STOP=1 -h localhost -p 5433 -U cadence -d cadence -f "$script"
+          done
 
       - name: Run tests
         env:
-          DATABASE_URL: postgresql://cadence:cadence@localhost:5433/cadence
-          DATABASE_APP_URL: postgresql://cadence_app:cadence_app@localhost:5433/cadence
+          TEST_DATABASE_URL: postgresql://cadence:cadence@localhost:5433/cadence_test
+          TEST_DATABASE_APP_URL: postgresql://cadence_app:cadence_app@localhost:5433/cadence_test
         run: pytest tests/ -q

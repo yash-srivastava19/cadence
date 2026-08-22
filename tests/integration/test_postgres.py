@@ -2,12 +2,12 @@ import os
 
 import pytest
 
-OWNER = os.environ.get("DATABASE_URL")
-APP = os.environ.get("DATABASE_APP_URL")
+OWNER = os.environ.get("TEST_DATABASE_URL")
+APP = os.environ.get("TEST_DATABASE_APP_URL")
 
 if not (OWNER and APP):
     pytest.skip(
-        "needs DATABASE_URL and DATABASE_APP_URL; run 'docker compose up -d'",
+        "needs TEST_DATABASE_URL and TEST_DATABASE_APP_URL; run 'docker compose up -d'",
         allow_module_level=True,
     )
 
@@ -35,6 +35,15 @@ def audit_table():
 def test_the_database_is_reachable():
     with psycopg.connect(OWNER) as connection:
         assert connection.execute("select 1").fetchone() == (1,)
+
+
+def test_the_suite_is_not_pointed_at_the_development_database():
+    with psycopg.connect(OWNER) as connection:
+        assert (
+            connection.execute("select current_database()")
+            .fetchone()[0]
+            .endswith("_test")
+        )
 
 
 def test_the_application_role_is_not_the_owner():
