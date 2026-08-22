@@ -53,7 +53,6 @@ jobs:
 
       - name: Run tests
         env:
-          GEMINI_API_KEY: not-a-real-key
           DATABASE_URL: postgresql://cadence:cadence@localhost:5433/cadence
           DATABASE_APP_URL: postgresql://cadence_app:cadence_app@localhost:5433/cadence
         run: pytest tests/ -q

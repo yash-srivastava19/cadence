@@ -56,7 +56,7 @@ class TestLLM:
         # Should return original instruction on failure
         assert result == base_instruction
 
-    @patch("src.llm._default_provider._client")
+    @patch("src.llm.client")
     def test_generate_success(self, mock_client):
         """Test successful code generation."""
         # Mock successful response with code blocks
@@ -87,7 +87,7 @@ def another_function():
         assert 'return "better code"' in result[0]
         assert 'return "more code"' in result[1]
 
-    @patch("src.llm._default_provider._client")
+    @patch("src.llm.client")
     def test_generate_failure(self, mock_client):
         """Test code generation with API failure."""
         # Mock API failure
@@ -99,7 +99,7 @@ def another_function():
         # Should return empty list on failure
         assert result == []
 
-    @patch("src.llm._default_provider._client")
+    @patch("src.llm.client")
     def test_generate_no_blocks(self, mock_client):
         """Test generation with no valid blocks."""
         # Mock response with no code blocks
@@ -235,13 +235,15 @@ def complex_function(cities):
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
     @patch("src.llm.genai.Client")
     def test_client_initialization(self, mock_genai_client):
-        """Test that client is properly initialized with API key."""
-        # Re-import to trigger initialization
+        """The client is built on first use, not at import."""
         import importlib
+
         import src.llm
 
         importlib.reload(src.llm)
+        mock_genai_client.assert_not_called()
 
+        src.llm._provider()
         mock_genai_client.assert_called_with(api_key="test_key")
 
     def test_extract_valid_blocks_empty_blocks(self):

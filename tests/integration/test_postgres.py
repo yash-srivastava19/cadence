@@ -2,14 +2,16 @@ import os
 
 import pytest
 
-psycopg = pytest.importorskip("psycopg")
-
 OWNER = os.environ.get("DATABASE_URL")
 APP = os.environ.get("DATABASE_APP_URL")
 
-pytestmark = pytest.mark.skipif(
-    not (OWNER and APP), reason="needs DATABASE_URL and DATABASE_APP_URL"
-)
+if not (OWNER and APP):
+    pytest.skip(
+        "needs DATABASE_URL and DATABASE_APP_URL; run 'docker compose up -d'",
+        allow_module_level=True,
+    )
+
+psycopg = pytest.importorskip("psycopg", reason="run 'pip install -e .'")
 
 
 @pytest.fixture
