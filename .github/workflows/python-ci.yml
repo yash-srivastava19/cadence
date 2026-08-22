@@ -25,17 +25,10 @@ jobs:
       - name: Run pre-commit
         run: pre-commit run --all-files
 
-      # Kept as its own step so a docs failure reads as a docs failure. Every
-      # Python example in docs/ and the README is compiled, every symbol it
-      # imports is resolved against the source tree, every script it tells you
-      # to run is checked to exist, and every environment variable it tells you
-      # to set is checked to be one the code actually reads.
+      # Its own step so a docs failure reads as a docs failure.
       - name: Check the documentation against the code
         run: pytest tests/test_docs.py -q
 
-      # No exclusions. The suite used to deselect one test by hard-coded node id,
-      # which hid a broken mock rather than a test needing credentials -- and
-      # would have stopped excluding anything the moment the test was renamed.
       # Every test mocks its model calls, so a placeholder key is enough.
       - name: Run tests
         env:

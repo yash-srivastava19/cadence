@@ -1,18 +1,9 @@
-"""Docs are tested like code.
+"""Check the documentation against the code.
 
-Every Python example in the documentation is compiled, every symbol it imports
-is checked against the source tree, every script it tells you to run is checked
-to exist, and every environment variable it tells you to set is checked to be
-read by something.
+Compiles every Python example, resolves every symbol it imports, checks every
+script it names exists, and checks every environment variable it names is read.
 
-This suite exists because the docs once shipped a broken import line, a config
-page describing thirteen environment variables that were never read, and a
-setup step naming the wrong API key. All of that passed CI, because nothing
-looked.
-
-To exempt a block that is deliberately not runnable -- pseudocode, a sketch of
-a file you are about to write -- put ``<!-- docs-test: skip -->`` on the line
-before its opening fence.
+Opt a block out with ``<!-- docs-test: skip -->`` on the line before its fence.
 """
 
 from __future__ import annotations
@@ -40,13 +31,10 @@ IMPORT = re.compile(
 )
 ENV_VAR = re.compile(r"\b(CADENCE_[A-Z0-9_]+|[A-Z0-9_]*API_KEY)\b")
 SCRIPT = re.compile(r"^\s*(?:\$\s*)?python3?\s+(?P<path>[\w./-]+\.py)", re.MULTILINE)
-# A page naming a variable in order to say it does NOT exist declares it here.
 ALLOW_ENV = re.compile(r"<!--\s*docs-test:\s*allow-env\s+(?P<names>[^>]+?)\s*-->")
 
-# Names allowed to appear in prose without being read by the code:
-# placeholders, other vendors' keys, and the two wrong names the docs used to
-# tell people to set -- which are worth naming so a search for them lands on
-# the correction.
+# Placeholders and other vendors' keys, plus two names the docs mention only to
+# say Cadence does not use them.
 ENV_ALLOWED_IN_PROSE = {
     "YOUR_API_KEY",
     "OPENAI_API_KEY",
@@ -94,7 +82,7 @@ def _module_path(dotted: str) -> Path | None:
 
 
 def _public_names(path: Path) -> set[str]:
-    """Top-level names a module exports, read statically -- no import, no side effects."""
+    """Top-level names a module exports. Static, so importing has no side effects."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     names: set[str] = set()
     for node in tree.body:
@@ -115,7 +103,7 @@ assert PY_BLOCKS, "no ```python blocks found -- the extractor is broken, not the
 
 @pytest.mark.parametrize("block", PY_BLOCKS, ids=str)
 def test_python_example_is_valid_python(block: Block) -> None:
-    """A reader copies this. It has to parse."""
+    """A reader copies this, so it has to parse."""
     try:
         compile(block.body, str(block.doc), "exec")
     except SyntaxError as exc:
@@ -190,11 +178,7 @@ def _source_text() -> str:
 
 @pytest.mark.parametrize("doc", DOC_FILES, ids=lambda p: str(p.relative_to(REPO)))
 def test_documented_env_vars_are_read(doc: Path) -> None:
-    """An environment variable in the docs is one the code actually reads.
-
-    Thirteen invented `CADENCE_*` variables is how the configuration page got to
-    1500 lines while describing nothing.
-    """
+    """An environment variable in the docs is one the code actually reads."""
     if not doc.exists():
         pytest.skip(f"{doc.name} not present")
     source = _source_text()

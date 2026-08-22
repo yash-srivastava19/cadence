@@ -12,12 +12,8 @@ from src.llm import mutate_instruction, generate, extract_valid_blocks
 def _api_response(text: str) -> SimpleNamespace:
     """A stand-in for the google-genai response object.
 
-    Deliberately not a MagicMock. `_make_request` reads `prompt_token_count`,
-    `candidates_token_count` and `finish_reason` off whatever comes back and
-    feeds them to `LLMResponse`, whose fields are typed. A MagicMock auto-creates
-    those attributes as Mocks, pydantic rejects them, the retry loop swallows the
-    error, and `generate()` falls back to parsing the prompt -- so the test ends
-    up asserting on a path that never called the model at all.
+    Not a MagicMock: `_make_request` passes `prompt_token_count` and friends to
+    the typed `LLMResponse`, and auto-created Mock attributes fail validation.
     """
     return SimpleNamespace(
         text=text,
