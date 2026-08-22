@@ -1,9 +1,11 @@
-from collections.abc import Mapping
+from collections.abc import Generator, Mapping, Sequence
 from typing import Annotated, Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
-__all__ = ["Metrics", "Directive", "Task", "Objective"]
+from cadence.verdict import Verdict
+
+__all__ = ["Metrics", "Directive", "Attempt", "Task", "Objective", "Method", "Search"]
 
 Metrics = Mapping[str, float]
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -31,6 +33,21 @@ class Task(Protocol):
     def score(self, output: Any, inputs: Any) -> Metrics: ...
 
 
+class Attempt(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
+
+    code: NonBlank
+    verdict: Verdict
+
+
+Search = Generator[Directive, "Attempt | None", None]
+
+
 @runtime_checkable
 class Objective(Protocol):
     def dominates(self, a: Metrics, b: Metrics) -> bool: ...
+
+
+@runtime_checkable
+class Method(Protocol):
+    def search(self, seeds: Sequence[str], budget: int) -> Search: ...

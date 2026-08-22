@@ -1,12 +1,12 @@
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, NamedTuple
 
-from cadence.backends import Backend
+from cadence.backends import Backend, Completion
 from cadence.exceptions import PatchError, RetryableModelError
 from cadence.interfaces import Directive
 from cadence.verdict import Proposal
 
-__all__ = ["TEMPLATES", "render", "parse_patch", "Model"]
+__all__ = ["TEMPLATES", "render", "parse_patch", "Suggestion", "Model"]
 
 IMPROVE = """\
 You are improving a program.
@@ -46,6 +46,11 @@ def parse_patch(text: str) -> tuple[str, ...]:
     return lines
 
 
+class Suggestion(NamedTuple):
+    proposal: Proposal
+    completion: Completion
+
+
 class Model:
     def __init__(
         self, backend: Backend, template: str = "improve", attempts: int = 3
@@ -63,16 +68,17 @@ class Model:
             "hint": directive.hint,
         }
 
-    def propose(self, directive: Directive) -> Proposal:
+    def propose(self, directive: Directive) -> Suggestion:
         recipe = self.recipe(directive)
         prompt = render(recipe)
         completion = self._ask(prompt)
-        return Proposal(
+        proposal = Proposal(
             patch=parse_patch(completion.text),
             prompt=prompt,
             recipe=recipe,
             raw_response=completion.text,
         )
+        return Suggestion(proposal, completion)
 
     def _ask(self, prompt: str):
         for attempt in range(1, self.attempts + 1):

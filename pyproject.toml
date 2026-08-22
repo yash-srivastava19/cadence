@@ -23,6 +23,7 @@ dependencies = [
   "tqdm>=4.67.1",
   "python-statemachine>=3.2.1",
   "blinker>=1.9.0",
+  "whatthepatch>=1.0.7",
 ]
 
 [project.optional-dependencies]
