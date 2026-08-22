@@ -1,347 +1,206 @@
 # Tasks
 
-Tasks define the optimization problems that Cadence can solve. This document explains how to create custom tasks and work with existing ones.
+A `Task` is how you point Cadence at your own problem. It is the only thing
+you have to write, and it is four members long.
 
-## Task Interface
+This page is the canonical reference. If another page shows a shorter version,
+this one is right.
 
-All tasks inherit from the abstract `Task` class:
-
-```python
-from abc import ABC, abstractmethod
-
-class Task(ABC):
-    @property
-    @abstractmethod
-    def function_name(self) -> str:
-        """Name of the function to extract from evolved code."""
-
-    @abstractmethod
-    def generate_inputs(self, seed: int):
-        """Generate deterministic input for a given seed."""
-
-    @abstractmethod
-    def evaluate(self, output, input_data) -> float:
-        """Evaluate function output, return scalar cost (lower=better)."""
-
-    @property
-    @abstractmethod
-    def baseline_program(self) -> str:
-        """Return default working solution with marked blocks."""
-
-    def is_feasible(self, output, *args) -> bool:
-        """Check if output is feasible (override if needed)."""
-        return True
-```
-
-## Built-in Tasks
-
-### TSP Task
-
-The Traveling Salesman Problem task is included as a reference implementation.
+## The interface
 
 ```python
-from src.tasks.tsp_task import TSPTask
-
-# Create TSP task with 10 cities
-task = TSPTask(n_cities=10)
-
-# Generate test input
-cities = task.generate_inputs(seed=42)
-# Returns: [(x1, y1), (x2, y2), ..., (x10, y10)]
-
-# Evaluate a solution
-tour = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-result = task.evaluate(tour, cities)
-# Returns: {"cost": 245.67, "feasible": True}
-```
-
-**TSP Features:**
-- Configurable number of cities
-- Euclidean distance calculation
-- Feasibility checking (valid permutation)
-- Deterministic city placement
-
-## Creating Custom Tasks
-
-### Step 1: Define the Problem
-
-Create a new task class inheriting from `Task`:
-
-```python
-# src/tasks/knapsack_task.py
-import random
 from src.task import Task
+from src.models import EvaluationResult
+```
+
+| Member | Kind | Returns | Does |
+| --- | --- | --- | --- |
+| `function_name` | property | `str` | Names the function Cadence pulls out of the evolved code |
+| `generate_inputs` | method | anything | Builds one problem instance from a seed, deterministically |
+| `evaluate` | method | `EvaluationResult` | Scores one output. Lower cost is better |
+| `baseline_program` | property | `str` | The starting program, with evolution markers |
+
+Two more are optional and default to permissive:
+
+| Member | Default | Override when |
+| --- | --- | --- |
+| `task_type` | `TaskType.CUSTOM` | You want the type recorded in the database |
+| `is_feasible` | always `True` | Feasibility is cheaper to check separately from scoring |
+
+## A complete example
+
+A knapsack task, start to finish. Nothing is elided.
+
+```python
+import random
+from typing import Any, Dict, List
+
+from src.task import Task
+from src.models import EvaluationResult
+
 
 class KnapsackTask(Task):
-    def __init__(self, n_items=20, capacity=100):
+    """Pack the most value into a fixed-capacity bag."""
+
+    def __init__(self, n_items: int = 20) -> None:
         self.n_items = n_items
-        self.capacity = capacity
 
     @property
-    def function_name(self):
+    def function_name(self) -> str:
         return "knapsack"
-```
 
-### Step 2: Implement Input Generation
+    def generate_inputs(self, seed: int) -> Dict[str, Any]:
+        rng = random.Random(seed)
+        items = [
+            {"weight": rng.randint(1, 30), "value": rng.randint(1, 100)}
+            for _ in range(self.n_items)
+        ]
+        return {"items": items, "capacity": 100}
 
-Generate deterministic test cases:
+    def evaluate(self, output: Any, input_data: Any) -> EvaluationResult:
+        items = input_data["items"]
+        capacity = input_data["capacity"]
 
-```python
-def generate_inputs(self, seed: int):
-    random.seed(seed)
+        if not isinstance(output, list):
+            return EvaluationResult(
+                cost=1e8, feasible=False, error=f"expected a list, got {type(output)}"
+            )
+        if any(not isinstance(i, int) or not 0 <= i < len(items) for i in output):
+            return EvaluationResult(
+                cost=1e8, feasible=False, error="index out of range"
+            )
+        if len(set(output)) != len(output):
+            return EvaluationResult(
+                cost=1e8, feasible=False, error="an item was packed twice"
+            )
 
-    # Generate items: (weight, value) pairs
-    items = []
-    for _ in range(self.n_items):
-        weight = random.randint(1, 20)
-        value = random.randint(1, 100)
-        items.append((weight, value))
+        weight = sum(items[i]["weight"] for i in output)
+        if weight > capacity:
+            return EvaluationResult(
+                cost=1e8,
+                feasible=False,
+                error=f"over capacity: {weight} > {capacity}",
+            )
 
-    return {
-        "items": items,
-        "capacity": self.capacity
-    }
-```
+        value = sum(items[i]["value"] for i in output)
+        # Cadence minimises, so return negated value shifted positive.
+        total = sum(i["value"] for i in items)
+        return EvaluationResult(cost=float(total - value), feasible=True)
 
-### Step 3: Implement Evaluation
-
-Define how solutions are scored:
-
-```python
-def evaluate(self, output, input_data) -> float:
+    @property
+    def baseline_program(self) -> str:
+        return '''### START_BLOCK
+def knapsack(input_data):
+    """Greedy by value. Deliberately mediocre — evolution has room to work."""
     items = input_data["items"]
     capacity = input_data["capacity"]
-
-    if not self.is_feasible(output, input_data):
-        return {"cost": float("inf"), "feasible": False}
-
-    # Calculate total weight and value
-    total_weight = sum(items[i][0] for i in output)
-    total_value = sum(items[i][1] for i in output)
-
-    # Return negative value (since lower cost = better)
-    return {"cost": -total_value, "feasible": True}
-
-def is_feasible(self, output, input_data):
-    items = input_data["items"]
-    capacity = input_data["capacity"]
-
-    # Check valid indices
-    if not all(0 <= i < len(items) for i in output):
-        return False
-
-    # Check capacity constraint
-    total_weight = sum(items[i][0] for i in output)
-    return total_weight <= capacity
+    order = sorted(range(len(items)), key=lambda i: -items[i]["value"])
+    chosen, used = [], 0
+    for i in order:
+        if used + items[i]["weight"] <= capacity:
+            chosen.append(i)
+            used += items[i]["weight"]
+    return chosen
+### END_BLOCK'''
 ```
 
-### Step 4: Define Baseline Program
-
-Provide a working template with marked evolution blocks:
+Run it:
 
 ```python
-@property
-def baseline_program(self) -> str:
-    return '''
-def knapsack(items, capacity):
-    """Solve knapsack problem."""
-    ### START_BLOCK
-    # Simple greedy approach: highest value first
-    n = len(items)
-    indices = list(range(n))
-    indices.sort(key=lambda i: items[i][1], reverse=True)
+from src.evaluator import execute
 
-    selected = []
-    current_weight = 0
-
-    for i in indices:
-        weight, value = items[i]
-        if current_weight + weight <= capacity:
-            selected.append(i)
-            current_weight += weight
-
-    return selected
-    ### END_BLOCK
-'''
+task = KnapsackTask(n_items=20)
+print(execute(task.baseline_program, task))
 ```
 
-### Step 5: Register and Use
+That prints `{'cost': ..., 'feasibility': 1.0}`. A feasibility below `1.0`
+means some seeds failed, and is the first thing to check.
+
+## The four rules
+
+### 1. Lower cost is better, always
+
+`EvaluationResult.cost` is minimised. A maximisation problem must be negated
+or subtracted from a constant, as the knapsack example does. Cost must also be
+non-negative — the model validator rejects negatives.
+
+For a failure, return `cost=1e8` (`INFEASIBLE_COST` in `src/evaluator.py`) and
+`feasible=False`. Anything non-finite is normalised to that value anyway.
+
+### 2. `generate_inputs` must be deterministic
+
+The same seed must produce the same instance forever, or scores from
+different generations are not comparable and the search is measuring noise.
+
+Use `random.Random(seed)`, not `random.seed(seed)`. The module-level version
+mutates global state that your evolved program also uses.
+
+### 3. Always fill in `error`
 
 ```python
-# In main.py or experiment script
-from src.tasks.knapsack_task import KnapsackTask
-
-task = KnapsackTask(n_items=50, capacity=200)
-# Use with evolution system...
+EvaluationResult(cost=1e8, feasible=False, error="tour revisits city 3")
 ```
 
-## Task Design Guidelines
+The string costs nothing and is the difference between a debuggable run and a
+column of `1e8`.
 
-### Input Generation
+Be aware of a current limitation: `execute()` collects these strings per seed
+and then drops them when aggregating, so they do not reach the next prompt.
+They do reach you, through `evaluate_on_task()`, when you call it directly.
 
-**Use Deterministic Seeds:**
-```python
-def generate_inputs(self, seed: int):
-    random.seed(seed)  # Ensures reproducible inputs
-    # Generate test case...
+### 4. Mark exactly what may change
+
+```text
+### START_BLOCK
+def knapsack(input_data):
+    ...
+### END_BLOCK
 ```
 
-**Return Structured Data:**
-```python
-# Good: structured dictionary
-return {
-    "nodes": graph_nodes,
-    "edges": graph_edges,
-    "constraints": constraints
-}
+Everything between the markers is what the model rewrites. Everything outside
+is fixed, and the prompt tells the model so.
 
-# Avoid: positional arguments
-return graph_nodes, graph_edges, constraints
-```
+Keep imports and helper functions **outside** the markers if the model must not
+touch them — but remember that the whole file is executed, so anything the
+evolved function needs must be somewhere in it.
 
-### Evaluation Metrics
+A baseline with no markers produces no valid diff, and every generation fails.
 
-**Return Detailed Results:**
-```python
-def evaluate(self, output, input_data) -> dict:
-    return {
-        "cost": primary_objective,
-        "feasible": is_valid,
-        "secondary_metrics": {
-            "execution_time": time_taken,
-            "memory_usage": memory_used
-        }
-    }
-```
+## Using your task
 
-**Handle Edge Cases:**
-```python
-def evaluate(self, output, input_data) -> dict:
-    # Handle None/invalid output
-    if output is None:
-        return {"cost": float("inf"), "feasible": False}
-
-    # Handle exceptions gracefully
-    try:
-        cost = compute_cost(output, input_data)
-    except Exception as e:
-        return {"cost": float("inf"), "feasible": False, "error": str(e)}
-
-    return {"cost": cost, "feasible": True}
-```
-
-### Baseline Programs
-
-**Include Evolution Blocks:**
-```python
-@property
-def baseline_program(self) -> str:
-    return '''
-def solve_problem(input_data):
-    """Problem description."""
-
-    ### START_BLOCK
-    # Initial solution approach
-    # This block will be evolved by LLM
-    ### END_BLOCK
-
-    # Helper functions (not evolved)
-    def helper_function():
-        pass
-
-    ### START_BLOCK
-    # Another evolvable section
-    ### END_BLOCK
-'''
-```
-
-**Provide Working Solutions:**
-Ensure the baseline program runs without errors:
+Replace the task in whichever entry script you are running:
 
 ```python
-# Test your baseline
-task = YourTask()
-baseline = task.baseline_program
-inputs = task.generate_inputs(42)
+from src.evaluator import execute
 
-# This should work
-exec(baseline)
-result = solve_problem(inputs)
-evaluation = task.evaluate(result, inputs)
-assert evaluation["feasible"] == True
+task = KnapsackTask(n_items=30)
+result = execute(task.baseline_program, task)
 ```
 
-## Multi-Objective Tasks
+`main.py` and the experiment scripts construct `TSPTask` directly; swap that
+line for your own class.
 
-For problems with multiple objectives:
+## Checking your task before you spend money
+
+Score the baseline, then score something you know is worse. If they land close
+together, your scoring function cannot tell them apart, and evolution has
+nothing to climb.
 
 ```python
-class MultiObjectiveTask(Task):
-    def evaluate(self, output, input_data) -> dict:
-        obj1 = compute_objective1(output, input_data)
-        obj2 = compute_objective2(output, input_data)
+from src.evaluator import execute
 
-        # Weighted combination
-        cost = 0.7 * obj1 + 0.3 * obj2
+task = KnapsackTask(n_items=20)
 
-        return {
-            "cost": cost,
-            "feasible": self.is_feasible(output, input_data),
-            "objectives": {
-                "obj1": obj1,
-                "obj2": obj2
-            }
-        }
+worse = task.baseline_program.replace(
+    'key=lambda i: -items[i]["value"]', "key=lambda i: i"
+)
+print("baseline:", execute(task.baseline_program, task)["cost"])
+print("worse:   ", execute(worse, task)["cost"])
 ```
 
-## Testing Tasks
+A spread far larger than the run-to-run variation means the task is ready.
 
-Create comprehensive tests for your tasks:
+## See also
 
-```python
-# tests/tasks/test_knapsack_task.py
-import pytest
-from src.tasks.knapsack_task import KnapsackTask
-
-class TestKnapsackTask:
-    def test_input_generation(self):
-        task = KnapsackTask(n_items=10)
-        inputs = task.generate_inputs(42)
-
-        assert len(inputs["items"]) == 10
-        assert inputs["capacity"] == 100
-
-        # Test determinism
-        inputs2 = task.generate_inputs(42)
-        assert inputs == inputs2
-
-    def test_evaluation(self):
-        task = KnapsackTask(n_items=5, capacity=50)
-        inputs = task.generate_inputs(1)
-
-        # Test valid solution
-        solution = [0, 2, 4]  # Select some items
-        result = task.evaluate(solution, inputs)
-        assert result["feasible"] == True
-        assert isinstance(result["cost"], (int, float))
-
-    def test_feasibility(self):
-        task = KnapsackTask(n_items=5, capacity=10)
-        inputs = {
-            "items": [(5, 10), (3, 6), (4, 8), (2, 4), (6, 12)],
-            "capacity": 10
-        }
-
-        assert task.is_feasible([0, 1], inputs) == True   # weight=8, ok
-        assert task.is_feasible([0, 4], inputs) == False  # weight=11, too heavy
-        assert task.is_feasible([5], inputs) == False     # invalid index
-```
-
-## Best Practices
-
-1. **Keep it Simple**: Start with basic implementations and iterate
-2. **Test Thoroughly**: Ensure baseline programs work correctly
-3. **Document Well**: Clear docstrings and comments
-4. **Handle Errors**: Graceful handling of invalid outputs
-5. **Use Type Hints**: Better code clarity and IDE support
-6. **Benchmark**: Compare evolved solutions against known optimal ones
+- [Evolution pipeline](evolution.md) — what happens to your task each generation
+- [API reference](api/index.md) — exact signatures

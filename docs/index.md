@@ -1,97 +1,89 @@
-# Cadence: Evolutionary Programming with Large Language Models
+# Cadence
 
-Cadence is a framework for evolving programs using Large Language Models (LLMs) as the mutation operator. The system iteratively generates, evaluates, and improves code solutions through an evolutionary process, currently focused on optimization problems like the Traveling Salesman Problem (TSP).
+Cadence improves a program by rewriting it over and over. A language model
+proposes an edit, Cadence runs the result against a scoring function you
+provide, keeps what scored better, and repeats.
 
-## What is Cadence?
+You supply two things: a program with the editable region marked, and a way to
+score it. Cadence supplies the loop.
 
-Cadence implements a novel approach to automated program synthesis and optimization by combining:
-
-- **Evolutionary Algorithms**: Population-based search with selection, mutation, and fitness evaluation
-- **Large Language Models**: Code generation and modification capabilities
-- **Structured Code Evolution**: Block-based mutations within well-defined program templates
-- **Empirical Evaluation**: Performance-driven selection using actual program execution
-
-## Key Features
-
-- **LLM-Driven Evolution**: Uses language models to generate program variations rather than traditional genetic operators
-- **Block-Based Mutations**: Structured approach to code modification using marked regions
-- **Multi-Objective Optimization**: Balances solution quality with code complexity and execution time
-- **Extensible Task Framework**: Abstract base classes allow easy addition of new optimization problems
-- **Comprehensive Logging**: SQLite-based storage of evolution history and performance metrics
-- **Web Interface**: Real-time visualization of the evolutionary process
-- **Deterministic Evaluation**: Reproducible results using fixed random seeds
-
-## Architecture Overview
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Task Layer    │    │  Evolution      │    │   Evaluation    │
-│                 │    │   Engine        │    │    System       │
-│ • TSPTask       │◄──►│                 │◄──►│                 │
-│ • Custom Tasks  │    │ • Prompting     │    │ • Fitness       │
-│                 │    │ • LLM Interface │    │ • Validation    │
-└─────────────────┘    │ • Diff Apply    │    │ • Metrics       │
-                       └─────────────────┘    └─────────────────┘
-                                │
-                                ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│    Database     │    │   Web UI        │    │   Experiment    │
-│                 │    │                 │    │   Framework     │
-│ • Programs      │◄──►│ • Visualization │◄──►│                 │
-│ • Generations   │    │ • Monitoring    │    │ • A/B Testing   │
-│ • Performance   │    │ • Controls      │    │ • Analysis      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
-
-## Quick Start
+## Try it in five minutes
 
 ```bash
-# Clone and setup
 git clone https://github.com/yash-srivastava19/cadence
 cd cadence
 uv sync
-
-# Configure API keys
-export GOOGLE_API_KEY="your-key-here"
-
-# Run evolution
-python main.py
-
-# Launch web interface
-python ui/launch_ui.py
+export GEMINI_API_KEY="your-key-here"
+python run_h1_experiment.py
 ```
 
-## Documentation Structure
+That evolves a Traveling Salesman heuristic for 30 generations, then writes
+`h1_results.png` and `experiment_log.json` to the project root. It costs
+roughly 30 Gemini calls.
 
-- **[Getting Started](getting-started.md)**: Installation, setup, and first steps
-- **[Architecture](architecture.md)**: System design and component overview
-- **[API Reference](api/index.md)**: Detailed module and class documentation
-- **[Tasks](tasks.md)**: Creating custom optimization problems
-- **[Evolution](evolution.md)**: Understanding the evolutionary process
-- **[Configuration](configuration.md)**: System settings and parameters
-- **[Experiments](experiments.md)**: Running and analyzing experiments
-- **[Web Interface](web-interface.md)**: Using the visualization dashboard
-- **[Examples](examples.md)**: Code samples and tutorials
-- **[Contributing](contributing.md)**: Development guidelines and contribution process
+New here? [Getting started](getting-started.md) walks through the same run and
+explains what each part of the output means.
 
-## Research Background
+## How one generation works
 
-Cadence is inspired by research in:
+1. **Sample a parent.** Usually a program from the previous generation; every
+   `ELITISM_INTERVAL` generations, the best program found so far.
+2. **Build a prompt** from the parent, a few sibling programs as inspiration,
+   and the current lesson.
+3. **Ask the model to rewrite the marked block** — just that block, not the
+   whole file.
+4. **Swap it into the parent**, block for block, in order.
+5. **Score the child** on five fixed seeds, in parallel.
+6. **Store it** in SQLite with its cost, its parent, and the diff that made it.
 
-- **Automated Program Synthesis**: Generating programs from specifications
-- **Genetic Programming**: Evolutionary computation for program evolution
-- **Large Language Models for Code**: Leveraging LLMs for software engineering tasks
-- **Meta-Learning**: Learning to improve the learning process itself
+Every `LESSON_INTERVAL` generations, Cadence asks the model what it has learned
+from the run so far and prepends that to later prompts. Every
+`META_PROMPT_EDIT_INTERVAL` generations, it rewrites its own instruction text.
 
-The system addresses limitations of traditional genetic programming by using LLMs' understanding of code semantics and programming patterns to generate more meaningful mutations.
+## What you need to write
 
-## Use Cases
+Two things, both in your own code:
 
-- **Algorithm Optimization**: Evolving efficient solutions to computational problems
-- **Code Generation**: Automated creation of program variants
-- **Research Tool**: Studying LLM capabilities in program synthesis
-- **Educational Platform**: Understanding evolutionary computation and AI-assisted programming
+- **A baseline program** with the region to evolve wrapped in
+  `### START_BLOCK` and `### END_BLOCK`. Everything outside the markers is
+  fixed and the model is told not to touch it.
+- **A `Task` subclass** with four members: `function_name`, `generate_inputs`,
+  `evaluate`, and `baseline_program`.
 
-## License
+[Tasks](tasks.md) is the complete guide, with a worked knapsack example.
 
-MIT License - see [LICENSE](../LICENSE) for details.
+## What Cadence does not do yet
+
+Stated plainly, because finding out later wastes your time:
+
+- **One provider.** Google Gemini only. `LLMConfig.model` defaults to
+  `gemini-2.0-flash`.
+- **One objective.** `EvaluationResult.cost` is a single float, lower is
+  better. There is no Pareto or multi-objective selection.
+- **Diffs only.** No crossover, no full-file rewrite operator.
+- **No sandbox.** Candidate programs run with `exec()` inside the same Python
+  process as the loop. Do not point Cadence at anything you would not run by
+  hand on the same machine.
+- **No timeout.** A candidate containing an infinite loop hangs the run.
+  `Evaluator` accepts `timeout` and `max_memory_mb` arguments and currently
+  ignores both.
+
+The [architecture](architecture.md) page covers the design; the parts marked
+as planned are not built.
+
+## Where to go next
+
+| You want to | Read |
+| --- | --- |
+| Run Cadence for the first time | [Getting started](getting-started.md) |
+| Apply it to your own problem | [Tasks](tasks.md) |
+| Change generations, seeds, intervals | [Configuration](configuration.md) |
+| Understand selection and lessons | [Evolution pipeline](evolution.md) |
+| Reproduce the published experiments | [Experiments](experiments.md) |
+| Watch a run in the browser | [Web interface](web-interface.md) |
+| Look up a function signature | [API reference](api/index.md) |
+| Send a patch | [Contributing](contributing.md) |
+
+## Licence
+
+MIT. See [LICENSE](https://github.com/yash-srivastava19/cadence/blob/main/LICENSE).

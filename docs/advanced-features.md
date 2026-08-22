@@ -1,42 +1,50 @@
-# Advanced Features: Async Evaluation and CLI
+# Parallel evaluation
 
-This section covers Cadence's advanced capabilities, including asynchronous evaluation of programs and the built-in command-line interface.
+`execute()` already evaluates seeds concurrently. It submits one task per seed
+to a `ThreadPoolExecutor` with `max_workers=min(len(seeds), 4)`, so the
+default five-seed run uses four threads.
 
-## 1. Asynchronous Evaluation
-Cadence can leverage Python's `asyncio` to run multiple evaluations concurrently, reducing overall runtime for batch assessments.
+You do not need to arrange that yourself. This page covers the case where you
+want to evaluate several *programs* at once — a batch of candidates, or a
+sweep over task sizes.
 
 ```python
-import asyncio
-from src.evaluator import Evaluator
+from concurrent.futures import ThreadPoolExecutor
+
+from src.evaluator import execute
 from src.tasks.tsp_task import TSPTask
 
-async def async_eval():
-    evaluator = Evaluator()
-    task = TSPTask(n_cities=8)
-    seeds = list(range(5))
-    # Run evaluations in parallel threads
-    results = await asyncio.gather(*[
-        asyncio.to_thread(evaluator.evaluate_code, task.baseline_program, task, [s])
-        for s in seeds
-    ])
-    for i, res in enumerate(results):
-        print(f"Seed {i}: cost={res.cost:.2f}, feasible={res.feasible}")
+tasks = [TSPTask(n_cities=n) for n in (10, 15, 20, 25)]
+program = tasks[0].baseline_program
 
-asyncio.run(async_eval())
+with ThreadPoolExecutor(max_workers=4) as pool:
+    results = list(pool.map(lambda t: execute(program, t), tasks))
+
+for task, result in zip(tasks, results):
+    print(f"{task.n_cities:3d} cities  cost {result['cost']:.2f}")
 ```
 
-## 2. Command-Line Interface (CLI)
-Cadence provides a simple CLI via `main.py` for running experiments without modifying code.
+Threads are the right tool here only because the work is short and mostly
+numeric. Two things to know before you scale it up:
+
+- **Candidates share the interpreter.** `execute()` runs `exec()` in the
+  calling process, so a candidate that mutates a global or seeds the `random`
+  module affects everything running beside it. `TSPTask.generate_inputs()`
+  calls `random.seed()` for exactly this reason, and it is a hazard, not a
+  feature.
+- **There is no timeout.** One candidate with an infinite loop wedges a worker
+  permanently, and enough of them wedge the pool.
+
+For genuinely independent evaluation you need separate processes. Cadence does
+not provide that yet.
+
+## Command line
+
+There are no `--generations` or `--population` style flags. Every entry script
+uses Hydra, which takes `KEY=value` arguments instead:
 
 ```bash
-# Run a TSP evolution for 10 generations and save results
-gitbash
-python main.py --task tsp --generations 10 --output evolution_results.sqlite
+python run_h1_experiment.py GENERATIONS=60 LESSON_INTERVAL=3
 ```
 
-### CLI Options
-- `--task`: Task name (e.g., `tsp`)
-- `--generations`: Number of evolution generations
-- `--population`: Population size per generation (default: 5)
-- `--output`: Path to SQLite output database
-- `--seeds`: Comma-separated random seeds for evaluation
+See [Configuration](configuration.md) for every key each script reads.

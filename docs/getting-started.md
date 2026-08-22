@@ -1,220 +1,145 @@
-# Getting Started
+# Getting started
 
-This guide will help you set up and run Cadence for the first time.
+By the end of this page you will have run an evolution, read its output, and
+know which knob to turn next. It takes about ten minutes and roughly 30 Gemini
+calls.
 
-## Prerequisites
+## Before you start
 
-- Python 3.11 or higher
-- Git
-- Access to Google Gemini API (for LLM calls)
+- Python 3.11 or later
+- [uv](https://docs.astral.sh/uv/) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- A Google Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey)
 
-## Installation
-
-### Method 1: Using uv (Recommended)
+## 1. Install
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/cadence
+git clone https://github.com/yash-srivastava19/cadence
 cd cadence
-
-# Install dependencies using uv
 uv sync
-
-# Activate the virtual environment
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate
 ```
 
-### Method 2: Using pip
+On Windows the last line is `.venv\Scripts\activate`.
+
+## 2. Set your key
+
+Cadence reads one environment variable, `GEMINI_API_KEY`.
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/cadence
-cd cadence
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -e .
+export GEMINI_API_KEY="your-key-here"
 ```
 
-## Configuration
-
-### API Keys
-
-Cadence requires access to a Large Language Model. Currently, Google Gemini is supported:
-
-1. Obtain a Google Gemini API key from [Google AI Studio](https://makersuite.google.com/)
-2. Set the environment variable:
+To keep it across shells, put it in `.env` at the project root instead.
+`.env` is in `.gitignore`; keep it that way.
 
 ```bash
-export GOOGLE_API_KEY="your-api-key-here"
+echo 'GEMINI_API_KEY=your-key-here' >> .env
 ```
 
-Or create a `.env` file in the project root:
+Check it took:
 
 ```bash
-echo "GOOGLE_API_KEY=your-api-key-here" > .env
+python -c "from src.llm import LLMProvider; LLMProvider(); print('key ok')"
 ```
 
-### Database Setup
+A missing or misspelled key raises `LLMError: GEMINI_API_KEY environment
+variable not set`. That is the single most common setup failure.
 
-Cadence uses SQLite for data storage. The database is automatically created on first run:
+## 3. Run an evolution
 
 ```bash
-# The database will be created at: cadence_db.sqlite
-# No manual setup required
+python run_h1_experiment.py
 ```
 
-## Basic Usage
+The run has three phases, and says so:
 
-### Running Evolution
+```text
+[1] Running baseline heuristics...
+Baseline added with cost: 812.44
+[2] Running LLM evolution...
+INFO  Using lesson for generation 5: prefer swapping adjacent pairs ...
+INFO  Elitism: breeding from best program 11 (cost 742.1305)
+[3] Plotting results...
+Saved combined plot to h1_results.png
+```
 
-Start the evolution process with default settings:
+`cost` is total tour length across the evaluation seeds. Lower is better. It
+moves down unevenly — most generations produce nothing better, which is normal
+for this kind of search.
+
+When it finishes you have three files in the project root:
+
+| File | Contents |
+| --- | --- |
+| `h1_results.png` | Best cost per generation, against two hand-written baselines |
+| `experiment_log.json` | Every generation: cost, parent, and the code that was produced |
+| `lesson_history.json` | What the model concluded, one entry per lesson interval |
+
+Programs also go to `cadence_db.sqlite`, which is what the web interface reads.
+
+## 4. Read the result
+
+The plot answers one question: did evolution beat the baselines? The two
+reference lines are nearest-neighbour and a reversal heuristic, computed in
+`run_baselines()`. If the evolved curve does not get under them, the run
+failed — see below.
+
+To pull the best program out:
+
+```python
+import json
+
+with open("experiment_log.json") as f:
+    log = json.load(f)
+
+best = min(log, key=lambda entry: entry["cost"])
+print(f"generation {best['generation']}  cost {best['cost']:.2f}")
+print(best["child_code"])
+```
+
+Each entry carries `generation`, `cost`, `feasibility`, `parent_code`,
+`child_code`, `parent_cost`, `child_cost`, `hash`, and `lesson`.
+
+## 5. Turn one knob
+
+Every setting is a Hydra key. Override it on the command line — no file
+editing:
 
 ```bash
-python main.py
+python run_h1_experiment.py GENERATIONS=60 LESSON_INTERVAL=3
 ```
 
-This will:
-- Initialize the TSP task with 10 cities
-- Create an initial population
-- Run 50 generations of evolution
-- Save results to the database
+Longer runs cost proportionally more. [Configuration](configuration.md) lists
+every key that each script actually reads.
 
-### Customizing Parameters
+## When something goes wrong
 
-```bash
-# Run with custom parameters
-python main.py --generations 100 --population-size 20 --cities 15
-```
+**`LLMError: GEMINI_API_KEY environment variable not set`**
+`src/llm.py` calls `load_dotenv()` on import, so a `.env` at the project root
+is picked up automatically — but only when you run from the project root.
+`echo $GEMINI_API_KEY` to check the shell, and confirm your working directory.
 
-### Launching the Web Interface
+**Every generation logs `Generation N failed`**
+The model is returning text that does not parse as a `SEARCH`/`REPLACE` diff,
+so nothing applies. Look at `experiment_log.json` for the raw response.
+Usually the baseline program is missing its `### START_BLOCK` /
+`### END_BLOCK` markers, and there is nothing for the model to edit.
 
-Monitor evolution progress in real-time:
+**Cost never improves**
+Check the plot's baselines. If your task's scoring function cannot separate a
+good program from a bad one, the search is a random walk that still reports a
+winner. Score your baseline and a deliberately worse program by hand; if they
+land within noise of each other, fix the scoring function first.
 
-```bash
-python ui/launch_ui.py
-```
+**The run hangs**
+A generated program contains an infinite loop. There is no timeout — see the
+limits in the [overview](index.md#what-cadence-does-not-do-yet). Interrupt it.
+Generations completed so far are already in `experiment_log.json`, and
+`run_h1_experiment.py` picks up from that file if it exists. `main.py` does
+the same, unless `FORCE_RERUN=true`, which deletes the log and starts over.
 
-Then open http://localhost:5000 in your browser.
+## Next
 
-### Using Hydra Configuration
-
-Cadence leverages Hydra for flexible, YAML-driven settings. All experiment scripts accept `--config-name` and override parameters at the CLI.
-
-```bash
-# List available config options
-python run_h1_experiment.py --help
-
-# Override parameters without editing YAML
-python run_h1_experiment.py SEEDS=5 GENERATIONS=50 LESSON_INTERVAL=4
-
-# Point to alternate config directory
-python run_h1_experiment.py --config-path ./conf --config-name custom_h1
-```
-
-Hydra creates an `outputs/` folder by default; to write to project root, set in your YAML:
-```yaml
-hydra:
-  run:
-    dir: .
-  output:
-    subdir: null
-```
-
-## Verification
-
-### Test Installation
-
-```bash
-# Run the test suite
-pytest
-
-# Run with coverage
-pytest --cov=src
-```
-
-### Quick Validation
-
-```bash
-# Test LLM connection
-python -c "from src.llm import LLM; llm = LLM(); print(llm.generate('Hello'))"
-
-# Test database connection
-python -c "from src.database import Database; db = Database(); print('Database OK')"
-```
-
-## First Run Example
-
-Here's what happens during your first evolution run:
-
-```bash
-$ python main.py
-
-Initializing Cadence Evolution System
-=====================================
-Task: TSP with 10 cities
-Population size: 10
-Generations: 50
-LLM: Google Gemini
-
-Generation 1/50
-- Created 10 initial programs
-- Best cost: 245.67
-- Average cost: 892.34
-
-Generation 2/50
-- Evolved 10 programs
-- Best cost: 198.23 (improved!)
-- Average cost: 456.78
-
-...
-
-Evolution completed!
-Final best cost: 89.45
-Results saved to cadence_db.sqlite
-Launch UI with: python ui/launch_ui.py
-```
-
-## Common Issues
-
-### API Key Issues
-
-```bash
-# Error: No API key found
-export GOOGLE_API_KEY="your-key"
-
-# Error: Invalid API key
-# Check your key at https://makersuite.google.com/
-```
-
-### Import Errors
-
-```bash
-# Error: Module not found
-pip install -e .
-
-# Or ensure you're in the right directory
-cd cadence
-python main.py
-```
-
-### Database Permissions
-
-```bash
-# Error: Permission denied on database
-chmod 664 cadence_db.sqlite
-
-# Or remove and recreate
-rm cadence_db.sqlite
-python main.py
-```
-
-## Next Steps
-
-- Read the [Architecture](architecture.md) guide to understand system components
-- Explore [Tasks](tasks.md) to create custom optimization problems
-- Check out [Examples](examples.md) for more usage patterns
-- Review [Configuration](configuration.md) for advanced settings
+- [Tasks](tasks.md) — point Cadence at your own problem
+- [Evolution pipeline](evolution.md) — how parents are chosen and lessons are used
+- [Web interface](web-interface.md) — watch a run in the browser
