@@ -4,7 +4,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from cadence.entities import Candidate, Run, Trial, trial_id
 from cadence.exceptions import ModelError, NoCandidates, PatchError
-from cadence.interfaces import Attempt, Method, Metrics
+from cadence.events import Emitter
+from cadence.interfaces import Attempt, Directive, Method
 from cadence.model import Model
 from cadence.patcher import apply_patch
 from cadence.runner import TrialRunner
@@ -54,101 +55,87 @@ class Experiment:
 
     def run(self) -> Report:
         run = Run(id=self.run_id)
+        self.trace = Emitter(run_id=self.run_id)
         run.start()
-        RunStarted(
-            run_id=self.run_id,
+        self.trace.emit(
+            RunStarted,
             method=type(self.method).__name__,
             budget={"trials": float(self.budget)},
-        ).emit()
-
-        scored = 0
+        )
         try:
-            search = self.method.search(self.seeds, self.budget)
-            reply: Attempt | None = None
-            while True:
-                try:
-                    directive = search.send(reply)
-                except StopIteration:
-                    break
-                trial = Trial(
-                    id=trial_id(self.run_id, run.trials, 0),
-                    parent=Candidate(code=directive.code),
-                )
-                run.counted()
-                reply = self._one(trial, directive)
-                if reply is not None and reply.verdict.is_scored:
-                    scored += 1
-                if reply is not None and reply.verdict.escalates:
-                    return self._fail(run, reply.verdict.reason)
+            return self._search(run)
         except NoCandidates as error:
             return self._fail(run, str(error))
         except ModelError as error:
             return self._fail(run, f"{type(error).__name__}: {error}")
 
-        return self._finish(run, scored)
+    def _search(self, run: Run) -> Report:
+        scored = 0
+        search = self.method.search(self.seeds, self.budget)
+        reply: Attempt | None = None
+        while True:
+            try:
+                directive = search.send(reply)
+            except StopIteration:
+                return self._finish(run, scored)
+            run.counted()
+            reply = self._one(run, directive)
+            if reply is None:
+                continue
+            if reply.verdict.escalates:
+                return self._fail(run, reply.verdict.reason)
+            scored += reply.verdict.is_scored
 
-    def _one(self, trial: Trial, directive) -> Attempt | None:
-        TrialStarted(
-            run_id=self.run_id, trial_id=trial.id, parent=directive.parent
-        ).emit()
+    def _one(self, run: Run, directive: Directive) -> Attempt | None:
+        trial = Trial(
+            id=trial_id(self.run_id, run.trials, 0),
+            parent=Candidate(code=directive.code),
+        )
+        trace = self.trace.about(trial_id=trial.id)
+        trace.emit(TrialStarted, parent=directive.parent)
+
         trial.prompt()
-
         try:
             proposal, completion = self.model.propose(directive)
         except PatchError as error:
             trial.abandon(reason=str(error))
-            TrialAbandoned(
-                run_id=self.run_id, trial_id=trial.id, reason=str(error)
-            ).emit()
+            trace.emit(TrialAbandoned, reason=str(error))
             return None
-        ModelCalled(
-            run_id=self.run_id,
-            trial_id=trial.id,
-            backend=self.model.backend.name,
-            tokens_in=completion.tokens_in,
-            tokens_out=completion.tokens_out,
-            latency_ms=completion.latency_ms,
-        ).emit()
+        trace.emit(ModelCalled, backend=self.model.backend.name, **completion.cost)
+
         trial.generate(proposal=proposal)
-        ProposalReceived(
-            run_id=self.run_id, trial_id=trial.id, files_changed=len(proposal.patch)
-        ).emit()
+        trace.emit(ProposalReceived, files_changed=len(proposal.patch))
 
         try:
             code = apply_patch(directive.code, proposal.patch)
         except PatchError as error:
             trial.reject(reason=str(error))
-            PatchRejected(
-                run_id=self.run_id, trial_id=trial.id, reason=str(error)
-            ).emit()
+            trace.emit(PatchRejected, reason=str(error))
             return None
 
         child = Candidate(code=code, parent=directive.parent)
         trial.apply_patch(candidate=child)
         verdict = self.runner.try_(child)
         trial.measure(verdict=verdict)
-        TrialMeasured(run_id=self.run_id, trial_id=trial.id, verdict=verdict).emit()
+        trace.emit(TrialMeasured, verdict=verdict)
         return Attempt(code=code, verdict=verdict)
 
     def _finish(self, run: Run, scored: int) -> Report:
-        best = self.method.best() if hasattr(self.method, "best") else None
-        fingerprint = best.candidate.fingerprint if best and best.measured else None
-        metrics: Metrics | None = dict(best.metrics) if best and best.measured else None
-        run.finish(best=fingerprint)
-        RunFinished(run_id=self.run_id, trials=run.trials, best=fingerprint).emit()
+        best = self.method.best()
+        run.finish(best=best.verdict.fingerprint if best else None)
+        self.trace.emit(RunFinished, trials=run.trials, best=run.best)
         return Report(
             run_id=self.run_id,
             status=run.status,
             trials=run.trials,
             scored=scored,
-            best=fingerprint,
-            metrics=metrics,
+            best=run.best,
+            metrics=dict(best.verdict.metrics) if best else None,
         )
 
     def _fail(self, run: Run, reason: str) -> Report:
         run.fail(reason=reason)
-        TrialAbandoned(run_id=self.run_id, trial_id=self.run_id, reason=reason).emit()
-        RunFinished(run_id=self.run_id, trials=run.trials, best=None).emit()
+        self.trace.emit(RunFinished, trials=run.trials, best=None)
         return Report(
             run_id=self.run_id,
             status=run.status,

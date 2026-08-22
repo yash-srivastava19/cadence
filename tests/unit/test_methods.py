@@ -23,6 +23,10 @@ def crashed(code="x = 1"):
     )
 
 
+def a_verdict(metrics):
+    return Scored(fingerprint="fp", metrics=metrics)
+
+
 def an_evolution(**kwargs):
     return Evolution(objective=WeightedSum(value=1.0), **kwargs)
 
@@ -107,25 +111,25 @@ class TestAdmission:
     def test_pruning_keeps_the_strongest(self):
         method = an_evolution(size=2)
         drive(method, 6, lambda d, n: scored(f"v{n}", n))
-        assert method.best().metrics["value"] == 6.0
+        assert method.best().verdict.metrics["value"] == 6.0
 
 
 class TestTheObjectiveDecides:
     def test_a_weighted_sum_prefers_the_higher_total(self):
         method = an_evolution(size=2)
         drive(method, 4, lambda d, n: scored(f"v{n}", n))
-        assert method.best().candidate.code == "v4"
+        assert method.best().code == "v4"
 
     def test_pareto_keeps_a_trade_off_that_weighted_sum_would_drop(self):
-        cheap = Member(None, {"value": 5.0, "weight": 1.0})
-        rich = Member(None, {"value": 10.0, "weight": 9.0})
+        cheap = Member(None, a_verdict({"value": 5.0, "weight": 1.0}))
+        rich = Member(None, a_verdict({"value": 10.0, "weight": 9.0}))
         pareto = Evolution(objective=Pareto(value=1, weight=-1))
         assert not pareto.better(rich, cheap)
         assert not pareto.better(cheap, rich)
 
     def test_an_unmeasured_member_never_beats_a_measured_one(self):
         method = an_evolution()
-        measured = Member(None, {"value": 1.0})
+        measured = Member(None, a_verdict({"value": 1.0}))
         fresh = Member(None, None)
         assert method.better(measured, fresh)
         assert not method.better(fresh, measured)

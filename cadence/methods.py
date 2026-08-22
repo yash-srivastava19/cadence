@@ -3,7 +3,8 @@ from collections.abc import Sequence
 
 from cadence.entities import Candidate
 from cadence.exceptions import NoCandidates
-from cadence.interfaces import Attempt, Directive, Metrics, Objective, Search
+from cadence.interfaces import Attempt, Directive, Objective, Search
+from cadence.verdict import Verdict
 
 __all__ = ["HINTS", "Member", "Evolution"]
 
@@ -16,13 +17,17 @@ HINTS = (
 
 
 class Member:
-    def __init__(self, candidate: Candidate, metrics: Metrics | None = None) -> None:
+    def __init__(self, candidate: Candidate, verdict: Verdict | None = None) -> None:
         self.candidate = candidate
-        self.metrics = metrics
+        self.verdict = verdict
 
     @property
     def measured(self) -> bool:
-        return self.metrics is not None
+        return self.verdict is not None
+
+    @property
+    def attempt(self) -> Attempt:
+        return Attempt(code=self.candidate.code, verdict=self.verdict)
 
 
 class Evolution:
@@ -48,14 +53,14 @@ class Evolution:
             return False
         if not two.measured:
             return True
-        return self.objective.dominates(one.metrics, two.metrics)
+        return self.objective.dominates(one.verdict.metrics, two.verdict.metrics)
 
-    def best(self) -> Member | None:
+    def best(self) -> Attempt | None:
         winner = None
         for member in self.population:
             if winner is None or self.better(member, winner):
                 winner = member
-        return winner
+        return winner.attempt if winner is not None and winner.measured else None
 
     def pick(self, rng: random.Random) -> Member:
         entrants = [rng.choice(self.population) for _ in range(self.tournament)]
@@ -101,4 +106,4 @@ class Evolution:
             parent.candidate.crashed()
             return
         child = Candidate(code=attempt.code, parent=parent.candidate.fingerprint)
-        self.admit(Member(child, attempt.verdict.metrics))
+        self.admit(Member(child, attempt.verdict))
