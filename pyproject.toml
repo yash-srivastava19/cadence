@@ -10,9 +10,6 @@ dependencies = [
   "python-dotenv",
   "google-genai",
   "scikit-learn>=1.7.0",
-  "pytest>=8.4.1",
-  "pytest-cov>=6.2.1",
-  "pytest-mock>=3.10.0",
   "flask>=3.1.1",
   "mkdocs>=1.6.1",
   "mkdocs-material>=9.6.15",
@@ -24,9 +21,17 @@ dependencies = [
   "python-statemachine>=3.2.1",
   "blinker>=1.9.0",
   "whatthepatch>=1.0.7",
+  "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]
+test = [
+  "pytest>=8.4.1",
+  "pytest-cov>=6.2.1",
+  "pytest-mock>=3.10.0",
+  "pytest-xdist>=3.3.0",
+]
+
 dev = [
   "isort>=6.0.1",
   "flake8>=7.3.0",
@@ -39,13 +44,6 @@ docs = [
   "sphinx-rtd-theme>=2.0.0",
   "myst-parser>=2.0.0",
   "sphinx-autodoc-typehints>=1.24.0",
-]
-
-test = [
-  "pytest>=8.4.1",
-  "pytest-cov>=6.2.1",
-  "pytest-mock>=3.10.0",
-  "pytest-xdist>=3.3.0",
 ]
 
 [build-system]

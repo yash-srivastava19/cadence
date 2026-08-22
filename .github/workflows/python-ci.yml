@@ -29,8 +29,13 @@ jobs:
       - name: Check the documentation against the code
         run: pytest tests/test_docs.py -q
 
-      # Every test mocks its model calls, so a placeholder key is enough.
+      # The same compose file and the same .env a developer uses.
+      - name: Start the database
+        run: |
+          cp .env.example .env
+          docker compose up -d --wait
+
       - name: Run tests
-        env:
-          GEMINI_API_KEY: not-a-real-key
-        run: pytest tests/ -q
+        run: |
+          set -a && . ./.env && set +a
+          pytest tests/ -q

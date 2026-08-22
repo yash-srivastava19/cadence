@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: cadence-postgres
+    environment:
+      POSTGRES_DB: cadence
+      POSTGRES_USER: cadence
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cadence}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - cadence-pgdata:/var/lib/postgresql
+      - ./ops/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cadence -d cadence"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  cadence-pgdata:

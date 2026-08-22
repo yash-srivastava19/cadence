@@ -49,15 +49,16 @@ class LLMProvider:
     and lesson extraction with comprehensive error handling.
     """
 
-    def __init__(self, config: Optional[LLMConfig] = None) -> None:
+    def __init__(self, config: Optional[LLMConfig] = None, client=None) -> None:
         """
         Initialize LLM provider.
 
         Args:
             config: LLM configuration, uses defaults if None
+            client: an existing client to use instead of building one
         """
         self.config = config or LLMConfig()
-        self._client = self._initialize_client()
+        self._client = client if client is not None else self._initialize_client()
 
     def _initialize_client(self) -> genai.Client:
         """Initialize the LLM client."""
@@ -221,8 +222,8 @@ Keep the instruction concise and return only the new instruction block, nothing 
             logger.error(f"Lesson generation failed: {e}")
             return "No lesson generated due to an error."
 
+    @staticmethod
     def _extract_code_blocks(
-        self,
         text: str,
         start_marker: str = "### START_BLOCK",
         end_marker: str = "### END_BLOCK",
@@ -280,12 +281,20 @@ Keep the instruction concise and return only the new instruction block, nothing 
         return True
 
 
-"""
-# Global LLM provider instance and module-level client for legacy functions
-"""
-_default_provider = LLMProvider()
-# Module-level client for legacy top-level functions
-client = _default_provider._client
+# Module-level client for legacy top-level functions. It is None until first
+# use so that importing this module does not require an API key; tests patch it.
+client = None
+_default_provider: Optional[LLMProvider] = None
+
+
+def _provider() -> LLMProvider:
+    """The shared provider, built on first use and around `client` when it is set."""
+    global _default_provider
+    if client is not None:
+        return LLMProvider(client=client)
+    if _default_provider is None:
+        _default_provider = LLMProvider()
+    return _default_provider
 
 
 def mutate_instruction(base_instruction: str) -> str:
@@ -301,7 +310,7 @@ Please rewrite it to help the model be more creative, more effective at reducing
 Keep the instruction concise and return only the new instruction block, nothing else."""
     try:
         # Call legacy client directly
-        response = client.models.generate_content(contents=meta_prompt)
+        response = _provider()._client.models.generate_content(contents=meta_prompt)
         new_instruction = response.text.strip()
         # Validate length
         if len(new_instruction) < 10:
@@ -315,11 +324,11 @@ def generate(prompt: PromptText) -> List[str]:  # noqa: F821
     """Legacy code generation function using LLMProvider for block extraction."""
     try:
         # Use LLMProvider to generate code blocks
-        code_blocks = _default_provider.generate_code(prompt)
+        code_blocks = _provider().generate_code(prompt)
         if code_blocks:
             return [block.content for block in code_blocks]
         # Fallback: extract blocks from prompt itself
-        fallback_blocks = _default_provider._extract_code_blocks(prompt)
+        fallback_blocks = LLMProvider._extract_code_blocks(prompt)
         if fallback_blocks:
             return fallback_blocks
         return []
@@ -327,14 +336,14 @@ def generate(prompt: PromptText) -> List[str]:  # noqa: F821
         logger.error(f"Legacy generate function failed: {e}")
         # Fallback extraction on exception
         try:
-            return _default_provider._extract_code_blocks(prompt)
+            return LLMProvider._extract_code_blocks(prompt)
         except Exception:
             return []
 
 
 def extract_valid_blocks(text: str) -> List[str]:
     """Extract valid code blocks from text."""
-    return _default_provider._extract_code_blocks(text)
+    return LLMProvider._extract_code_blocks(text)
 
 
 def generate_lessons(meta_prompt: str) -> str:

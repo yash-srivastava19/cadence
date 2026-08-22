@@ -1,0 +1,10 @@
+CREATE DATABASE cadence_test OWNER cadence;
+GRANT CONNECT ON DATABASE cadence_test TO cadence_app;
+
+\connect cadence_test
+
+GRANT USAGE ON SCHEMA public TO cadence_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO cadence_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO cadence_app;

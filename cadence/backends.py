@@ -19,6 +19,14 @@ class Completion(BaseModel):
     tokens_out: int = Field(ge=0)
     latency_ms: float = Field(ge=0, allow_inf_nan=False)
 
+    @property
+    def cost(self) -> dict[str, float]:
+        return {
+            "tokens_in": self.tokens_in,
+            "tokens_out": self.tokens_out,
+            "latency_ms": self.latency_ms,
+        }
+
 
 @runtime_checkable
 class Backend(Protocol):
