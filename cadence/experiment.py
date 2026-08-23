@@ -24,6 +24,10 @@ from cadence.states import RunState
 __all__ = ["Report", "Experiment"]
 
 
+def _files(patch) -> int:
+    return sum(1 for line in patch if line.startswith("+++"))
+
+
 class Report(BaseModel):
     model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
 
@@ -78,8 +82,8 @@ class Experiment:
                 directive = search.send(reply)
             except StopIteration:
                 return self._finish(run, scored)
-            run.counted()
             reply = self._one(run, directive)
+            run.counted()
             if reply is None:
                 continue
             if reply.verdict.escalates:
@@ -104,7 +108,7 @@ class Experiment:
         trace.emit(ModelCalled, backend=self.model.backend.name, **completion.cost)
 
         trial.generate(proposal=proposal)
-        trace.emit(ProposalReceived, files_changed=len(proposal.patch))
+        trace.emit(ProposalReceived, files_changed=_files(proposal.patch))
 
         try:
             code = apply_patch(directive.code, proposal.patch)
