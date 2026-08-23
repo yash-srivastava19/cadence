@@ -48,7 +48,7 @@ class TrialRunner:
                 seconds=self.seconds,
                 memory_mb=self.memory_mb,
             ),
-            inputs=json.dumps([inputs]),
+            inputs=json.dumps(list(inputs)),
         )
         failure = _failure(candidate.fingerprint, execution)
         if failure is not None:

@@ -9,7 +9,7 @@ from cadence.sandbox import Subprocess
 from cadence.signals import cadence
 from cadence.states import RunState
 
-BASELINE = "def solve(items):\n    return 0"
+BASELINE = "def solve(a, b):\n    return 0"
 
 
 class Adder:
@@ -17,7 +17,7 @@ class Adder:
     baseline = BASELINE
 
     def inputs(self, seed):
-        return [seed + 1, seed + 2]
+        return (seed + 1, seed + 2)
 
     def score(self, output, inputs):
         return {"closeness": -float(abs(sum(inputs) - output))}
@@ -34,14 +34,14 @@ def answer(body):
         "--- a/s.py\n"
         "+++ b/s.py\n"
         "@@ -1,2 +1,2 @@\n"
-        " def solve(items):\n"
+        " def solve(a, b):\n"
         "-    return 0\n"
         f"+    {body}\n"
         "```"
     )
 
 
-IMPROVES = answer("return sum(items)")
+IMPROVES = answer("return a + b")
 NONSENSE = "I would change the loop, but here is prose instead."
 
 
