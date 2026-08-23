@@ -1,11 +1,20 @@
-from collections.abc import Generator, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from typing import Annotated, Any, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from cadence.verdict import Verdict
 
-__all__ = ["Metrics", "Directive", "Attempt", "Task", "Objective", "Method", "Search"]
+__all__ = [
+    "Metrics",
+    "Directive",
+    "Attempt",
+    "History",
+    "Ledger",
+    "Task",
+    "Objective",
+    "Method",
+]
 
 Metrics = Mapping[str, float]
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -40,7 +49,35 @@ class Attempt(BaseModel):
     verdict: Verdict
 
 
-Search = Generator[Directive, "Attempt | None", None]
+class History(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
+
+    run_id: NonBlank
+    seeds: tuple[NonBlank, ...] = Field(min_length=1)
+    attempts: tuple[Attempt, ...] = ()
+
+    @property
+    def index(self) -> int:
+        return len(self.attempts)
+
+    @property
+    def scored(self) -> tuple[Attempt, ...]:
+        return tuple(a for a in self.attempts if a.verdict.is_scored)
+
+
+class Ledger(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
+
+    spent: int = Field(ge=0)
+    budget: int = Field(ge=0)
+
+    @property
+    def remaining(self) -> int:
+        return max(self.budget - self.spent, 0)
+
+    @property
+    def exhausted(self) -> bool:
+        return self.remaining == 0
 
 
 @runtime_checkable
@@ -50,6 +87,6 @@ class Objective(Protocol):
 
 @runtime_checkable
 class Method(Protocol):
-    def search(self, seeds: Sequence[str], budget: int) -> Search: ...
+    def next_directive(self, history: History, ledger: Ledger) -> Directive | None: ...
 
-    def best(self) -> "Attempt | None": ...
+    def best(self, history: History) -> Attempt | None: ...

@@ -146,7 +146,7 @@ def main():
 
     experiment = Experiment(
         run_id="quickstart",
-        method=Evolution(objective=WeightedSum(value=1.0), size=1, seed=0),
+        method=Evolution(objective=WeightedSum(value=1.0), size=1),
         model=Model(backend=Scripted(*REPLIES)),
         runner=TrialRunner(task=task, sandbox=Subprocess(), seeds=(0,)),
         seeds=[START],
@@ -158,9 +158,8 @@ def main():
     rule("RESULT")
     if result.metrics:
         print(f"      value {result.metrics['value']:.0f}, up from {start_value:.0f}\n")
-    winner = experiment.method.best()
-    if winner:
-        show(winner.code)
+    if result.program:
+        show(result.program)
 
     rule("WHAT TO CHANGE")
     print("      Swap Knapsack for your own problem: a program, some inputs,")

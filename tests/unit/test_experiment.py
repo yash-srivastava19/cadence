@@ -48,7 +48,7 @@ NONSENSE = "I would change the loop, but here is prose instead."
 def an_experiment(task=None, budget=1, *responses):
     return Experiment(
         run_id="h1",
-        method=Evolution(objective=WeightedSum(closeness=1.0), seed=0),
+        method=Evolution(objective=WeightedSum(closeness=1.0)),
         model=Model(backend=Scripted(*responses)),
         runner=TrialRunner(task=task or Adder(), sandbox=Subprocess(), seeds=(0,)),
         seeds=[BASELINE],
