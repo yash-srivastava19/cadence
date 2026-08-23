@@ -1,13 +1,13 @@
-import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from statistics import fmean
 
 from cadence.entities import Candidate
-from cadence.interfaces import Metrics, Task
-from cadence.sandbox import UNSERIALIZABLE, Execution, Job, Sandbox
+from cadence.interfaces import Metrics
+from cadence.reading import MetricNotReported, read
+from cadence.sandbox import Execution, Job, Sandbox
 from cadence.verdict import Failed, Outcome, Scored, Verdict
 
-__all__ = ["TrialRunner"]
+__all__ = ["TrialRunner", "DEFAULT_SEEDS"]
 
 DEFAULT_SEEDS = (0, 1, 2)
 
@@ -15,16 +15,24 @@ DEFAULT_SEEDS = (0, 1, 2)
 class TrialRunner:
     def __init__(
         self,
-        task: Task,
+        program: str,
+        command: Sequence[str],
+        metrics: Mapping[str, str],
         sandbox: Sandbox,
+        workspace: str | None = None,
         seeds: Sequence[int] = DEFAULT_SEEDS,
         seconds: float = 10.0,
         memory_mb: int = 256,
     ) -> None:
         if not seeds:
             raise ValueError("a trial needs at least one seed")
-        self.task = task
+        if not metrics:
+            raise ValueError("a trial needs at least one metric to read")
+        self.program = program
+        self.command = tuple(command)
+        self.metrics = dict(metrics)
         self.sandbox = sandbox
+        self.workspace = workspace
         self.seeds = tuple(seeds)
         self.seconds = seconds
         self.memory_mb = memory_mb
@@ -39,46 +47,31 @@ class TrialRunner:
         return Scored(fingerprint=candidate.fingerprint, metrics=_mean(readings))
 
     def _one(self, candidate: Candidate, seed: int) -> Verdict:
-        inputs = self.task.inputs(seed)
         execution = self.sandbox.run(
             Job(
                 code=candidate.code,
-                entry_point=self.task.entry_point,
+                program=self.program,
+                command=self.command,
+                workspace=self.workspace,
                 seed=seed,
                 seconds=self.seconds,
                 memory_mb=self.memory_mb,
-            ),
-            inputs=json.dumps(list(inputs)),
+            )
         )
         failure = _failure(candidate.fingerprint, execution)
         if failure is not None:
             return failure
         try:
-            output = json.loads(execution.stdout)
-        except json.JSONDecodeError:
+            return Scored(
+                fingerprint=candidate.fingerprint,
+                metrics=read(execution.stdout, self.metrics),
+            )
+        except MetricNotReported as error:
             return Failed(
                 fingerprint=candidate.fingerprint,
                 outcome=Outcome.INVALID,
-                reason="the program did not return something serializable",
+                reason=str(error),
             )
-        return self._score(candidate, output, inputs)
-
-    def _score(self, candidate: Candidate, output, inputs) -> Verdict:
-        try:
-            metrics = self.task.score(output, inputs)
-        except Exception as error:
-            return Failed(
-                fingerprint=candidate.fingerprint,
-                outcome=Outcome.VERIFIER_ERROR,
-                reason=f"{type(error).__name__}: {error}",
-            )
-        if not metrics:
-            return Failed(
-                fingerprint=candidate.fingerprint,
-                outcome=Outcome.VERIFIER_ERROR,
-                reason="the task scored nothing",
-            )
-        return Scored(fingerprint=candidate.fingerprint, metrics=metrics)
 
 
 def _failure(fingerprint: str, execution: Execution) -> Failed | None:
@@ -86,8 +79,6 @@ def _failure(fingerprint: str, execution: Execution) -> Failed | None:
         return None
     if execution.timed_out:
         outcome, reason = Outcome.TIMED_OUT, "the program ran past its deadline"
-    elif execution.exit_status == UNSERIALIZABLE:
-        outcome, reason = Outcome.INVALID, _tail(execution.stderr)
     elif execution.out_of_memory:
         outcome, reason = Outcome.OUT_OF_MEMORY, "the program ran out of memory"
     else:

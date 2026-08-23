@@ -17,22 +17,11 @@ from cadence.sandbox import Subprocess
 from cadence.signals import ModelCalled, cadence
 from cadence.states import RunState
 
-BASELINE = "def solve(a, b):\n    return 0"
+BASELINE = "print('value: 0')"
 ANSWER = (
-    "```diff\n--- a/s.py\n+++ b/s.py\n@@ -1,2 +1,2 @@\n def solve(a, b):\n"
-    "-    return 0\n+    return a + b\n```"
+    "```diff\n--- a/prog.py\n+++ b/prog.py\n@@ -1,1 +1,1 @@\n"
+    "-print('value: 0')\n+print('value: 9')\n```"
 )
-
-
-class Adder:
-    entry_point = "solve"
-    baseline = BASELINE
-
-    def inputs(self, seed):
-        return (seed + 1, seed + 2)
-
-    def score(self, output, inputs):
-        return {"error": float(abs(sum(inputs) - output))}
 
 
 def a_completion(text="hello"):
@@ -157,9 +146,15 @@ def _a_directive():
 def _an_experiment(calls, backend, budget=2):
     return Experiment(
         run_id="resumable",
-        method=Evolution(objective=WeightedSum(error=-1.0)),
+        method=Evolution(objective=WeightedSum(value=1.0)),
         model=Model(backend=backend, calls=calls),
-        runner=TrialRunner(task=Adder(), sandbox=Subprocess(), seeds=(0,)),
+        runner=TrialRunner(
+            program="prog.py",
+            command=("python", "prog.py"),
+            metrics={"value": "maximize"},
+            sandbox=Subprocess(),
+            seeds=(0,),
+        ),
         seeds=[BASELINE],
         budget=budget,
     )
