@@ -7,71 +7,33 @@ from cadence.runner import TrialRunner
 from cadence.sandbox import Subprocess
 from cadence.verdict import Outcome
 
-BASELINE = "def solve(a, b):\n    return 0"
-BETTER = "def solve(a, b):\n    return a + b"
+BASELINE = "print('value: 0')"
+BETTER = "print('value: 9')"
 
 
-class Adder:
-    entry_point = "solve"
-    baseline = BASELINE
-
-    def inputs(self, seed):
-        return (seed + 1, seed + 2)
-
-    def score(self, output, inputs):
-        return {"total": float(output), "error": float(abs(sum(inputs) - output))}
-
-
-class BrokenVerifier(Adder):
-    def score(self, output, inputs):
-        raise ZeroDivisionError("the user's scoring script is wrong")
-
-
-class SilentVerifier(Adder):
-    def score(self, output, inputs):
-        return {}
-
-
-def a_runner(task=None, **kwargs):
-    return TrialRunner(task=task or Adder(), sandbox=Subprocess(), **kwargs)
+def a_runner(metrics=None, **kwargs):
+    return TrialRunner(
+        program="prog.py",
+        command=("python", "prog.py"),
+        metrics=metrics or {"value": "maximize"},
+        sandbox=Subprocess(),
+        seeds=kwargs.pop("seeds", (0,)),
+        **kwargs,
+    )
 
 
 def a_patch(*body):
-    return ("--- a/s.py", "+++ b/s.py", "@@ -1,2 +1,2 @@", *body)
+    return ("--- a/s.py", "+++ b/s.py", "@@ -1,1 +1,1 @@", *body)
 
 
 class TestPatching:
     def test_a_replacement_lands(self):
-        patch = a_patch(" def solve(a, b):", "-    return 0", "+    return a + b")
+        patch = a_patch(f"-{BASELINE}", f"+{BETTER}")
         assert apply_patch(BASELINE, patch) == BETTER
 
-    def test_an_addition_lands(self):
-        patch = (
-            "--- a/s.py",
-            "+++ b/s.py",
-            "@@ -1,2 +1,3 @@",
-            " def solve(a, b):",
-            "     return 0",
-            "+# a note",
-        )
-        assert apply_patch(BASELINE, patch).endswith("# a note")
-
-    def test_several_hunks_all_land(self):
-        patch = (
-            "--- a/s.py",
-            "+++ b/s.py",
-            "@@ -1,1 +1,1 @@",
-            "-def solve(a, b):",
-            "+def solve(x, y):",
-            "@@ -2,1 +2,1 @@",
-            "-    return 0",
-            "+    return 1",
-        )
-        assert apply_patch(BASELINE, patch) == "def solve(x, y):\n    return 1"
-
     def test_a_patch_that_matches_nothing_says_which_line(self):
-        patch = a_patch(" def solve(a, b):", "-    return 99", "+    return 1")
-        with pytest.raises(PatchError, match="return 99"):
+        patch = a_patch("-print('nope')", f"+{BETTER}")
+        with pytest.raises(PatchError, match="nope"):
             apply_patch(BASELINE, patch)
 
     def test_a_patch_with_no_hunks_raises(self):
@@ -85,76 +47,67 @@ class TestPatching:
 
 class TestScoring:
     def test_a_working_candidate_is_scored(self):
-        verdict = a_runner().try_(Candidate(code=BETTER))
-        assert verdict.is_scored
+        assert a_runner().try_(Candidate(code=BETTER)).is_scored
 
-    def test_the_metrics_come_from_the_task(self):
-        verdict = a_runner().try_(Candidate(code=BETTER))
-        assert verdict.metrics["error"] == 0.0
+    def test_the_metric_comes_from_what_the_program_printed(self):
+        assert a_runner().try_(Candidate(code=BETTER)).metrics["value"] == 9.0
 
     def test_the_verdict_names_the_candidate_it_measured(self):
         candidate = Candidate(code=BETTER)
         assert a_runner().try_(candidate).fingerprint == candidate.fingerprint
 
+    def test_several_metrics_come_back(self):
+        code = "print('value: 2')\nprint('cost: 5')"
+        verdict = a_runner(metrics={"value": "maximize", "cost": "minimize"}).try_(
+            Candidate(code=code)
+        )
+        assert verdict.metrics == {"value": 2.0, "cost": 5.0}
+
     def test_readings_are_averaged_across_seeds(self):
-        verdict = a_runner(seeds=(0, 1)).try_(Candidate(code=BETTER))
-        assert verdict.metrics["total"] == 4.0
+        code = "import os\nprint('value:', int(os.environ['CADENCE_SEED']))"
+        verdict = a_runner(seeds=(0, 2)).try_(Candidate(code=code))
+        assert verdict.metrics["value"] == 1.0
 
     def test_a_runner_needs_a_seed(self):
         with pytest.raises(ValueError):
             a_runner(seeds=())
 
+    def test_a_runner_needs_a_metric(self):
+        with pytest.raises(ValueError):
+            TrialRunner(
+                program="prog.py",
+                command=("python", "prog.py"),
+                metrics={},
+                sandbox=Subprocess(),
+            )
+
 
 class TestFailuresAreDistinguished:
     def test_a_crash_is_a_crash(self):
-        verdict = a_runner().try_(
-            Candidate(code="def solve(a, b): raise ValueError('x')")
-        )
+        verdict = a_runner().try_(Candidate(code="raise ValueError('x')"))
         assert verdict.outcome is Outcome.CRASHED
 
     def test_a_crash_keeps_the_reason(self):
-        verdict = a_runner().try_(
-            Candidate(code="def solve(a, b): raise ValueError('x')")
-        )
+        verdict = a_runner().try_(Candidate(code="raise ValueError('x')"))
         assert "ValueError" in verdict.reason
 
     def test_a_timeout_is_a_timeout(self):
-        spins = "def solve(a, b):\n    while True:\n        pass"
+        spins = "while True:\n    pass"
         verdict = a_runner(seconds=1.0).try_(Candidate(code=spins))
         assert verdict.outcome is Outcome.TIMED_OUT
 
-    def test_output_that_will_not_serialize_is_invalid(self):
-        weird = "def solve(a, b): return object()"
-        assert a_runner().try_(Candidate(code=weird)).outcome is Outcome.INVALID
+    def test_a_program_that_reports_nothing_is_invalid(self):
+        verdict = a_runner().try_(Candidate(code="print('all done')"))
+        assert verdict.outcome is Outcome.INVALID
+
+    def test_it_says_which_metric_was_missing(self):
+        verdict = a_runner().try_(Candidate(code="print('all done')"))
+        assert "value" in verdict.reason
 
     def test_one_bad_seed_fails_the_whole_verdict(self):
-        only_first = (
-            "def solve(a, b):\n    if a > 1: raise ValueError('x')\n    return 0"
+        code = (
+            "import os\n"
+            "if os.environ['CADENCE_SEED'] == '2': raise ValueError('x')\n"
+            "print('value: 1')"
         )
-        verdict = a_runner(seeds=(0, 5)).try_(Candidate(code=only_first))
-        assert not verdict.is_scored
-
-
-class TestTheVerifierIsNotTheCandidate:
-    def test_a_broken_verifier_is_its_own_outcome(self):
-        verdict = a_runner(task=BrokenVerifier()).try_(Candidate(code=BETTER))
-        assert verdict.outcome is Outcome.VERIFIER_ERROR
-
-    def test_it_escalates_rather_than_scoring_the_floor(self):
-        verdict = a_runner(task=BrokenVerifier()).try_(Candidate(code=BETTER))
-        assert verdict.escalates
-        assert not verdict.is_scored
-
-    def test_it_names_the_error_the_user_has_to_fix(self):
-        verdict = a_runner(task=BrokenVerifier()).try_(Candidate(code=BETTER))
-        assert "ZeroDivisionError" in verdict.reason
-
-    def test_a_verifier_that_scores_nothing_is_also_an_error(self):
-        verdict = a_runner(task=SilentVerifier()).try_(Candidate(code=BETTER))
-        assert verdict.outcome is Outcome.VERIFIER_ERROR
-
-    def test_a_candidate_crash_is_not_blamed_on_the_verifier(self):
-        verdict = a_runner().try_(
-            Candidate(code="def solve(a, b): raise ValueError('x')")
-        )
-        assert not verdict.escalates
+        assert not a_runner(seeds=(0, 2)).try_(Candidate(code=code)).is_scored

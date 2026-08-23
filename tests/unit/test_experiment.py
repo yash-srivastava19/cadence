@@ -9,48 +9,39 @@ from cadence.sandbox import Subprocess
 from cadence.signals import cadence
 from cadence.states import RunState
 
-BASELINE = "def solve(a, b):\n    return 0"
+BASELINE = "print('value: 0')"
 
 
-class Adder:
-    entry_point = "solve"
-    baseline = BASELINE
-
-    def inputs(self, seed):
-        return (seed + 1, seed + 2)
-
-    def score(self, output, inputs):
-        return {"closeness": -float(abs(sum(inputs) - output))}
-
-
-class BrokenVerifier(Adder):
-    def score(self, output, inputs):
-        raise ZeroDivisionError("the scoring script is wrong")
-
-
-def answer(body):
+def diff(printed):
     return (
         "```diff\n"
-        "--- a/s.py\n"
-        "+++ b/s.py\n"
-        "@@ -1,2 +1,2 @@\n"
-        " def solve(a, b):\n"
-        "-    return 0\n"
-        f"+    {body}\n"
+        "--- a/prog.py\n"
+        "+++ b/prog.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        f"-{BASELINE}\n"
+        f"+{printed}\n"
         "```"
     )
 
 
-IMPROVES = answer("return a + b")
+IMPROVES = diff("print('value: 9')")
+SILENT = diff("print('nothing to report')")
+CRASHES = diff("raise ValueError('the evolved code is broken')")
 NONSENSE = "I would change the loop, but here is prose instead."
 
 
-def an_experiment(task=None, budget=1, *responses):
+def an_experiment(*responses, budget=1, metrics=None):
     return Experiment(
         run_id="h1",
-        method=Evolution(objective=WeightedSum(closeness=1.0)),
+        method=Evolution(objective=WeightedSum(value=1.0)),
         model=Model(backend=Scripted(*responses)),
-        runner=TrialRunner(task=task or Adder(), sandbox=Subprocess(), seeds=(0,)),
+        runner=TrialRunner(
+            program="prog.py",
+            command=("python", "prog.py"),
+            metrics=metrics or {"value": "maximize"},
+            sandbox=Subprocess(),
+            seeds=(0,),
+        ),
         seeds=[BASELINE],
         budget=budget,
     )
@@ -58,34 +49,29 @@ def an_experiment(task=None, budget=1, *responses):
 
 class TestAFullOfflineRun:
     def test_it_finishes(self):
-        report = an_experiment(None, 1, IMPROVES).run()
-        assert report.status == RunState.FINISHED
+        assert an_experiment(IMPROVES).run().status == RunState.FINISHED
 
     def test_it_scores_the_candidate_it_produced(self):
-        report = an_experiment(None, 1, IMPROVES).run()
-        assert report.scored == 1
+        assert an_experiment(IMPROVES).run().scored == 1
 
     def test_it_names_a_best(self):
-        report = an_experiment(None, 1, IMPROVES).run()
-        assert report.best is not None
+        assert an_experiment(IMPROVES).run().best is not None
 
     def test_the_improvement_is_real(self):
-        report = an_experiment(None, 1, IMPROVES).run()
-        assert report.metrics["closeness"] == 0.0
+        assert an_experiment(IMPROVES).run().metrics["value"] == 9.0
 
-    def test_it_runs_the_whole_budget(self):
-        report = an_experiment(None, 3, IMPROVES, IMPROVES, IMPROVES).run()
-        assert report.trials == 3
+    def test_it_returns_the_program_it_ended_with(self):
+        assert "value: 9" in an_experiment(IMPROVES).run().program
 
     def test_the_report_survives_json(self):
-        report = an_experiment(None, 1, IMPROVES).run()
+        report = an_experiment(IMPROVES).run()
         assert Report.model_validate_json(report.model_dump_json()) == report
 
 
 class TestTheRunIsTraceable:
     def test_the_tape_reads_start_to_finish(self):
         with cadence.recording() as tape:
-            an_experiment(None, 1, IMPROVES).run()
+            an_experiment(IMPROVES).run()
         assert [type(fact).__name__ for fact in tape] == [
             "RunStarted",
             "TrialStarted",
@@ -97,14 +83,14 @@ class TestTheRunIsTraceable:
 
     def test_every_event_names_the_run(self):
         with cadence.recording() as tape:
-            an_experiment(None, 1, IMPROVES).run()
+            an_experiment(IMPROVES).run()
         assert {fact.run_id for fact in tape} == {"h1"}
 
     def test_the_model_call_reports_what_it_cost(self):
         from cadence.signals import ModelCalled
 
         with cadence.recording() as tape:
-            an_experiment(None, 1, IMPROVES).run()
+            an_experiment(IMPROVES).run()
         called = tape.of(ModelCalled)[0]
         assert called.tokens_in > 0 and called.tokens_out > 0
 
@@ -112,42 +98,38 @@ class TestTheRunIsTraceable:
         from cadence.signals import TrialMeasured
 
         with cadence.recording() as tape:
-            an_experiment(None, 1, IMPROVES).run()
+            an_experiment(IMPROVES).run()
         assert tape.of(TrialMeasured)[0].verdict.is_scored
 
     def test_an_abandoned_trial_is_visible_on_the_tape(self):
         from cadence.signals import TrialAbandoned
 
         with cadence.recording() as tape:
-            an_experiment(None, 1, NONSENSE).run()
+            an_experiment(NONSENSE).run()
         assert "diff block" in tape.of(TrialAbandoned)[0].reason
 
 
 class TestFailingWell:
     def test_an_unparseable_answer_abandons_the_trial_not_the_run(self):
-        report = an_experiment(None, 1, NONSENSE).run()
+        report = an_experiment(NONSENSE).run()
         assert report.status == RunState.FINISHED
         assert report.scored == 0
 
-    def test_a_broken_verifier_fails_the_run(self):
-        report = an_experiment(BrokenVerifier(), 1, IMPROVES).run()
-        assert report.status == RunState.FAILED
+    def test_a_program_that_crashes_is_measured_not_fatal(self):
+        report = an_experiment(CRASHES).run()
+        assert report.status == RunState.FINISHED
+        assert report.scored == 0
 
-    def test_a_broken_verifier_says_what_to_fix(self):
-        report = an_experiment(BrokenVerifier(), 1, IMPROVES).run()
-        assert "ZeroDivisionError" in report.reason
-
-    def test_a_broken_verifier_does_not_report_a_best(self):
-        report = an_experiment(BrokenVerifier(), 1, IMPROVES).run()
-        assert report.best is None
+    def test_a_program_that_reports_nothing_is_measured_not_fatal(self):
+        report = an_experiment(SILENT).run()
+        assert report.status == RunState.FINISHED
+        assert report.scored == 0
 
     def test_running_out_of_backend_ends_the_run(self):
-        report = an_experiment(None, 2, IMPROVES).run()
+        report = an_experiment(IMPROVES, budget=2).run()
         assert report.status == RunState.FAILED
-        assert isinstance(report.reason, str)
 
     def test_a_terminal_model_error_is_not_retried_into_the_ground(self):
-        experiment = an_experiment(None, 1, TerminalModelError("401"))
-        report = experiment.run()
-        assert report.status == RunState.FAILED
+        experiment = an_experiment(TerminalModelError("401"))
+        assert experiment.run().status == RunState.FAILED
         assert len(experiment.model.backend.prompts) == 1

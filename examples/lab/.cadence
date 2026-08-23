@@ -1,0 +1,6 @@
+apiVersion: cadence/v1alpha1
+program: pack.py
+metrics:
+  value: maximize
+budget:
+  trials: 2
