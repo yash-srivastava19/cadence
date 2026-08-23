@@ -1,0 +1,71 @@
+from collections.abc import Callable
+from hashlib import sha256
+from typing import Annotated, Protocol, runtime_checkable
+
+from pydantic import BaseModel, ConfigDict, StringConstraints
+
+from cadence.backends import Completion
+from cadence.exceptions import CadenceError
+
+__all__ = ["Recalled", "Calls", "Remembered", "PromptChanged", "key_for", "through"]
+
+NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class PromptChanged(CadenceError):
+    pass
+
+
+class Recalled(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
+
+    prompt_digest: NonBlank
+    completion: Completion
+
+
+@runtime_checkable
+class Calls(Protocol):
+    def get(self, key: str) -> Recalled | None: ...
+
+    def put(self, key: str, recalled: Recalled) -> None: ...
+
+
+class Remembered:
+    def __init__(self) -> None:
+        self.calls: dict[str, Recalled] = {}
+
+    def get(self, key: str) -> Recalled | None:
+        return self.calls.get(key)
+
+    def put(self, key: str, recalled: Recalled) -> None:
+        self.calls[key] = recalled
+
+    def __len__(self) -> int:
+        return len(self.calls)
+
+
+def key_for(run_id: str, index: int) -> str:
+    return f"{run_id}/{index}"
+
+
+def digest(prompt: str) -> str:
+    return sha256(prompt.encode()).hexdigest()[:16]
+
+
+def through(
+    calls: Calls,
+    key: str,
+    prompt: str,
+    call: Callable[[], Completion],
+) -> tuple[Completion, bool]:
+    seen = calls.get(key)
+    if seen is not None:
+        if seen.prompt_digest != digest(prompt):
+            raise PromptChanged(
+                f"{key} was recorded against a different prompt;"
+                " the run is not reproducing what it did before"
+            )
+        return seen.completion, True
+    completion = call()
+    calls.put(key, Recalled(prompt_digest=digest(prompt), completion=completion))
+    return completion, False
