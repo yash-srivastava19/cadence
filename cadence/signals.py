@@ -46,6 +46,7 @@ class TrialStarted(Event):
 class ModelCalled(Event):
     trial_id: NonBlank
     backend: NonBlank
+    replayed: bool = False
     tokens_in: int = Field(ge=0)
     tokens_out: int = Field(ge=0)
     latency_ms: float = Field(ge=0, allow_inf_nan=False)

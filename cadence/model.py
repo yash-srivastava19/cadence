@@ -5,6 +5,7 @@ from typing import Any, NamedTuple
 from cadence.backends import Backend, Completion
 from cadence.exceptions import PatchError, RetryableModelError
 from cadence.interfaces import Directive
+from cadence.recall import Calls, through
 from cadence.verdict import Proposal
 
 __all__ = ["TEMPLATES", "render", "parse_patch", "Suggestion", "Model"]
@@ -45,17 +46,23 @@ def parse_patch(text: str) -> tuple[str, ...]:
 class Suggestion(NamedTuple):
     proposal: Proposal
     completion: Completion
+    replayed: bool = False
 
 
 class Model:
     def __init__(
-        self, backend: Backend, template: str = "improve", attempts: int = 3
+        self,
+        backend: Backend,
+        template: str = "improve",
+        attempts: int = 3,
+        calls: Calls | None = None,
     ) -> None:
         if template not in TEMPLATES:
             raise KeyError(f"no template named {template!r}")
         self.backend = backend
         self.template = template
         self.attempts = attempts
+        self.calls = calls
 
     def recipe(self, directive: Directive) -> Mapping[str, Any]:
         return {
@@ -64,17 +71,22 @@ class Model:
             "hint": directive.hint,
         }
 
-    def propose(self, directive: Directive) -> Suggestion:
+    def propose(self, directive: Directive, key: str | None = None) -> Suggestion:
         recipe = self.recipe(directive)
         prompt = render(recipe)
-        completion = self._ask(prompt)
+        if self.calls is None or key is None:
+            completion, replayed = self._ask(prompt), False
+        else:
+            completion, replayed = through(
+                self.calls, key, prompt, lambda: self._ask(prompt)
+            )
         proposal = Proposal(
             patch=parse_patch(completion.text),
             prompt=prompt,
             recipe=recipe,
             raw_response=completion.text,
         )
-        return Suggestion(proposal, completion)
+        return Suggestion(proposal, completion, replayed)
 
     def _ask(self, prompt: str):
         for attempt in range(1, self.attempts + 1):

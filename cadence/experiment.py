@@ -8,6 +8,7 @@ from cadence.events import Emitter
 from cadence.interfaces import Attempt, Directive, History, Ledger, Method
 from cadence.model import Model
 from cadence.patcher import apply_patch
+from cadence.recall import key_for
 from cadence.runner import TrialRunner
 from cadence.signals import (
     ModelCalled,
@@ -106,12 +107,19 @@ class Experiment:
 
         trial.prompt()
         try:
-            proposal, completion = self.model.propose(directive)
+            proposal, completion, replayed = self.model.propose(
+                directive, key=key_for(self.run_id, run.trials)
+            )
         except PatchError as error:
             trial.abandon(reason=str(error))
             trace.emit(TrialAbandoned, reason=str(error))
             return None
-        trace.emit(ModelCalled, backend=self.model.backend.name, **completion.cost)
+        trace.emit(
+            ModelCalled,
+            backend=self.model.backend.name,
+            replayed=replayed,
+            **completion.cost,
+        )
 
         trial.generate(proposal=proposal)
         trace.emit(ProposalReceived, files_changed=_files(proposal.patch))
