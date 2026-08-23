@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from cadence.entities import Candidate, Run, Trial, trial_id
 from cadence.exceptions import ModelError, NoCandidates, PatchError
 from cadence.events import Emitter
-from cadence.interfaces import Attempt, Directive, Method
+from cadence.interfaces import Attempt, Directive, History, Ledger, Method
 from cadence.model import Model
 from cadence.patcher import apply_patch
 from cadence.runner import TrialRunner
@@ -36,6 +36,7 @@ class Report(BaseModel):
     trials: int = Field(ge=0)
     scored: int = Field(ge=0)
     best: str | None = None
+    program: str | None = None
     metrics: Mapping[str, float] | None = None
     reason: str | None = None
 
@@ -74,21 +75,26 @@ class Experiment:
             return self._fail(run, f"{type(error).__name__}: {error}")
 
     def _search(self, run: Run) -> Report:
+        attempts: list[Attempt] = []
         scored = 0
-        search = self.method.search(self.seeds, self.budget)
-        reply: Attempt | None = None
         while True:
-            try:
-                directive = search.send(reply)
-            except StopIteration:
-                return self._finish(run, scored)
+            history = self._history(attempts)
+            directive = self.method.next_directive(
+                history, Ledger(spent=run.trials, budget=self.budget)
+            )
+            if directive is None:
+                return self._finish(run, history, scored)
             reply = self._one(run, directive)
             run.counted()
             if reply is None:
                 continue
+            attempts.append(reply)
             if reply.verdict.escalates:
                 return self._fail(run, reply.verdict.reason)
             scored += reply.verdict.is_scored
+
+    def _history(self, attempts: list[Attempt]) -> History:
+        return History(run_id=self.run_id, seeds=self.seeds, attempts=tuple(attempts))
 
     def _one(self, run: Run, directive: Directive) -> Attempt | None:
         trial = Trial(
@@ -124,8 +130,8 @@ class Experiment:
         trace.emit(TrialMeasured, verdict=verdict)
         return Attempt(code=code, verdict=verdict)
 
-    def _finish(self, run: Run, scored: int) -> Report:
-        best = self.method.best()
+    def _finish(self, run: Run, history: History, scored: int) -> Report:
+        best = self.method.best(history)
         run.finish(best=best.verdict.fingerprint if best else None)
         self.trace.emit(RunFinished, trials=run.trials, best=run.best)
         return Report(
@@ -134,6 +140,7 @@ class Experiment:
             trials=run.trials,
             scored=scored,
             best=run.best,
+            program=best.code if best else None,
             metrics=dict(best.verdict.metrics) if best else None,
         )
 

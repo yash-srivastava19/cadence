@@ -1,19 +1,20 @@
 import pytest
 
 from cadence.exceptions import NoCandidates
-from cadence.interfaces import Attempt, Directive, Method
-from cadence.methods import Evolution, Member
+from cadence.interfaces import Attempt, Directive, History, Ledger, Method
+from cadence.methods import Evolution, Member, rng_for
 from cadence.objectives import Pareto, WeightedSum
 from cadence.verdict import Failed, Outcome, Scored
 
 SEED = "def solve(): return []"
 
 
+def a_verdict(metrics):
+    return Scored(fingerprint="fp", metrics=metrics)
+
+
 def scored(code, value):
-    return Attempt(
-        code=code,
-        verdict=Scored(fingerprint=f"fp-{value}", metrics={"value": float(value)}),
-    )
+    return Attempt(code=code, verdict=a_verdict({"value": float(value)}))
 
 
 def crashed(code="x = 1"):
@@ -23,102 +24,106 @@ def crashed(code="x = 1"):
     )
 
 
-def a_verdict(metrics):
-    return Scored(fingerprint="fp", metrics=metrics)
-
-
 def an_evolution(**kwargs):
     return Evolution(objective=WeightedSum(value=1.0), **kwargs)
 
 
+def past(*attempts, run_id="h1", seeds=(SEED,)):
+    return History(run_id=run_id, seeds=seeds, attempts=tuple(attempts))
+
+
+def ledger(spent=0, budget=10):
+    return Ledger(spent=spent, budget=budget)
+
+
 def drive(method, budget, answers):
-    search = method.search([SEED], budget)
-    directives = []
-    reply = None
+    attempts, directives = [], []
     while True:
-        try:
-            directive = search.send(reply)
-        except StopIteration:
-            return directives
-        directives.append(directive)
-        reply = answers(directive, len(directives))
+        got = method.next_directive(past(*attempts), ledger(len(attempts), budget))
+        if got is None:
+            return directives, attempts
+        directives.append(got)
+        attempts.append(answers(got, len(directives)))
 
 
 class TestTheProtocol:
     def test_evolution_satisfies_it(self):
         assert isinstance(an_evolution(), Method)
 
-    def test_it_yields_directives(self):
-        directives = drive(an_evolution(), 2, lambda d, n: scored(f"v{n}", n))
-        assert all(isinstance(d, Directive) for d in directives)
+    def test_it_returns_a_directive(self):
+        assert isinstance(an_evolution().next_directive(past(), ledger()), Directive)
+
+    def test_the_first_directive_points_at_a_seed(self):
+        assert an_evolution().next_directive(past(), ledger()).code == SEED
+
+    def test_a_spent_budget_ends_the_search(self):
+        assert an_evolution().next_directive(past(), ledger(spent=10)) is None
+
+    def test_a_budget_of_zero_ends_it_immediately(self):
+        assert an_evolution().next_directive(past(), ledger(0, 0)) is None
 
     def test_it_yields_exactly_the_budget(self):
-        assert len(drive(an_evolution(), 5, lambda d, n: scored(f"v{n}", n))) == 5
-
-    def test_a_budget_of_zero_yields_nothing(self):
-        assert drive(an_evolution(), 0, lambda d, n: None) == []
-
-    def test_the_first_directive_points_at_the_seed(self):
-        directives = drive(an_evolution(), 1, lambda d, n: None)
-        assert directives[0].code == SEED
+        directives, _ = drive(an_evolution(), 5, lambda d, n: scored(f"v{n}", n))
+        assert len(directives) == 5
 
     def test_hints_vary_between_trials(self):
-        directives = drive(an_evolution(), 4, lambda d, n: None)
+        directives, _ = drive(an_evolution(), 4, lambda d, n: scored(f"v{n}", n))
         assert len({d.hint for d in directives}) == 4
 
 
-class TestDeterminism:
-    def test_the_same_seed_gives_the_same_directives(self):
-        answers = lambda d, n: scored(f"v{n}", n)  # noqa: E731
-        first = drive(an_evolution(seed=7), 6, answers)
-        second = drive(an_evolution(seed=7), 6, answers)
-        assert [d.code for d in first] == [d.code for d in second]
+class TestItIsAPureFunctionOfHistory:
+    def test_the_same_history_gives_the_same_directive(self):
+        seen = past(scored("v1", 1), scored("v2", 2))
+        assert an_evolution().next_directive(
+            seen, ledger(2)
+        ) == an_evolution().next_directive(seen, ledger(2))
 
-    def test_a_different_seed_explores_differently(self):
-        answers = lambda d, n: scored(f"v{n}", n)  # noqa: E731
-        first = drive(an_evolution(seed=1, size=8), 12, answers)
-        second = drive(an_evolution(seed=2, size=8), 12, answers)
-        assert [d.code for d in first] != [d.code for d in second]
+    def test_a_fresh_instance_resumes_where_another_left_off(self):
+        directives, attempts = drive(an_evolution(), 4, lambda d, n: scored(f"v{n}", n))
+        resumed = an_evolution().next_directive(past(*attempts[:2]), ledger(2))
+        assert resumed == directives[2]
+
+    def test_the_same_run_and_trial_draw_the_same_numbers(self):
+        assert rng_for("h1", 3).random() == rng_for("h1", 3).random()
+
+    def test_a_different_run_draws_different_numbers(self):
+        assert rng_for("a", 0).random() != rng_for("b", 0).random()
+
+    def test_a_different_trial_draws_different_numbers(self):
+        assert rng_for("h1", 0).random() != rng_for("h1", 1).random()
+
+    def test_the_method_keeps_no_state_between_calls(self):
+        method = an_evolution()
+        method.next_directive(past(scored("v1", 9)), ledger(1))
+        assert method.next_directive(past(), ledger()).code == SEED
 
 
 class TestAdmission:
     def test_a_scored_child_joins_the_population(self):
-        method = an_evolution()
-        drive(method, 1, lambda d, n: scored("better", 10))
-        assert any(m.candidate.code == "better" for m in method.population)
+        living = an_evolution().population(past(scored("better", 10)))
+        assert "better" in [m.candidate.code for m in living]
 
     def test_a_failed_child_does_not(self):
-        method = an_evolution()
-        drive(method, 1, lambda d, n: crashed())
-        assert [m.candidate.code for m in method.population] == [SEED]
-
-    def test_a_failed_child_counts_against_its_parent(self):
-        method = an_evolution()
-        drive(method, 1, lambda d, n: crashed())
-        assert method.population[0].candidate.crashes == 1
-
-    def test_a_child_remembers_its_parent(self):
-        method = an_evolution()
-        drive(method, 1, lambda d, n: scored("better", 10))
-        child = next(m for m in method.population if m.candidate.code == "better")
-        assert child.candidate.parent is not None
+        living = an_evolution().population(past(crashed()))
+        assert [m.candidate.code for m in living] == [SEED]
 
     def test_the_population_stays_within_its_cap(self):
-        method = an_evolution(size=3)
-        drive(method, 10, lambda d, n: scored(f"v{n}", n))
-        assert len(method.population) == 3
+        seen = tuple(scored(f"v{n}", n) for n in range(1, 11))
+        assert len(an_evolution(size=3).population(past(*seen))) == 3
 
     def test_pruning_keeps_the_strongest(self):
-        method = an_evolution(size=2)
-        drive(method, 6, lambda d, n: scored(f"v{n}", n))
-        assert method.best().verdict.metrics["value"] == 6.0
+        seen = tuple(scored(f"v{n}", n) for n in range(1, 7))
+        best = an_evolution(size=2).best(past(*seen))
+        assert best.verdict.metrics["value"] == 6.0
+
+    def test_with_nothing_scored_there_is_no_best(self):
+        assert an_evolution().best(past(crashed())) is None
 
 
 class TestTheObjectiveDecides:
     def test_a_weighted_sum_prefers_the_higher_total(self):
-        method = an_evolution(size=2)
-        drive(method, 4, lambda d, n: scored(f"v{n}", n))
-        assert method.best().code == "v4"
+        seen = tuple(scored(f"v{n}", n) for n in range(1, 5))
+        assert an_evolution(size=2).best(past(*seen)).code == "v4"
 
     def test_pareto_keeps_a_trade_off_that_weighted_sum_would_drop(self):
         cheap = Member(None, a_verdict({"value": 5.0, "weight": 1.0}))
@@ -129,22 +134,18 @@ class TestTheObjectiveDecides:
 
     def test_an_unmeasured_member_never_beats_a_measured_one(self):
         method = an_evolution()
-        measured = Member(None, a_verdict({"value": 1.0}))
-        fresh = Member(None, None)
-        assert method.better(measured, fresh)
-        assert not method.better(fresh, measured)
+        assert method.better(
+            Member(None, a_verdict({"value": 1.0})), Member(None, None)
+        )
+        assert not method.better(
+            Member(None, None), Member(None, a_verdict({"value": 1.0}))
+        )
 
 
 class TestRunningOut:
-    def test_a_search_with_no_seeds_says_so(self):
-        with pytest.raises(NoCandidates, match="at least one seed"):
-            next(an_evolution().search([], 5))
-
-    def test_an_exhausted_budget_stops_rather_than_raising(self):
-        search = an_evolution().search([SEED], 1)
-        next(search)
-        with pytest.raises(StopIteration):
-            search.send(scored("v1", 1))
+    def test_a_history_needs_at_least_one_seed(self):
+        with pytest.raises(Exception):
+            History(run_id="h1", seeds=())
 
     def test_a_tournament_needs_an_entrant(self):
         with pytest.raises(ValueError):
@@ -153,3 +154,9 @@ class TestRunningOut:
     def test_a_population_needs_room(self):
         with pytest.raises(ValueError):
             an_evolution(size=0)
+
+    def test_an_empty_population_says_so(self):
+        method = an_evolution()
+        method.population = lambda history: []
+        with pytest.raises(NoCandidates):
+            method.next_directive(past(), ledger())

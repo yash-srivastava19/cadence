@@ -1,12 +1,12 @@
 import random
-from collections.abc import Sequence
+from hashlib import sha256
 
 from cadence.entities import Candidate
 from cadence.exceptions import NoCandidates
-from cadence.interfaces import Attempt, Directive, Objective, Search
+from cadence.interfaces import Attempt, Directive, History, Ledger, Objective
 from cadence.verdict import Verdict
 
-__all__ = ["HINTS", "Member", "Evolution"]
+__all__ = ["HINTS", "Member", "Evolution", "rng_for"]
 
 HINTS = (
     "make it faster without changing what it returns",
@@ -14,6 +14,11 @@ HINTS = (
     "replace the inner loop with something cheaper",
     "try a different strategy entirely",
 )
+
+
+def rng_for(run_id: str, index: int) -> random.Random:
+    digest = sha256(f"{run_id}/{index}".encode()).digest()
+    return random.Random(int.from_bytes(digest[:8], "big"))
 
 
 class Member:
@@ -32,11 +37,7 @@ class Member:
 
 class Evolution:
     def __init__(
-        self,
-        objective: Objective,
-        size: int = 8,
-        tournament: int = 3,
-        seed: int = 0,
+        self, objective: Objective, size: int = 8, tournament: int = 3
     ) -> None:
         if tournament < 1:
             raise ValueError("a tournament needs at least one entrant")
@@ -45,8 +46,6 @@ class Evolution:
         self.objective = objective
         self.size = size
         self.tournament = tournament
-        self.seed = seed
-        self.population: list[Member] = []
 
     def better(self, one: Member, two: Member) -> bool:
         if not one.measured:
@@ -55,55 +54,47 @@ class Evolution:
             return True
         return self.objective.dominates(one.verdict.metrics, two.verdict.metrics)
 
-    def best(self) -> Attempt | None:
+    def population(self, history: History) -> list[Member]:
+        living = [Member(Candidate(code=code)) for code in history.seeds]
+        for attempt in history.attempts:
+            if not attempt.verdict.is_scored:
+                continue
+            living.append(Member(Candidate(code=attempt.code), attempt.verdict))
+            while len(living) > self.size:
+                living.remove(self.weakest(living))
+        return living
+
+    def best(self, history: History) -> Attempt | None:
         winner = None
-        for member in self.population:
+        for member in self.population(history):
             if winner is None or self.better(member, winner):
                 winner = member
         return winner.attempt if winner is not None and winner.measured else None
 
-    def pick(self, rng: random.Random) -> Member:
-        entrants = [rng.choice(self.population) for _ in range(self.tournament)]
+    def pick(self, living: list[Member], rng: random.Random) -> Member:
+        entrants = [rng.choice(living) for _ in range(self.tournament)]
         winner = entrants[0]
         for entrant in entrants[1:]:
             if self.better(entrant, winner):
                 winner = entrant
         return winner
 
-    def admit(self, member: Member) -> None:
-        self.population.append(member)
-        while len(self.population) > self.size:
-            self.population.remove(self.weakest())
-
-    def weakest(self) -> Member:
-        loser = self.population[0]
-        for member in self.population[1:]:
+    def weakest(self, living: list[Member]) -> Member:
+        loser = living[0]
+        for member in living[1:]:
             if self.better(loser, member):
                 loser = member
         return loser
 
-    def search(self, seeds: Sequence[str], budget: int) -> Search:
-        self.population = [Member(Candidate(code=code)) for code in seeds]
-        if not self.population:
-            raise NoCandidates("a search needs at least one seed program")
-
-        rng = random.Random(self.seed)
-        for index in range(budget):
-            parent = self.pick(rng)
-            attempt = yield Directive(
-                parent=parent.candidate.fingerprint,
-                code=parent.candidate.code,
-                hint=HINTS[index % len(HINTS)],
-            )
-            if attempt is None:
-                continue
-            self.record(parent, attempt)
-            if not self.population:
-                raise NoCandidates("every candidate has been retired")
-
-    def record(self, parent: Member, attempt: Attempt) -> None:
-        if not attempt.verdict.is_scored:
-            parent.candidate.crashed()
-            return
-        child = Candidate(code=attempt.code, parent=parent.candidate.fingerprint)
-        self.admit(Member(child, attempt.verdict))
+    def next_directive(self, history: History, ledger: Ledger) -> Directive | None:
+        if ledger.exhausted:
+            return None
+        living = self.population(history)
+        if not living:
+            raise NoCandidates("every candidate has been retired")
+        parent = self.pick(living, rng_for(history.run_id, history.index))
+        return Directive(
+            parent=parent.candidate.fingerprint,
+            code=parent.candidate.code,
+            hint=HINTS[history.index % len(HINTS)],
+        )
