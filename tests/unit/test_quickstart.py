@@ -13,7 +13,7 @@ def test_the_example_runs_and_improves_the_program(capsys):
 
 
 def test_it_shows_the_program_it_ended_with(capsys):
-    assert "def pack(items):" in run_quickstart(capsys)
+    assert "def pack(items, capacity):" in run_quickstart(capsys)
 
 
 def test_it_shows_a_rejected_patch_rather_than_hiding_it(capsys):

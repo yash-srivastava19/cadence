@@ -22,8 +22,8 @@ ITEMS = [(3, 8), (7, 14), (4, 9), (9, 15), (2, 5), (5, 11), (6, 12), (8, 13)]
 # ---------------------------------------------------------------- your part
 
 START = '''\
-def pack(items):
-    """Pick indexes of (weight, value) items worth the most, total weight <= 20."""
+def pack(items, capacity):
+    """Pick indexes of (weight, value) items worth the most, without going over capacity."""
     return []
 '''
 
@@ -35,35 +35,36 @@ class Knapsack:
     baseline = START
 
     def inputs(self, seed):
-        return ITEMS
+        return ITEMS, CAPACITY
 
-    def score(self, chosen, items):
+    def score(self, chosen, inputs):
+        items, capacity = inputs
         weight = sum(items[i][0] for i in chosen)
         value = sum(items[i][1] for i in chosen)
-        return {"value": float(value) if weight <= CAPACITY else 0.0}
+        return {"value": float(value) if weight <= capacity else 0.0}
 
 
 # ------------------------------------------------- what a model would send
 
 GREEDY = '''\
-def pack(items):
-    """Pick indexes of (weight, value) items worth the most, total weight <= 20."""
+def pack(items, capacity):
+    """Pick indexes of (weight, value) items worth the most, without going over capacity."""
     chosen, used = [], 0
     for index, (weight, value) in enumerate(items):
-        if used + weight <= 20:
+        if used + weight <= capacity:
             chosen.append(index)
             used += weight
     return chosen
 '''
 
 BY_RATIO = '''\
-def pack(items):
-    """Pick indexes of (weight, value) items worth the most, total weight <= 20."""
+def pack(items, capacity):
+    """Pick indexes of (weight, value) items worth the most, without going over capacity."""
     order = sorted(range(len(items)), key=lambda i: -items[i][1] / items[i][0])
     chosen, used = [], 0
     for index in order:
         weight = items[index][0]
-        if used + weight <= 20:
+        if used + weight <= capacity:
             chosen.append(index)
             used += weight
     return chosen
@@ -128,6 +129,8 @@ def main():
     so_far = {"n": 0, "best": start_value}
 
     def report_trial(fact):
+        if not isinstance(fact, (TrialMeasured, PatchRejected, TrialAbandoned)):
+            return
         so_far["n"] += 1
         label = f"      trial {so_far['n']}   "
         if isinstance(fact, (PatchRejected, TrialAbandoned)):
