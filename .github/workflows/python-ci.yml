@@ -35,6 +35,11 @@ jobs:
           cp .env.example .env
           docker compose up -d --wait
 
+      - name: Migrate the test database
+        run: |
+          set -a && . ./.env && set +a
+          DATABASE_URL="$TEST_DATABASE_URL" alembic upgrade head
+
       - name: Run tests
         run: |
           set -a && . ./.env && set +a
