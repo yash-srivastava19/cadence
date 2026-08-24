@@ -155,3 +155,35 @@ class TestADirective:
     def test_it_survives_json(self):
         directive = a_directive()
         assert Directive.model_validate_json(directive.model_dump_json()) == directive
+
+
+class TestMarkersAreConfigurable:
+    def test_the_default_pair_is_found(self):
+        code = "a = 1\n# CADENCE:BEGIN\nx = 1\n# CADENCE:END\nb = 2\n"
+        directive = Directive(parent="p", code=code, hint="try")
+        proposal = (
+            a_model("```python\nx = 9\n```", template="region")
+            .propose(directive)
+            .proposal
+        )
+        assert "+x = 9" in proposal.patch
+
+    def test_another_pair_can_be_used(self):
+        code = "a = 1\n# EVOLVE-START\nx = 1\n# EVOLVE-END\nb = 2\n"
+        directive = Directive(parent="p", code=code, hint="try")
+        model = Model(
+            backend=Scripted("```python\nx = 9\n```"),
+            template="region",
+            markers=("EVOLVE-START", "EVOLVE-END"),
+        )
+        assert "+x = 9" in model.propose(directive).proposal.patch
+
+    def test_a_program_without_the_configured_pair_is_rewritten_whole(self):
+        code = "x = 1\n"
+        directive = Directive(parent="p", code=code, hint="try")
+        model = Model(
+            backend=Scripted("```python\nx = 9\n```"),
+            template="region",
+            markers=("EVOLVE-START", "EVOLVE-END"),
+        )
+        assert "+x = 9" in model.propose(directive).proposal.patch

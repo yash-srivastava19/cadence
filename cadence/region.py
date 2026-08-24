@@ -18,20 +18,20 @@ class Region(NamedTuple):
     tail: str
 
 
-def split(code: str) -> Region | None:
+def split(code: str, begin: str = BEGIN, end: str = END) -> Region | None:
     lines = code.splitlines(keepends=True)
-    opens = [i for i, line in enumerate(lines) if BEGIN in line]
-    closes = [i for i, line in enumerate(lines) if END in line]
+    opens = [i for i, line in enumerate(lines) if begin in line]
+    closes = [i for i, line in enumerate(lines) if end in line]
     if not opens and not closes:
         return None
     if len(opens) != 1 or len(closes) != 1:
         raise MarkerError(
-            f"a program needs exactly one {BEGIN} and one {END};"
+            f"a program needs exactly one {begin} and one {end};"
             f" found {len(opens)} and {len(closes)}"
         )
     start, stop = opens[0], closes[0]
     if stop <= start:
-        raise MarkerError(f"{END} comes before {BEGIN}")
+        raise MarkerError(f"{end} comes before {begin}")
     return Region(
         head="".join(lines[: start + 1]),
         body="".join(lines[start + 1 : stop]),
@@ -39,10 +39,10 @@ def split(code: str) -> Region | None:
     )
 
 
-def splice(code: str, body: str) -> str:
-    region = split(code)
+def splice(code: str, body: str, begin: str = BEGIN, end: str = END) -> str:
+    region = split(code, begin, end)
     if region is None:
-        raise MarkerError(f"the program has no {BEGIN} marker")
+        raise MarkerError(f"the program has no {begin} marker")
     if not body.endswith("\n"):
         body += "\n"
     return region.head + body + region.tail

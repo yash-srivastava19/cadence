@@ -64,7 +64,10 @@ def build(manifest: Manifest, root: Path, run_id: str, backend=None) -> Experime
         method=resolve(
             "method", METHODS, manifest.method, objective=objective_for(manifest)
         ),
-        model=Model(backend=backend or resolve("backend", BACKENDS, manifest.model)),
+        model=Model(
+            backend=backend or resolve("backend", BACKENDS, manifest.model),
+            markers=(manifest.markers.begin, manifest.markers.end),
+        ),
         runner=TrialRunner(
             program=manifest.program,
             command=shlex.split(manifest.command),

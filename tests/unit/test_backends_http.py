@@ -1,4 +1,3 @@
-
 import pytest
 
 from cadence.backends import (

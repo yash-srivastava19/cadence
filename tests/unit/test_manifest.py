@@ -194,3 +194,31 @@ class TestThePlan:
 
     def test_it_shows_defaults_that_were_filled_in(self, tmp_path):
         assert "256MB" in load(write(tmp_path, MINIMAL)).plan
+
+
+class TestMarkers:
+    def test_they_default_to_the_cadence_pair(self, tmp_path):
+        markers = load(write(tmp_path, MINIMAL)).markers
+        assert (markers.begin, markers.end) == ("CADENCE:BEGIN", "CADENCE:END")
+
+    def test_they_can_be_changed(self, tmp_path):
+        text = MINIMAL + "markers: {begin: EVOLVE-START, end: EVOLVE-END}\n"
+        markers = load(write(tmp_path, text)).markers
+        assert (markers.begin, markers.end) == ("EVOLVE-START", "EVOLVE-END")
+
+    def test_only_one_of_them_may_be_changed(self, tmp_path):
+        text = MINIMAL + "markers: {begin: START_BLOCK}\n"
+        assert load(write(tmp_path, text)).markers.end == "CADENCE:END"
+
+    def test_they_must_differ(self, tmp_path):
+        text = MINIMAL + "markers: {begin: SAME, end: SAME}\n"
+        with pytest.raises(ManifestError, match="must differ"):
+            load(write(tmp_path, text))
+
+    def test_a_blank_marker_is_refused(self, tmp_path):
+        text = MINIMAL + "markers: {begin: '  '}\n"
+        with pytest.raises(ManifestError, match="markers.begin"):
+            load(write(tmp_path, text))
+
+    def test_the_plan_shows_them(self, tmp_path):
+        assert "CADENCE:BEGIN .. CADENCE:END" in load(write(tmp_path, MINIMAL)).plan

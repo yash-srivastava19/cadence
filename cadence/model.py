@@ -7,7 +7,7 @@ from cadence.backends import Backend, Completion
 from cadence.exceptions import PatchError
 from cadence.interfaces import Directive
 from cadence.recall import Calls, through
-from cadence.region import split, splice
+from cadence.region import BEGIN, END, split, splice
 from cadence.verdict import Proposal
 
 __all__ = ["TEMPLATES", "render", "parse_patch", "parse_program", "Suggestion", "Model"]
@@ -110,6 +110,7 @@ class Model:
         template: str = "region",
         attempts: int = 3,
         calls: Calls | None = None,
+        markers: tuple[str, str] = (BEGIN, END),
     ) -> None:
         if template not in TEMPLATES:
             raise KeyError(f"no template named {template!r}")
@@ -117,6 +118,7 @@ class Model:
         self.template = template
         self.attempts = attempts
         self.calls = calls
+        self.markers = markers
 
     def recipe(self, directive: Directive) -> Mapping[str, Any]:
         return {
@@ -146,7 +148,8 @@ class Model:
         if self.template not in WHOLE:
             return parse_patch(answer)
         written = parse_program(answer)
-        after = splice(before, written) if split(before) else written
+        marked = split(before, *self.markers)
+        after = splice(before, written, *self.markers) if marked else written
         patch = as_patch(before, after)
         if not patch:
             raise PatchError("the program came back unchanged")
