@@ -5,11 +5,11 @@
 Same thing `cadence run` does, but with scripted answers instead of an API key.
 """
 
-import difflib
 from pathlib import Path
 
 from cadence.backends import Scripted
 from cadence.manifest import load
+from cadence.region import split
 from cadence.registry import build
 from cadence.signals import PatchRejected, TrialAbandoned, TrialMeasured, cadence
 
@@ -22,11 +22,8 @@ GREEDY = """    order = sorted(range(len(items)), key=lambda i: -items[i][1] / i
     return chosen"""
 
 
-def as_diff(before: str, after: str) -> str:
-    body = difflib.unified_diff(
-        before.splitlines(True), after.splitlines(True), "a/pack.py", "b/pack.py"
-    )
-    return f"```diff\n{''.join(body)}```"
+def as_region(body: str) -> str:
+    return f"Here is the improved section.\n```python\n{body}\n```"
 
 
 def watch(fact):
@@ -46,9 +43,10 @@ def main() -> None:
     start = (root / manifest.program).read_text()
 
     print(f"starting from {manifest.program}:\n")
-    print("    " + start.split("def pack")[1].strip()[:60])
+    print("    " + (split(start).body.strip() or start)[:70])
 
-    answers = [as_diff(start, start.replace("    return []", GREEDY)), "I'd use DP."]
+    improved = f"def pack(items, capacity):\n{GREEDY}"
+    answers = [as_region(improved), "I'd use DP."]
     experiment = build(manifest, root, "demo", backend=Scripted(*answers))
 
     print(f"\nrunning {manifest.budget.trials} trials against a fake model:\n")

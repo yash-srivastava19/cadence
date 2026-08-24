@@ -12,21 +12,13 @@ from cadence.states import RunState
 BASELINE = "print('value: 0')"
 
 
-def diff(printed):
-    return (
-        "```diff\n"
-        "--- a/prog.py\n"
-        "+++ b/prog.py\n"
-        "@@ -1,1 +1,1 @@\n"
-        f"-{BASELINE}\n"
-        f"+{printed}\n"
-        "```"
-    )
+def rewritten(program):
+    return f"Here is the new program.\n```python\n{program}\n```"
 
 
-IMPROVES = diff("print('value: 9')")
-SILENT = diff("print('nothing to report')")
-CRASHES = diff("raise ValueError('the evolved code is broken')")
+IMPROVES = rewritten("print('value: 9')")
+SILENT = rewritten("print('nothing to report')")
+CRASHES = rewritten("raise ValueError('the evolved code is broken')")
 NONSENSE = "I would change the loop, but here is prose instead."
 
 
@@ -106,7 +98,7 @@ class TestTheRunIsTraceable:
 
         with cadence.recording() as tape:
             an_experiment(NONSENSE).run()
-        assert "diff block" in tape.of(TrialAbandoned)[0].reason
+        assert "```python block" in tape.of(TrialAbandoned)[0].reason
 
 
 class TestFailingWell:

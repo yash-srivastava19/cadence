@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from cadence.exceptions import CadenceError
 from cadence.reading import GOALS
+from cadence.region import BEGIN, END
 
 __all__ = ["API_VERSIONS", "ManifestError", "Plugin", "Manifest", "load"]
 
@@ -45,6 +46,17 @@ class Plugin(Strict):
         return {"name": name, "options": options or {}}
 
 
+class Markers(Strict):
+    begin: NonBlank = BEGIN
+    end: NonBlank = END
+
+    @model_validator(mode="after")
+    def _distinct(self) -> "Markers":
+        if self.begin == self.end:
+            raise ValueError("begin and end markers must differ")
+        return self
+
+
 class Budget(Strict):
     trials: int = Field(default=20, gt=0)
 
@@ -65,6 +77,7 @@ class Manifest(Strict):
     method: Plugin = Plugin(name=DEFAULT_METHOD)
     model: Plugin = Plugin(name=DEFAULT_MODEL)
     objective: Plugin | None = None
+    markers: Markers = Markers()
     budget: Budget = Budget()
     sandbox: Sandbox = Sandbox()
 
@@ -97,6 +110,7 @@ class Manifest(Strict):
                 f"  run        {self.command}",
                 f"  metrics    {', '.join(f'{k} ({v})' for k, v in self.metrics.items())}",
                 f"  guidance   {self.guidance}",
+                f"  markers    {self.markers.begin} .. {self.markers.end}",
                 f"  method     {self.method.name} {dict(self.method.options) or ''}".rstrip(),
                 f"  objective  {self._objective}",
                 f"  model      {self.model.name} {dict(self.model.options) or ''}".rstrip(),

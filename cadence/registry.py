@@ -1,7 +1,7 @@
 import shlex
 from pathlib import Path
 
-from cadence.backends import Scripted
+from cadence.backends import Scripted, known, served
 from cadence.exceptions import CadenceError
 from cadence.experiment import Experiment
 from cadence.manifest import Manifest, Plugin
@@ -19,9 +19,16 @@ class Unknown(CadenceError):
     pass
 
 
+def _make(name: str):
+    def build(**options):
+        return served(name, **options)
+
+    return build
+
+
 METHODS = {"evolution": Evolution}
 OBJECTIVES = {"weighted_sum": WeightedSum, "pareto": Pareto}
-BACKENDS = {"scripted": Scripted}
+BACKENDS = {"scripted": Scripted, **{name: _make(name) for name in known()}}
 
 
 def resolve(kind: str, known: dict, plugin: Plugin, **extra):
@@ -57,7 +64,10 @@ def build(manifest: Manifest, root: Path, run_id: str, backend=None) -> Experime
         method=resolve(
             "method", METHODS, manifest.method, objective=objective_for(manifest)
         ),
-        model=Model(backend=backend or resolve("backend", BACKENDS, manifest.model)),
+        model=Model(
+            backend=backend or resolve("backend", BACKENDS, manifest.model),
+            markers=(manifest.markers.begin, manifest.markers.end),
+        ),
         runner=TrialRunner(
             program=manifest.program,
             command=shlex.split(manifest.command),

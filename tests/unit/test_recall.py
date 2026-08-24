@@ -18,10 +18,7 @@ from cadence.signals import ModelCalled, cadence
 from cadence.states import RunState
 
 BASELINE = "print('value: 0')"
-ANSWER = (
-    "```diff\n--- a/prog.py\n+++ b/prog.py\n@@ -1,1 +1,1 @@\n"
-    "-print('value: 0')\n+print('value: 9')\n```"
-)
+ANSWER = "```python\nprint('value: 9')\n```"
 
 
 def a_completion(text="hello"):

@@ -8,7 +8,7 @@ requires-python = ">=3.11.4"
 dependencies = [
   "matplotlib",
   "python-dotenv",
-  "google-genai",
+  "google-genai",  # only src/llm.py needs this; goes when src/ does
   "scikit-learn>=1.7.0",
   "flask>=3.1.1",
   "mkdocs>=1.6.1",

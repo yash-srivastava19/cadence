@@ -1,0 +1,37 @@
+# Settings, never secrets. Override in providers.local.yml (gitignored) or
+# per-run from .cadence:  model: {gemini: {model: gemini-3.6-pro}}
+#
+# API keys are read from the environment named by key_from and from nowhere
+# else, so `op run -- cadence run`, direnv, sops or a plain export all work
+# and none of them are cadence's business.
+#
+# Every provider speaks the OpenAI dialect, so adding one is a row.
+
+defaults:
+  timeout: 300
+  attempts: 3
+  backoff: 1.0
+  temperature: 0.8
+
+providers:
+  ollama:
+    base_url: http://localhost:11434/v1
+    base_url_from: OLLAMA_HOST
+    model: qwen3:4b
+
+  gemini:
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    key_from: [GEMINI_API_KEY, GOOGLE_API_KEY]
+    model: gemini-3.6-flash
+    timeout: 120
+
+  # No default model for these two: cadence has not called them, and shipping
+  # a guess about someone else's catalogue is a claim that rots. Name one in
+  # .cadence:  model: {openai: {model: ...}}
+  openai:
+    base_url: https://api.openai.com/v1
+    key_from: [OPENAI_API_KEY]
+
+  anthropic:
+    base_url: https://api.anthropic.com/v1
+    key_from: [ANTHROPIC_API_KEY]

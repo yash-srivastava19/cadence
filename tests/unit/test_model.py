@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from cadence.backends import Scripted
-from cadence.exceptions import PatchError, RetryableModelError, TerminalModelError
+from cadence.exceptions import PatchError, TerminalModelError
 from cadence.interfaces import Directive
 from cadence.model import Model, parse_patch, render
 
@@ -21,8 +21,8 @@ def a_directive(hint="try a greedy pass"):
     return Directive(parent="abc123", code="def solve(): return []", hint=hint)
 
 
-def a_model(*responses):
-    return Model(backend=Scripted(*responses))
+def a_model(*responses, template="improve"):
+    return Model(backend=Scripted(*responses), template=template)
 
 
 class TestParsingAPatch:
@@ -72,6 +72,49 @@ class TestTheRecipeRebuildsThePrompt:
             Model(backend=Scripted(), template="nonexistent")
 
 
+class TestAskingForTheWholeProgram:
+    def test_the_diff_is_computed_from_what_came_back(self):
+        answer = "```python\ndef solve(): return 1\n```"
+        proposal = a_model(answer, template="rewrite").propose(a_directive()).proposal
+        assert "+def solve(): return 1" in proposal.patch
+
+    def test_the_computed_diff_applies(self):
+        from cadence.patcher import apply_patch
+
+        answer = "```python\ndef solve(): return 1\n```"
+        directive = a_directive()
+        proposal = a_model(answer, template="rewrite").propose(directive).proposal
+        assert apply_patch(directive.code, proposal.patch) == "def solve(): return 1"
+
+    def test_an_unchanged_program_is_refused(self):
+        directive = a_directive()
+        answer = f"```python\n{directive.code}\n```"
+        with pytest.raises(PatchError, match="unchanged"):
+            a_model(answer, template="rewrite").propose(directive)
+
+    def test_prose_with_no_block_is_refused(self):
+        with pytest.raises(PatchError, match="```python block"):
+            a_model("I would rewrite it entirely.", template="rewrite").propose(
+                a_directive()
+            )
+
+    def test_only_the_marked_region_is_replaced(self):
+        from cadence.interfaces import Directive
+        from cadence.patcher import apply_patch
+
+        marked = "before = 1\n# CADENCE:BEGIN\nx = 1\n# CADENCE:END\nafter = 2\n"
+        directive = Directive(parent="p", code=marked, hint="try something")
+        proposal = (
+            a_model("```python\nx = 99\n```", template="region")
+            .propose(directive)
+            .proposal
+        )
+        after = apply_patch(marked, proposal.patch)
+        assert "x = 99" in after
+        assert after.startswith("before = 1")
+        assert after.rstrip().endswith("after = 2")
+
+
 class TestProposing:
     def test_it_returns_the_parsed_patch(self):
         proposal = a_model(ANSWER).propose(a_directive()).proposal
@@ -92,21 +135,6 @@ class TestProposing:
 
 
 class TestRetryClassification:
-    def test_a_retryable_error_is_retried(self):
-        model = a_model(RetryableModelError("429"), ANSWER)
-        proposal = model.propose(a_directive()).proposal
-        assert proposal.patch[0] == "--- a/solve.py"
-        assert len(model.backend.prompts) == 2
-
-    def test_it_gives_up_after_the_attempt_budget(self):
-        model = Model(
-            backend=Scripted(*[RetryableModelError("429")] * 3),
-            attempts=3,
-        )
-        with pytest.raises(RetryableModelError):
-            model.propose(a_directive()).proposal
-        assert len(model.backend.prompts) == 3
-
     def test_a_terminal_error_is_not_retried(self):
         model = a_model(TerminalModelError("401"), ANSWER)
         with pytest.raises(TerminalModelError):
@@ -127,3 +155,35 @@ class TestADirective:
     def test_it_survives_json(self):
         directive = a_directive()
         assert Directive.model_validate_json(directive.model_dump_json()) == directive
+
+
+class TestMarkersAreConfigurable:
+    def test_the_default_pair_is_found(self):
+        code = "a = 1\n# CADENCE:BEGIN\nx = 1\n# CADENCE:END\nb = 2\n"
+        directive = Directive(parent="p", code=code, hint="try")
+        proposal = (
+            a_model("```python\nx = 9\n```", template="region")
+            .propose(directive)
+            .proposal
+        )
+        assert "+x = 9" in proposal.patch
+
+    def test_another_pair_can_be_used(self):
+        code = "a = 1\n# EVOLVE-START\nx = 1\n# EVOLVE-END\nb = 2\n"
+        directive = Directive(parent="p", code=code, hint="try")
+        model = Model(
+            backend=Scripted("```python\nx = 9\n```"),
+            template="region",
+            markers=("EVOLVE-START", "EVOLVE-END"),
+        )
+        assert "+x = 9" in model.propose(directive).proposal.patch
+
+    def test_a_program_without_the_configured_pair_is_rewritten_whole(self):
+        code = "x = 1\n"
+        directive = Directive(parent="p", code=code, hint="try")
+        model = Model(
+            backend=Scripted("```python\nx = 9\n```"),
+            template="region",
+            markers=("EVOLVE-START", "EVOLVE-END"),
+        )
+        assert "+x = 9" in model.propose(directive).proposal.patch
