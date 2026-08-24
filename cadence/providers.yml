@@ -1,0 +1,32 @@
+# Shipped defaults. Override any of it in providers.local.yml (gitignored),
+# or per-run from .cadence:  model: {gemini: {model: gemini-3.6-pro}}
+#
+# Every provider here speaks the OpenAI dialect, so adding one is a row.
+
+defaults:
+  timeout: 300
+  attempts: 3
+  backoff: 1.0
+  temperature: 0.8
+
+providers:
+  ollama:
+    base_url: http://localhost:11434/v1
+    base_url_from: OLLAMA_HOST
+    model: qwen3:4b
+
+  gemini:
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    key_from: [GEMINI_API_KEY, GOOGLE_API_KEY]
+    model: gemini-3.6-flash
+    timeout: 120
+
+  openai:
+    base_url: https://api.openai.com/v1
+    key_from: [OPENAI_API_KEY]
+    model: gpt-5.1
+
+  anthropic:
+    base_url: https://api.anthropic.com/v1
+    key_from: [ANTHROPIC_API_KEY]
+    model: claude-sonnet-5

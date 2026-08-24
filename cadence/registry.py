@@ -1,7 +1,7 @@
 import shlex
 from pathlib import Path
 
-from cadence.backends import PROVIDERS, Scripted, served
+from cadence.backends import Scripted, known, served
 from cadence.exceptions import CadenceError
 from cadence.experiment import Experiment
 from cadence.manifest import Manifest, Plugin
@@ -28,7 +28,7 @@ def _make(name: str):
 
 METHODS = {"evolution": Evolution}
 OBJECTIVES = {"weighted_sum": WeightedSum, "pareto": Pareto}
-BACKENDS = {"scripted": Scripted, **{name: _make(name) for name in PROVIDERS}}
+BACKENDS = {"scripted": Scripted, **{name: _make(name) for name in known()}}
 
 
 def resolve(kind: str, known: dict, plugin: Plugin, **extra):

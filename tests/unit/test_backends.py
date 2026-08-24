@@ -1,103 +1,210 @@
 import pytest
-from pydantic import ValidationError
 
-from cadence.backends import Backend, Completion, Scripted
+from cadence.backends import Backend, Gemini, Ollama, Reliable, Scripted, served
 from cadence.exceptions import RetryableModelError, TerminalModelError
-from cadence.signals import ModelCalled
-from cadence.verdict import Proposal
+from cadence.http import RETRYABLE, Answer, Http
+from cadence.registry import BACKENDS
+from cadence.settings import MissingKey, known, settings_for
 
 
-class TestScripted:
-    def test_it_satisfies_the_protocol(self):
-        assert isinstance(Scripted(), Backend)
+class Recorded:
+    """Stands in for the network."""
 
-    def test_it_answers_in_order(self):
-        backend = Scripted("first", "second")
-        assert backend.call("a").text == "first"
-        assert backend.call("b").text == "second"
+    def __init__(self, *answers):
+        self.answers = list(answers)
+        self.sent = []
 
-    def test_it_remembers_what_it_was_asked(self):
-        backend = Scripted("first")
-        backend.call("the prompt")
-        assert backend.prompts == ["the prompt"]
-
-    def test_the_same_script_gives_the_same_answers(self):
-        assert Scripted("x").call("p") == Scripted("x").call("p")
-
-    def test_running_out_is_terminal_rather_than_silent(self):
-        backend = Scripted()
-        with pytest.raises(TerminalModelError, match="ran out"):
-            backend.call("a")
-
-    def test_it_counts_what_is_left(self):
-        backend = Scripted("a", "b")
-        backend.call("p")
-        assert backend.remaining == 1
+    def post(self, url, payload, headers=None):
+        self.sent.append((url, payload, headers or {}))
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
 
 
-class TestScriptedFailures:
-    def test_it_can_raise_a_retryable_error(self):
-        backend = Scripted(RetryableModelError("429"))
+def spoke(text="hi", tokens_in=7, tokens_out=3, model="m"):
+    answer = Answer(
+        {
+            "model": model,
+            "choices": [{"message": {"content": text}}],
+            "usage": {"prompt_tokens": tokens_in, "completion_tokens": tokens_out},
+        }
+    )
+    answer.latency_ms = 12.0
+    return answer
+
+
+class TestProvidersAreData:
+    def test_more_than_one_is_known(self):
+        assert {"ollama", "gemini"} <= set(known())
+
+    def test_each_one_is_a_backend(self):
+        for name in known():
+            assert isinstance(BACKENDS[name](key="x"), Backend)
+
+    def test_each_one_is_wrapped_the_same_way(self):
+        for name in known():
+            assert isinstance(BACKENDS[name](key="x"), Reliable)
+
+    def test_an_unknown_one_lists_the_known_ones(self):
+        from cadence.settings import UnknownProvider
+
+        with pytest.raises(UnknownProvider, match="gemini"):
+            served("nope")
+
+    def test_adding_one_needs_no_python(self):
+        """Every provider differs only in settings, so the classes are identical."""
+        assert type(Ollama().backend) is type(Gemini(key="x").backend)
+
+
+class TestSettings:
+    def test_defaults_are_applied(self):
+        assert settings_for("ollama").attempts == 3
+
+    def test_a_provider_may_override_a_default(self):
+        assert settings_for("gemini").timeout == 120.0
+
+    def test_a_caller_may_override_anything(self):
+        assert settings_for("gemini", model="other").model == "other"
+
+    def test_the_host_may_come_from_the_environment(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_HOST", "http://elsewhere:9")
+        assert settings_for("ollama").base_url == "http://elsewhere:9"
+
+    def test_a_trailing_slash_does_not_double_up(self):
+        assert settings_for("ollama", base_url="http://x/").url == "http://x"
+
+
+class TestKeys:
+    def test_a_local_model_needs_none(self):
+        assert not settings_for("ollama").needs_a_key
+
+    def test_a_hosted_one_does(self):
+        assert settings_for("gemini").needs_a_key
+
+    def test_it_is_read_from_the_environment(self, monkeypatch):
+        monkeypatch.setenv("GEMINI_API_KEY", "from-env")
+        assert settings_for("gemini").key == "from-env"
+
+    def test_the_second_variable_is_tried_too(self, monkeypatch):
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.setenv("GOOGLE_API_KEY", "fallback")
+        assert settings_for("gemini").key == "fallback"
+
+    def test_a_missing_one_names_every_variable_that_would_do(self, monkeypatch):
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        with pytest.raises(MissingKey, match="GEMINI_API_KEY or GOOGLE_API_KEY"):
+            settings_for("gemini").demand_key()
+
+    def test_it_is_sent_as_a_bearer_token(self):
+        http = Recorded(spoke())
+        Gemini(http=http, key="secret").call("p")
+        assert http.sent[0][2]["Authorization"] == "Bearer secret"
+
+    def test_a_local_model_sends_no_authorization(self):
+        http = Recorded(spoke())
+        Ollama(http=http).call("p")
+        assert "Authorization" not in http.sent[0][2]
+
+
+class TestTheDialect:
+    def test_the_prompt_goes_in_a_message(self):
+        http = Recorded(spoke())
+        Ollama(http=http).call("a prompt")
+        assert http.sent[0][1]["messages"] == [{"role": "user", "content": "a prompt"}]
+
+    def test_it_posts_to_chat_completions(self):
+        http = Recorded(spoke())
+        Ollama(http=http).call("p")
+        assert http.sent[0][0].endswith("/chat/completions")
+
+    def test_the_answer_is_read(self):
+        assert Ollama(http=Recorded(spoke("hello"))).call("p").text == "hello"
+
+    def test_the_cost_is_read(self):
+        completion = Ollama(http=Recorded(spoke(tokens_in=11, tokens_out=5))).call("p")
+        assert (completion.tokens_in, completion.tokens_out) == (11, 5)
+
+    def test_an_empty_answer_is_empty_text_not_a_crash(self):
+        answer = Answer({"choices": []})
+        answer.latency_ms = 1.0
+        assert Ollama(http=Recorded(answer)).call("p").text == ""
+
+    def test_the_latency_comes_from_the_transport(self):
+        assert Ollama(http=Recorded(spoke())).call("p").latency_ms == 12.0
+
+
+class TestWhatIsWorthRetrying:
+    @pytest.mark.parametrize("status", sorted(RETRYABLE))
+    def test_these_are_retryable(self, status):
+        from cadence.http import _classify
+
+        assert isinstance(_classify(status, ""), RetryableModelError)
+
+    @pytest.mark.parametrize("status", [400, 401, 403, 404, 422])
+    def test_these_are_terminal(self, status):
+        from cadence.http import _classify
+
+        assert isinstance(_classify(status, ""), TerminalModelError)
+
+    def test_a_retryable_error_is_retried(self):
+        http = Recorded(RetryableModelError("429"), spoke("hi"))
+        assert Ollama(http=http, attempts=2, backoff=0).call("p").text == "hi"
+
+    def test_it_gives_up_after_the_attempt_budget(self):
+        http = Recorded(*[RetryableModelError("429")] * 3)
         with pytest.raises(RetryableModelError):
-            backend.call("a")
+            Ollama(http=http, attempts=3, backoff=0).call("p")
+        assert len(http.sent) == 3
 
-    def test_it_can_raise_a_terminal_error(self):
-        backend = Scripted(TerminalModelError("401"))
+    def test_a_terminal_error_is_not_retried(self):
+        http = Recorded(TerminalModelError("401"))
         with pytest.raises(TerminalModelError):
-            backend.call("a")
+            Ollama(http=http, attempts=3, backoff=0).call("p")
+        assert len(http.sent) == 1
 
-    def test_a_failure_can_sit_between_two_successes(self):
-        backend = Scripted("first", RetryableModelError("429"), "third")
-        assert backend.call("a").text == "first"
+    def test_an_unreachable_host_is_retryable(self):
+        with pytest.raises(RetryableModelError, match="did not answer"):
+            Http(timeout=1).post("http://127.0.0.1:1/x", {})
+
+
+class TestAnythingCanBeMadeReliable:
+    def test_a_backend_with_no_http_gets_the_same_treatment(self):
+        seen, tries = [], []
+
+        class SdkBackend:
+            name = "sdk"
+
+            def call(self, prompt):
+                tries.append(1)
+                if len(tries) < 2:
+                    raise RetryableModelError("busy")
+                return Scripted("done").call(prompt)
+
+        backend = Reliable(SdkBackend(), attempts=3, backoff=0, audit=seen.append)
+        assert backend.call("p").text == "done"
+        assert len(tries) == 2
+        assert [entry["attempt"] for entry in seen] == [1, 2]
+
+
+class TestEveryCallIsAudited:
+    def test_a_success_is_recorded(self):
+        seen = []
+        Ollama(http=Recorded(spoke()), audit=seen.append).call("p")
+        assert seen[0]["backend"] == "ollama" and seen[0]["error"] is None
+
+    def test_a_failure_is_recorded_with_its_error(self):
+        seen = []
+        with pytest.raises(TerminalModelError):
+            Ollama(http=Recorded(TerminalModelError("401")), audit=seen.append).call(
+                "p"
+            )
+        assert "TerminalModelError" in seen[0]["error"]
+
+    def test_every_attempt_is_recorded(self):
+        seen = []
+        http = Recorded(*[RetryableModelError("429")] * 3)
         with pytest.raises(RetryableModelError):
-            backend.call("b")
-        assert backend.call("c").text == "third"
-
-    def test_a_failure_still_consumes_its_turn(self):
-        backend = Scripted(RetryableModelError("429"), "second")
-        with pytest.raises(RetryableModelError):
-            backend.call("a")
-        assert backend.remaining == 1
-
-
-class TestACompletionCanRecordTheCall:
-    def test_it_fills_everything_a_model_called_event_needs(self):
-        completion = Scripted("some answer here").call("a prompt")
-        event = ModelCalled(
-            run_id="h1",
-            trial_id="h1/0/0",
-            backend=Scripted.name,
-            tokens_in=completion.tokens_in,
-            tokens_out=completion.tokens_out,
-            latency_ms=completion.latency_ms,
-        )
-        assert event.tokens_out == 3
-
-    def test_it_fills_the_raw_response_a_proposal_keeps(self):
-        completion = Scripted("--- a\n+++ b").call("a prompt")
-        proposal = Proposal(
-            patch=("--- a", "+++ b"),
-            prompt="a prompt",
-            recipe={"template": "improve"},
-            raw_response=completion.text,
-        )
-        assert proposal.raw_response == completion.text
-
-    def test_it_counts_both_directions(self):
-        completion = Scripted("one two three").call("four five")
-        assert (completion.tokens_in, completion.tokens_out) == (2, 3)
-
-    def test_it_cannot_be_edited(self):
-        completion = Scripted("x").call("p")
-        with pytest.raises(ValidationError):
-            completion.text = "y"
-
-    def test_a_negative_count_is_refused(self):
-        with pytest.raises(ValidationError):
-            Completion(text="x", model="m", tokens_in=-1, tokens_out=0, latency_ms=0.0)
-
-    def test_it_survives_json(self):
-        completion = Scripted("x").call("p")
-        assert (
-            Completion.model_validate_json(completion.model_dump_json()) == completion
-        )
+            Ollama(http=http, attempts=3, backoff=0, audit=seen.append).call("p")
+        assert [entry["attempt"] for entry in seen] == [1, 2, 3]

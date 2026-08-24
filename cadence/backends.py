@@ -1,4 +1,3 @@
-import os
 import time
 from collections import deque
 from collections.abc import Callable, Mapping
@@ -9,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from cadence.exceptions import RetryableModelError, TerminalModelError
 from cadence.http import Http
+from cadence.settings import Settings, known, settings_for
 
 __all__ = [
     "Completion",
@@ -16,8 +16,7 @@ __all__ = [
     "Scripted",
     "Served",
     "Reliable",
-    "Provider",
-    "PROVIDERS",
+    "known",
     "served",
     "Ollama",
     "Gemini",
@@ -129,136 +128,63 @@ class Reliable:
             )
 
 
-class Provider(Protocol):
-    name: str
-
-    def request(
-        self, prompt: str
-    ) -> tuple[str, Mapping[str, Any], Mapping[str, str]]: ...
-
-    def read(self, answer: Mapping[str, Any]) -> tuple[str, str, int, int]: ...
-
-
 class Served:
-    """Any provider reached over HTTP. The transport lives in Http, not here."""
+    """Anything speaking the OpenAI dialect. The transport lives in Http."""
 
-    def __init__(self, provider: Provider, http: Http | None = None, **options) -> None:
-        self.provider = provider
-        self.http = http or Http(**options)
+    def __init__(self, settings: Settings, http: Http | None = None) -> None:
+        self.settings = settings
+        self.http = http or Http(timeout=settings.timeout)
 
     @property
     def name(self) -> str:
-        return self.provider.name
+        return self.settings.name
 
     def call(self, prompt: str) -> Completion:
-        url, payload, headers = self.provider.request(prompt)
-        answer = self.http.post(url, payload, headers)
-        text, model, tokens_in, tokens_out = self.provider.read(answer)
+        answer = self.http.post(
+            f"{self.settings.url}/chat/completions",
+            {
+                "model": self.settings.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": self.settings.temperature,
+            },
+            self._headers(),
+        )
+        used = answer.get("usage") or {}
+        choices = answer.get("choices") or [{}]
+        message = choices[0].get("message") or {}
         return Completion(
-            text=text,
-            model=model,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
+            text=message.get("content") or "",
+            model=answer.get("model") or self.settings.model,
+            tokens_in=used.get("prompt_tokens", 0),
+            tokens_out=used.get("completion_tokens", 0),
             latency_ms=answer.latency_ms,
         )
 
-
-class OllamaProvider:
-    name = "ollama"
-
-    def __init__(
-        self,
-        model: str = "qwen3-agent:latest",
-        host: str | None = None,
-        temperature: float = 0.8,
-    ) -> None:
-        self.model = model
-        self.temperature = temperature
-        self.host = (
-            host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-        ).rstrip("/")
-
-    def request(self, prompt):
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "think": False,
-            "options": {"temperature": self.temperature},
-        }
-        return f"{self.host}/api/generate", payload, {}
-
-    def read(self, answer):
-        return (
-            answer.get("response", ""),
-            answer.get("model", self.model),
-            answer.get("prompt_eval_count", 0) or 0,
-            answer.get("eval_count", 0) or 0,
-        )
-
-
-class GeminiProvider:
-    name = "gemini"
-    endpoint = "https://generativelanguage.googleapis.com/v1beta/models"
-
-    def __init__(
-        self,
-        model: str = "gemini-3.6-flash",
-        api_key: str | None = None,
-        temperature: float = 0.8,
-    ) -> None:
-        self.model = model
-        self.temperature = temperature
-        self.api_key = (
-            api_key
-            or os.environ.get("GEMINI_API_KEY")
-            or os.environ.get("GOOGLE_API_KEY")
-        )
-
-    def request(self, prompt):
-        if not self.api_key:
-            raise TerminalModelError("no API key; set GEMINI_API_KEY or pass api_key")
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": self.temperature},
-        }
-        url = f"{self.endpoint}/{self.model}:generateContent"
-        return url, payload, {"x-goog-api-key": self.api_key}
-
-    def read(self, answer):
-        candidates = answer.get("candidates") or [{}]
-        parts = candidates[0].get("content", {}).get("parts") or []
-        used = answer.get("usageMetadata", {})
-        return (
-            "".join(part.get("text", "") for part in parts),
-            answer.get("modelVersion", self.model),
-            used.get("promptTokenCount", 0),
-            used.get("candidatesTokenCount", 0),
-        )
-
-
-PROVIDERS: Mapping[str, type] = {"ollama": OllamaProvider, "gemini": GeminiProvider}
+    def _headers(self) -> dict[str, str]:
+        if not self.settings.needs_a_key:
+            return {}
+        return {"Authorization": f"Bearer {self.settings.demand_key()}"}
 
 
 def served(
     name: str,
     http: Http | None = None,
-    attempts: int = 3,
-    backoff: float = 1.0,
     audit: Callable[[Mapping[str, Any]], None] | None = None,
-    **options,
-) -> Reliable:
-    if name not in PROVIDERS:
-        raise TerminalModelError(
-            f"no provider named {name!r}; known: {', '.join(sorted(PROVIDERS))}"
-        )
-    inner = Served(PROVIDERS[name](**options), http=http)
-    return Reliable(inner, attempts=attempts, backoff=backoff, audit=audit)
+    root=None,
+    **overrides: Any,
+) -> "Reliable":
+    settings = settings_for(name, root=root, **overrides)
+    return Reliable(
+        Served(settings, http=http),
+        attempts=settings.attempts,
+        backoff=settings.backoff,
+        audit=audit,
+    )
 
 
-def Ollama(http: Http | None = None, **options) -> Reliable:
-    return served("ollama", http, **options)
+def Ollama(**options) -> "Reliable":
+    return served("ollama", **options)
 
 
-def Gemini(http: Http | None = None, **options) -> Reliable:
-    return served("gemini", http, **options)
+def Gemini(**options) -> "Reliable":
+    return served("gemini", **options)
