@@ -1,7 +1,11 @@
-# Shipped defaults. Override any of it in providers.local.yml (gitignored),
-# or per-run from .cadence:  model: {gemini: {model: gemini-3.6-pro}}
+# Settings, never secrets. Override in providers.local.yml (gitignored) or
+# per-run from .cadence:  model: {gemini: {model: gemini-3.6-pro}}
 #
-# Every provider here speaks the OpenAI dialect, so adding one is a row.
+# API keys are read from the environment named by key_from and from nowhere
+# else, so `op run -- cadence run`, direnv, sops or a plain export all work
+# and none of them are cadence's business.
+#
+# Every provider speaks the OpenAI dialect, so adding one is a row.
 
 defaults:
   timeout: 300

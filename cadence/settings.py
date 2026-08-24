@@ -54,8 +54,9 @@ class Settings(BaseModel):
         if self.key:
             return self.key
         raise MissingKey(
-            f"{self.name} needs an API key; set {' or '.join(self.key_from)}"
-            f" in .env, or key: in {LOCAL}"
+            f"{self.name} needs an API key. Set {' or '.join(self.key_from)}"
+            " in your environment - cadence never reads one from a file,"
+            " so a secret manager works without configuring anything."
         )
 
 
@@ -100,6 +101,11 @@ def settings_for(name: str, root: Path | None = None, **overrides: Any) -> Setti
     if key_from:
         fields["key"] = _first_set(key_from)
     fields.update({k: v for k, v in overrides.items() if v is not None})
+    if "key" in declared:
+        raise MissingKey(
+            f"{LOCAL} sets a key for {name!r}; keys belong in the environment,"
+            " never in a file beside the repo"
+        )
     return Settings(**fields)
 
 

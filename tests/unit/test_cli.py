@@ -50,6 +50,27 @@ class TestCheck:
         assert result.exit_code == 1
 
 
+class TestCheckAsksAboutTheProjectNotTheMachine:
+    def test_it_passes_without_any_credentials(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        (tmp_path / ".cadence").write_text(
+            "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
+            "metrics: {v: maximize}\nmodel: {gemini: {}}\n"
+        )
+        (tmp_path / "p.py").write_text("print('v: 1')")
+        result = runner.invoke(app, ["check", str(tmp_path)])
+        assert result.exit_code == 0, result.output
+
+    def test_it_never_mentions_a_key(self, tmp_path):
+        (tmp_path / ".cadence").write_text(
+            "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
+            "metrics: {v: maximize}\nmodel: {gemini: {}}\n"
+        )
+        (tmp_path / "p.py").write_text("print('v: 1')")
+        assert "key" not in runner.invoke(app, ["check", str(tmp_path)]).output
+
+
 class TestSchema:
     def test_it_prints_json_schema(self):
         import json

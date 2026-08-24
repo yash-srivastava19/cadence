@@ -33,8 +33,6 @@ def check(root: Path = typer.Argument(Path("."))) -> None:
             die(f"no objective named {manifest.objective.name!r}")
         typer.echo(f"{OK}method {manifest.method.name}")
 
-        _key_is_present(manifest, root)
-
         code = seed_program(manifest, root)
         typer.echo(f"{OK}{manifest.program}")
 
@@ -64,23 +62,6 @@ def check(root: Path = typer.Argument(Path("."))) -> None:
         die(str(error))
     except CadenceError as error:
         die(str(error))
-
-
-def _key_is_present(manifest, root) -> None:
-    from cadence.settings import MissingKey, known, settings_for
-
-    name = manifest.model.name
-    if name not in known(root):
-        return
-    settings = settings_for(name, root=root, **manifest.model.options)
-    if not settings.needs_a_key:
-        typer.echo(f"{OK}{name} needs no key")
-        return
-    try:
-        settings.demand_key()
-    except MissingKey as error:
-        die(str(error))
-    typer.echo(f"{OK}{name} key found")
 
 
 @app.command()

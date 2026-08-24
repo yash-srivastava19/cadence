@@ -97,6 +97,19 @@ class TestKeys:
         with pytest.raises(MissingKey, match="GEMINI_API_KEY or GOOGLE_API_KEY"):
             settings_for("gemini").demand_key()
 
+    def test_a_key_in_a_config_file_is_refused(self, tmp_path, monkeypatch):
+        (tmp_path / "providers.local.yml").write_text(
+            "providers:\n  gemini:\n    key: sk-oops\n"
+        )
+        with pytest.raises(MissingKey, match="belong in the environment"):
+            settings_for("gemini", root=tmp_path)
+
+    def test_a_config_file_may_still_set_a_model(self, tmp_path):
+        (tmp_path / "providers.local.yml").write_text(
+            "providers:\n  gemini:\n    model: pinned\n"
+        )
+        assert settings_for("gemini", root=tmp_path).model == "pinned"
+
     def test_it_is_sent_as_a_bearer_token(self):
         http = Recorded(spoke())
         Gemini(http=http, key="secret").call("p")
