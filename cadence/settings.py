@@ -35,7 +35,7 @@ class Settings(BaseModel):
     name: str
     base_url: str
     key_from: tuple[str, ...] = ()
-    model: str
+    model: str | None = None
     temperature: float = Field(ge=0)
     timeout: float = Field(gt=0)
     attempts: int = Field(ge=1)
@@ -101,6 +101,11 @@ def settings_for(name: str, root: Path | None = None, **overrides: Any) -> Setti
     if key_from:
         fields["key"] = _first_set(key_from)
     fields.update({k: v for k, v in overrides.items() if v is not None})
+    if not fields.get("model"):
+        raise UnknownProvider(
+            f"{name} has no default model; name one in .cadence:"
+            f"  model: {{{name}: {{model: ...}}}}"
+        )
     if "key" in declared:
         raise MissingKey(
             f"{LOCAL} sets a key for {name!r}; keys belong in the environment,"

@@ -40,11 +40,24 @@ class TestProvidersAreData:
 
     def test_each_one_is_a_backend(self):
         for name in known():
-            assert isinstance(BACKENDS[name](key="x"), Backend)
+            assert isinstance(BACKENDS[name](key="x", model="m"), Backend)
 
     def test_each_one_is_wrapped_the_same_way(self):
         for name in known():
-            assert isinstance(BACKENDS[name](key="x"), Reliable)
+            assert isinstance(BACKENDS[name](key="x", model="m"), Reliable)
+
+    def test_a_provider_cadence_has_called_ships_a_model(self):
+        assert settings_for("gemini").model
+        assert settings_for("ollama").model
+
+    def test_one_it_has_not_makes_you_name_your_own(self):
+        from cadence.settings import UnknownProvider
+
+        with pytest.raises(UnknownProvider, match="no default model"):
+            settings_for("openai")
+
+    def test_naming_one_is_enough(self):
+        assert settings_for("openai", model="gpt-4.1").model == "gpt-4.1"
 
     def test_an_unknown_one_lists_the_known_ones(self):
         from cadence.settings import UnknownProvider
