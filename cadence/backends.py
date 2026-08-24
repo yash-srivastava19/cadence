@@ -1,17 +1,27 @@
-import json
-import time
-import urllib.error
-import urllib.request
 import os
-import re
+import time
 from collections import deque
+from collections.abc import Callable, Mapping
+from typing import Any
 from typing import Annotated, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from cadence.exceptions import RetryableModelError, TerminalModelError
+from cadence.http import Http
 
-__all__ = ["Completion", "Backend", "Scripted", "Ollama", "Gemini"]
+__all__ = [
+    "Completion",
+    "Backend",
+    "Scripted",
+    "Served",
+    "Reliable",
+    "Provider",
+    "PROVIDERS",
+    "served",
+    "Ollama",
+    "Gemini",
+]
 
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -70,128 +80,185 @@ class Scripted:
         )
 
 
-THINKING = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+class Reliable:
+    """Retries and audits any backend, whether it speaks HTTP or an SDK."""
+
+    def __init__(
+        self,
+        backend: "Backend",
+        attempts: int = 3,
+        backoff: float = 1.0,
+        audit: Callable[[Mapping[str, Any]], None] | None = None,
+    ) -> None:
+        self.backend = backend
+        self.attempts = attempts
+        self.backoff = backoff
+        self.audit = audit
+
+    @property
+    def name(self) -> str:
+        return self.backend.name
+
+    def call(self, prompt: str) -> Completion:
+        last: Exception | None = None
+        for attempt in range(1, self.attempts + 1):
+            try:
+                completion = self.backend.call(prompt)
+                self._record(attempt, None)
+                return completion
+            except TerminalModelError as error:
+                self._record(attempt, error)
+                raise
+            except RetryableModelError as error:
+                last = error
+                self._record(attempt, error)
+                if attempt < self.attempts:
+                    time.sleep(self.backoff * attempt)
+        raise last
+
+    def _record(self, attempt: int, error: Exception | None) -> None:
+        if self.audit is not None:
+            self.audit(
+                {
+                    "backend": self.name,
+                    "attempt": attempt,
+                    "error": None
+                    if error is None
+                    else f"{type(error).__name__}: {error}",
+                }
+            )
 
 
-class Ollama:
+class Provider(Protocol):
+    name: str
+
+    def request(
+        self, prompt: str
+    ) -> tuple[str, Mapping[str, Any], Mapping[str, str]]: ...
+
+    def read(self, answer: Mapping[str, Any]) -> tuple[str, str, int, int]: ...
+
+
+class Served:
+    """Any provider reached over HTTP. The transport lives in Http, not here."""
+
+    def __init__(self, provider: Provider, http: Http | None = None, **options) -> None:
+        self.provider = provider
+        self.http = http or Http(**options)
+
+    @property
+    def name(self) -> str:
+        return self.provider.name
+
+    def call(self, prompt: str) -> Completion:
+        url, payload, headers = self.provider.request(prompt)
+        answer = self.http.post(url, payload, headers)
+        text, model, tokens_in, tokens_out = self.provider.read(answer)
+        return Completion(
+            text=text,
+            model=model,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            latency_ms=answer.latency_ms,
+        )
+
+
+class OllamaProvider:
     name = "ollama"
 
     def __init__(
         self,
         model: str = "qwen3-agent:latest",
         host: str | None = None,
-        seconds: float = 300.0,
         temperature: float = 0.8,
     ) -> None:
         self.model = model
+        self.temperature = temperature
         self.host = (
             host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
         ).rstrip("/")
-        self.seconds = seconds
-        self.temperature = temperature
 
-    def call(self, prompt: str) -> Completion:
-        body = json.dumps(
-            {
-                "model": self.model,
-                "prompt": prompt,
-                "stream": False,
-                "think": False,
-                "options": {"temperature": self.temperature},
-            }
-        ).encode()
-        request = urllib.request.Request(
-            f"{self.host}/api/generate",
-            data=body,
-            headers={"Content-Type": "application/json"},
-        )
-        started = time.monotonic()
-        try:
-            with urllib.request.urlopen(request, timeout=self.seconds) as response:
-                answer = json.loads(response.read())
-        except urllib.error.HTTPError as error:
-            raise _classified(error) from error
-        except (urllib.error.URLError, TimeoutError) as error:
-            raise RetryableModelError(f"{self.host} did not answer: {error}") from error
+    def request(self, prompt):
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False,
+            "think": False,
+            "options": {"temperature": self.temperature},
+        }
+        return f"{self.host}/api/generate", payload, {}
 
-        return Completion(
-            text=THINKING.sub("", answer.get("response", "")),
-            model=answer.get("model", self.model),
-            tokens_in=answer.get("prompt_eval_count", 0),
-            tokens_out=answer.get("eval_count", 0),
-            latency_ms=(time.monotonic() - started) * 1000,
+    def read(self, answer):
+        return (
+            answer.get("response", ""),
+            answer.get("model", self.model),
+            answer.get("prompt_eval_count", 0) or 0,
+            answer.get("eval_count", 0) or 0,
         )
 
 
-def _classified(error: "urllib.error.HTTPError") -> Exception:
-    if error.code == 404:
-        return TerminalModelError(
-            f"no such model; pull it with `ollama pull` ({error})"
-        )
-    if error.code in (408, 429) or error.code >= 500:
-        return RetryableModelError(str(error))
-    return TerminalModelError(str(error))
-
-
-DEFAULT_GEMINI = "gemini-2.5-flash"
-RETRYABLE_STATUS = (408, 429, 500, 502, 503, 504)
-
-
-class Gemini:
+class GeminiProvider:
     name = "gemini"
+    endpoint = "https://generativelanguage.googleapis.com/v1beta/models"
 
     def __init__(
         self,
-        model: str = DEFAULT_GEMINI,
+        model: str = "gemini-3.6-flash",
         api_key: str | None = None,
         temperature: float = 0.8,
     ) -> None:
         self.model = model
         self.temperature = temperature
-        self._key = (
+        self.api_key = (
             api_key
             or os.environ.get("GEMINI_API_KEY")
             or os.environ.get("GOOGLE_API_KEY")
         )
-        self._client = None
 
-    @property
-    def client(self):
-        if self._client is None:
-            if not self._key:
-                raise TerminalModelError(
-                    "no API key; set GEMINI_API_KEY or pass api_key to the backend"
-                )
-            from google import genai
+    def request(self, prompt):
+        if not self.api_key:
+            raise TerminalModelError("no API key; set GEMINI_API_KEY or pass api_key")
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": self.temperature},
+        }
+        url = f"{self.endpoint}/{self.model}:generateContent"
+        return url, payload, {"x-goog-api-key": self.api_key}
 
-            self._client = genai.Client(api_key=self._key)
-        return self._client
-
-    def call(self, prompt: str) -> Completion:
-        from google.genai import errors, types
-
-        started = time.monotonic()
-        try:
-            answer = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(temperature=self.temperature),
-            )
-        except errors.APIError as error:
-            raise _from_api(error) from error
-
-        used = answer.usage_metadata
-        return Completion(
-            text=answer.text or "",
-            model=self.model,
-            tokens_in=getattr(used, "prompt_token_count", 0) or 0,
-            tokens_out=getattr(used, "candidates_token_count", 0) or 0,
-            latency_ms=(time.monotonic() - started) * 1000,
+    def read(self, answer):
+        candidates = answer.get("candidates") or [{}]
+        parts = candidates[0].get("content", {}).get("parts") or []
+        used = answer.get("usageMetadata", {})
+        return (
+            "".join(part.get("text", "") for part in parts),
+            answer.get("modelVersion", self.model),
+            used.get("promptTokenCount", 0),
+            used.get("candidatesTokenCount", 0),
         )
 
 
-def _from_api(error) -> Exception:
-    code = getattr(error, "code", None)
-    if code in RETRYABLE_STATUS:
-        return RetryableModelError(f"{code}: {error}")
-    return TerminalModelError(f"{code}: {error}")
+PROVIDERS: Mapping[str, type] = {"ollama": OllamaProvider, "gemini": GeminiProvider}
+
+
+def served(
+    name: str,
+    http: Http | None = None,
+    attempts: int = 3,
+    backoff: float = 1.0,
+    audit: Callable[[Mapping[str, Any]], None] | None = None,
+    **options,
+) -> Reliable:
+    if name not in PROVIDERS:
+        raise TerminalModelError(
+            f"no provider named {name!r}; known: {', '.join(sorted(PROVIDERS))}"
+        )
+    inner = Served(PROVIDERS[name](**options), http=http)
+    return Reliable(inner, attempts=attempts, backoff=backoff, audit=audit)
+
+
+def Ollama(http: Http | None = None, **options) -> Reliable:
+    return served("ollama", http, **options)
+
+
+def Gemini(http: Http | None = None, **options) -> Reliable:
+    return served("gemini", http, **options)

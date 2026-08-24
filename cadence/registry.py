@@ -1,7 +1,7 @@
 import shlex
 from pathlib import Path
 
-from cadence.backends import Gemini, Ollama, Scripted
+from cadence.backends import PROVIDERS, Scripted, served
 from cadence.exceptions import CadenceError
 from cadence.experiment import Experiment
 from cadence.manifest import Manifest, Plugin
@@ -19,9 +19,16 @@ class Unknown(CadenceError):
     pass
 
 
+def _make(name: str):
+    def build(**options):
+        return served(name, **options)
+
+    return build
+
+
 METHODS = {"evolution": Evolution}
 OBJECTIVES = {"weighted_sum": WeightedSum, "pareto": Pareto}
-BACKENDS = {"scripted": Scripted, "ollama": Ollama, "gemini": Gemini}
+BACKENDS = {"scripted": Scripted, **{name: _make(name) for name in PROVIDERS}}
 
 
 def resolve(kind: str, known: dict, plugin: Plugin, **extra):
