@@ -133,7 +133,7 @@ class Experiment:
 
         child = Candidate(code=code, parent=directive.parent)
         trial.apply_patch(candidate=child)
-        verdict = self.runner.try_(child)
+        verdict = self.runner.try_(child.code)
         trial.measure(verdict=verdict)
         trace.emit(TrialMeasured, verdict=verdict)
         return Attempt(code=code, verdict=verdict)

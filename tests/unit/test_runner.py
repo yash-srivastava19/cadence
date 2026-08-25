@@ -1,6 +1,5 @@
 import pytest
 
-from cadence.entities import Candidate
 from cadence.exceptions import PatchError
 from cadence.patcher import apply_patch
 from cadence.runner import TrialRunner
@@ -47,25 +46,24 @@ class TestPatching:
 
 class TestScoring:
     def test_a_working_candidate_is_scored(self):
-        assert a_runner().try_(Candidate(code=BETTER)).is_scored
+        assert a_runner().try_(BETTER).is_scored
 
     def test_the_metric_comes_from_what_the_program_printed(self):
-        assert a_runner().try_(Candidate(code=BETTER)).metrics["value"] == 9.0
+        assert a_runner().try_(BETTER).metrics["value"] == 9.0
 
-    def test_the_verdict_names_the_candidate_it_measured(self):
-        candidate = Candidate(code=BETTER)
-        assert a_runner().try_(candidate).fingerprint == candidate.fingerprint
+    def test_the_verdict_names_the_code_it_measured(self):
+        from cadence.verdict import fingerprint
+
+        assert a_runner().try_(BETTER).fingerprint == fingerprint(BETTER)
 
     def test_several_metrics_come_back(self):
         code = "print('value: 2')\nprint('cost: 5')"
-        verdict = a_runner(metrics={"value": "maximize", "cost": "minimize"}).try_(
-            Candidate(code=code)
-        )
+        verdict = a_runner(metrics={"value": "maximize", "cost": "minimize"}).try_(code)
         assert verdict.metrics == {"value": 2.0, "cost": 5.0}
 
     def test_readings_are_averaged_across_seeds(self):
         code = "import os\nprint('value:', int(os.environ['CADENCE_SEED']))"
-        verdict = a_runner(seeds=(0, 2)).try_(Candidate(code=code))
+        verdict = a_runner(seeds=(0, 2)).try_(code)
         assert verdict.metrics["value"] == 1.0
 
     def test_a_runner_needs_a_seed(self):
@@ -84,24 +82,24 @@ class TestScoring:
 
 class TestFailuresAreDistinguished:
     def test_a_crash_is_a_crash(self):
-        verdict = a_runner().try_(Candidate(code="raise ValueError('x')"))
+        verdict = a_runner().try_("raise ValueError('x')")
         assert verdict.outcome is Outcome.CRASHED
 
     def test_a_crash_keeps_the_reason(self):
-        verdict = a_runner().try_(Candidate(code="raise ValueError('x')"))
+        verdict = a_runner().try_("raise ValueError('x')")
         assert "ValueError" in verdict.reason
 
     def test_a_timeout_is_a_timeout(self):
         spins = "while True:\n    pass"
-        verdict = a_runner(seconds=1.0).try_(Candidate(code=spins))
+        verdict = a_runner(seconds=1.0).try_(spins)
         assert verdict.outcome is Outcome.TIMED_OUT
 
     def test_a_program_that_reports_nothing_is_invalid(self):
-        verdict = a_runner().try_(Candidate(code="print('all done')"))
+        verdict = a_runner().try_("print('all done')")
         assert verdict.outcome is Outcome.INVALID
 
     def test_it_says_which_metric_was_missing(self):
-        verdict = a_runner().try_(Candidate(code="print('all done')"))
+        verdict = a_runner().try_("print('all done')")
         assert "value" in verdict.reason
 
     def test_one_bad_seed_fails_the_whole_verdict(self):
@@ -110,4 +108,4 @@ class TestFailuresAreDistinguished:
             "if os.environ['CADENCE_SEED'] == '2': raise ValueError('x')\n"
             "print('value: 1')"
         )
-        assert not a_runner(seeds=(0, 2)).try_(Candidate(code=code)).is_scored
+        assert not a_runner(seeds=(0, 2)).try_(code).is_scored

@@ -1,12 +1,10 @@
-from hashlib import sha256
-
 from statemachine import State, StateMachine
 
 from cadence.stateful import Stateful
 from cadence.states import CandidateState, RunState, TrialState
+from cadence.verdict import fingerprint
 
 __all__ = [
-    "fingerprint",
     "trial_id",
     "Candidate",
     "CandidateMachine",
@@ -15,12 +13,6 @@ __all__ = [
     "Run",
     "RunMachine",
 ]
-
-FINGERPRINT_LENGTH = 16
-
-
-def fingerprint(code: str) -> str:
-    return sha256(code.encode()).hexdigest()[:FINGERPRINT_LENGTH]
 
 
 def trial_id(run: str, generation: int, index: int) -> str:
