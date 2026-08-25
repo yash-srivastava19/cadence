@@ -29,7 +29,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cadence = "cadence.commands.cli:main"
+cadence = "cadence.commands:main"
 
 [project.optional-dependencies]
 test = [
