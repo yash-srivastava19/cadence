@@ -1,16 +1,16 @@
 import shlex
 from pathlib import Path
 
-from cadence.backends import Scripted, known, served
+from cadence.control.backends.served import Scripted, known, served
 from cadence.exceptions import CadenceError
-from cadence.experiment import Experiment
-from cadence.manifest import Manifest, Plugin
-from cadence.methods import Evolution
-from cadence.model import Model
-from cadence.objectives import Pareto, WeightedSum
+from cadence.control.experiment import Experiment
+from cadence.control.manifest import Manifest, Plugin
+from cadence.control.methods.evolution import Evolution
+from cadence.control.model import Model
+from cadence.control.objectives.ranking import Pareto, WeightedSum
 from cadence.reading import direction
-from cadence.runner import TrialRunner
-from cadence.sandbox import Subprocess
+from cadence.execution.runner import TrialRunner
+from cadence.execution.sandboxes.subprocess import Subprocess
 
 __all__ = ["METHODS", "OBJECTIVES", "BACKENDS", "Unknown", "build", "seed_program"]
 

@@ -4,10 +4,10 @@ from pathlib import Path
 import typer
 
 from cadence.exceptions import CadenceError
-from cadence.manifest import load
+from cadence.control.manifest import load
 from cadence.reading import MetricNotReported, read
-from cadence.registry import METHODS, OBJECTIVES, build, guidance, seed_program
-from cadence.sandbox import Job, Subprocess
+from cadence.control.registry import METHODS, OBJECTIVES, build, guidance, seed_program
+from cadence.execution.sandboxes.subprocess import Job, Subprocess
 
 app = typer.Typer(add_completion=False, help="Improve a program you already wrote.")
 
@@ -91,7 +91,7 @@ def schema() -> None:
     """Print the JSON Schema for .cadence."""
     import json
 
-    from cadence.manifest import Manifest
+    from cadence.control.manifest import Manifest
 
     typer.echo(json.dumps(Manifest.model_json_schema(), indent=2))
 

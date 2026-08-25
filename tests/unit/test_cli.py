@@ -2,7 +2,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from cadence.cli import app
+from cadence.commands.cli import app
 
 LAB = Path(__file__).resolve().parents[2] / "examples" / "lab"
 runner = CliRunner()

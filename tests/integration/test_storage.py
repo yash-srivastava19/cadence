@@ -15,9 +15,9 @@ sa = pytest.importorskip("sqlalchemy", reason="run 'pip install -e .'")
 
 from sqlalchemy.exc import ProgrammingError  # noqa: E402
 
-from cadence.entities import Run  # noqa: E402
+from cadence.control.entities import Run  # noqa: E402
 from cadence.states import RunState  # noqa: E402
-from cadence.storage import engine, runs, sessions  # noqa: E402
+from cadence.control.storage import engine, runs, sessions  # noqa: E402
 
 
 @pytest.fixture
@@ -98,7 +98,7 @@ class TestARunSurvivesARestart:
 
 class TestTheEntityStaysPlain:
     def test_entities_import_no_orm(self):
-        import cadence.entities as entities
+        import cadence.control.entities as entities
 
         assert "sqlalchemy" not in entities.__dict__
         source = open(entities.__file__).read()

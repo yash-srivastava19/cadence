@@ -1,9 +1,9 @@
 import pytest
 
 from cadence.exceptions import PatchError
-from cadence.patcher import apply_patch
-from cadence.runner import TrialRunner
-from cadence.sandbox import Subprocess
+from cadence.control.patcher import apply_patch
+from cadence.execution.runner import TrialRunner
+from cadence.execution.sandboxes.subprocess import Subprocess
 from cadence.verdict import Outcome
 
 BASELINE = "print('value: 0')"

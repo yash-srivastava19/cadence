@@ -1,7 +1,7 @@
 import random
 from hashlib import sha256
 
-from cadence.entities import Candidate
+from cadence.control.entities import Candidate
 from cadence.exceptions import NoCandidates
 from cadence.interfaces import Attempt, Directive, History, Ledger, Objective
 from cadence.verdict import Verdict

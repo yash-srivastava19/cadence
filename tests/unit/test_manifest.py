@@ -2,7 +2,7 @@ import textwrap
 
 import pytest
 
-from cadence.manifest import Manifest, ManifestError, load
+from cadence.control.manifest import Manifest, ManifestError, load
 
 COMPLETE = """\
 apiVersion: cadence/v1alpha1

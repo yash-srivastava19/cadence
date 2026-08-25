@@ -5,7 +5,7 @@ from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, registry, sessionmaker
 
-from cadence.entities import Run
+from cadence.control.entities import Run
 from cadence.states import RunState
 
 __all__ = ["metadata", "runs", "engine", "sessions", "dsn"]

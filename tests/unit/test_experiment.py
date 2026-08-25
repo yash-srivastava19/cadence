@@ -1,11 +1,11 @@
-from cadence.backends import Scripted
+from cadence.control.backends.served import Scripted
 from cadence.exceptions import TerminalModelError
-from cadence.experiment import Experiment, Report
-from cadence.methods import Evolution
-from cadence.model import Model
-from cadence.objectives import WeightedSum
-from cadence.runner import TrialRunner
-from cadence.sandbox import Subprocess
+from cadence.control.experiment import Experiment, Report
+from cadence.control.methods.evolution import Evolution
+from cadence.control.model import Model
+from cadence.control.objectives.ranking import WeightedSum
+from cadence.execution.runner import TrialRunner
+from cadence.execution.sandboxes.subprocess import Subprocess
 from cadence.signals import cadence
 from cadence.states import RunState
 

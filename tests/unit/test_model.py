@@ -1,10 +1,10 @@
 import pytest
 from pydantic import ValidationError
 
-from cadence.backends import Scripted
+from cadence.control.backends.served import Scripted
 from cadence.exceptions import PatchError, TerminalModelError
 from cadence.interfaces import Directive
-from cadence.model import Model, parse_patch, render
+from cadence.control.model import Model, parse_patch, render
 
 PATCH = """\
 --- a/solve.py
@@ -79,7 +79,7 @@ class TestAskingForTheWholeProgram:
         assert "+def solve(): return 1" in proposal.patch
 
     def test_the_computed_diff_applies(self):
-        from cadence.patcher import apply_patch
+        from cadence.control.patcher import apply_patch
 
         answer = "```python\ndef solve(): return 1\n```"
         directive = a_directive()
@@ -100,7 +100,7 @@ class TestAskingForTheWholeProgram:
 
     def test_only_the_marked_region_is_replaced(self):
         from cadence.interfaces import Directive
-        from cadence.patcher import apply_patch
+        from cadence.control.patcher import apply_patch
 
         marked = "before = 1\n# CADENCE:BEGIN\nx = 1\n# CADENCE:END\nafter = 2\n"
         directive = Directive(parent="p", code=marked, hint="try something")

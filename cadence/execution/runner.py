@@ -3,7 +3,7 @@ from statistics import fmean
 
 from cadence.interfaces import Metrics
 from cadence.reading import MetricNotReported, read
-from cadence.sandbox import Execution, Job, Sandbox
+from cadence.execution.sandboxes.subprocess import Execution, Job, Sandbox
 from cadence.verdict import Failed, Outcome, Scored, Verdict, fingerprint
 
 __all__ = ["TrialRunner", "DEFAULT_SEEDS"]

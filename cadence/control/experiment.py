@@ -2,14 +2,14 @@ from collections.abc import Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from cadence.entities import Candidate, Run, Trial, trial_id
+from cadence.control.entities import Candidate, Run, Trial, trial_id
 from cadence.exceptions import ModelError, NoCandidates, PatchError
 from cadence.events import Emitter
 from cadence.interfaces import Attempt, Directive, History, Ledger, Method
-from cadence.model import Model
-from cadence.patcher import apply_patch
-from cadence.recall import key_for
-from cadence.runner import TrialRunner
+from cadence.control.model import Model
+from cadence.control.patcher import apply_patch
+from cadence.control.recall import key_for
+from cadence.execution.runner import TrialRunner
 from cadence.signals import (
     ModelCalled,
     PatchRejected,

@@ -23,3 +23,5 @@ multirun/
 
 .env
 providers.local.yml
+
+thoughts/
