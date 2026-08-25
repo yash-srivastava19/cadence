@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from cadence.exceptions import CadenceError
 from cadence.reading import GOALS
-from cadence.region import BEGIN, END
+from cadence.control.region import BEGIN, END
 
 __all__ = ["API_VERSIONS", "ManifestError", "Plugin", "Manifest", "load"]
 

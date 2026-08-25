@@ -1,11 +1,10 @@
 from collections.abc import Mapping, Sequence
 from statistics import fmean
 
-from cadence.entities import Candidate
 from cadence.interfaces import Metrics
 from cadence.reading import MetricNotReported, read
-from cadence.sandbox import Execution, Job, Sandbox
-from cadence.verdict import Failed, Outcome, Scored, Verdict
+from cadence.execution.sandboxes.subprocess import Execution, Job, Sandbox
+from cadence.verdict import Failed, Outcome, Scored, Verdict, fingerprint
 
 __all__ = ["TrialRunner", "DEFAULT_SEEDS"]
 
@@ -37,19 +36,19 @@ class TrialRunner:
         self.seconds = seconds
         self.memory_mb = memory_mb
 
-    def try_(self, candidate: Candidate) -> Verdict:
+    def try_(self, code: str) -> Verdict:
         readings: list[Metrics] = []
         for seed in self.seeds:
-            verdict = self._one(candidate, seed)
+            verdict = self._one(code, seed)
             if isinstance(verdict, Failed):
                 return verdict
             readings.append(verdict.metrics)
-        return Scored(fingerprint=candidate.fingerprint, metrics=_mean(readings))
+        return Scored(fingerprint=fingerprint(code), metrics=_mean(readings))
 
-    def _one(self, candidate: Candidate, seed: int) -> Verdict:
+    def _one(self, code: str, seed: int) -> Verdict:
         execution = self.sandbox.run(
             Job(
-                code=candidate.code,
+                code=code,
                 program=self.program,
                 command=self.command,
                 workspace=self.workspace,
@@ -58,17 +57,17 @@ class TrialRunner:
                 memory_mb=self.memory_mb,
             )
         )
-        failure = _failure(candidate.fingerprint, execution)
+        failure = _failure(fingerprint(code), execution)
         if failure is not None:
             return failure
         try:
             return Scored(
-                fingerprint=candidate.fingerprint,
+                fingerprint=fingerprint(code),
                 metrics=read(execution.stdout, self.metrics),
             )
         except MetricNotReported as error:
             return Failed(
-                fingerprint=candidate.fingerprint,
+                fingerprint=fingerprint(code),
                 outcome=Outcome.INVALID,
                 reason=str(error),
             )

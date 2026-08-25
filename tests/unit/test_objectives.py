@@ -1,6 +1,6 @@
 import pytest
 
-from cadence.objectives import MissingMetric, Pareto, WeightedSum
+from cadence.control.objectives.ranking import MissingMetric, Pareto, WeightedSum
 
 
 class TestWeightedSum:

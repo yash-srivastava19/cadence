@@ -1,7 +1,7 @@
 import pytest
 from statemachine.exceptions import TransitionNotAllowed
 
-from cadence.entities import Candidate, Run, Trial, fingerprint, trial_id
+from cadence.control.entities import Candidate, Run, Trial, fingerprint, trial_id
 from cadence.states import CandidateState, RunState, TrialState
 from cadence.verdict import Scored
 

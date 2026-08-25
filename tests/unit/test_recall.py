@@ -1,19 +1,19 @@
 import pytest
 
-from cadence.backends import Scripted
-from cadence.experiment import Experiment
-from cadence.methods import Evolution
-from cadence.model import Model
-from cadence.objectives import WeightedSum
-from cadence.recall import (
+from cadence.control.backends.served import Scripted
+from cadence.control.experiment import Experiment
+from cadence.control.methods.evolution import Evolution
+from cadence.control.model import Model
+from cadence.control.objectives.ranking import WeightedSum
+from cadence.control.recall import (
     Calls,
     PromptChanged,
     Remembered,
     key_for,
     through,
 )
-from cadence.runner import TrialRunner
-from cadence.sandbox import Subprocess
+from cadence.execution.runner import TrialRunner
+from cadence.execution.sandboxes.subprocess import Subprocess
 from cadence.signals import ModelCalled, cadence
 from cadence.states import RunState
 

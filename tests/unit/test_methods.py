@@ -2,8 +2,8 @@ import pytest
 
 from cadence.exceptions import NoCandidates
 from cadence.interfaces import Attempt, Directive, History, Ledger, Method
-from cadence.methods import Evolution, Member, rng_for
-from cadence.objectives import Pareto, WeightedSum
+from cadence.control.methods.evolution import Evolution, Member, rng_for
+from cadence.control.objectives.ranking import Pareto, WeightedSum
 from cadence.verdict import Failed, Outcome, Scored
 
 SEED = "def solve(): return []"

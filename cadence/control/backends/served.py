@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from cadence.exceptions import RetryableModelError, TerminalModelError
 from cadence.http import Http
-from cadence.settings import Settings, known, settings_for
+from cadence.control.backends.settings import Settings, known, settings_for
 
 __all__ = [
     "Completion",

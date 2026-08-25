@@ -1,4 +1,5 @@
 from enum import StrEnum
+from hashlib import sha256
 from types import MappingProxyType
 from typing import Annotated, Any, Literal, Mapping, TypeVar
 
@@ -11,7 +12,23 @@ from pydantic import (
     StringConstraints,
 )
 
-__all__ = ["Outcome", "FAILURES", "Scored", "Failed", "Verdict", "Proposal"]
+__all__ = [
+    "Outcome",
+    "FAILURES",
+    "Scored",
+    "Failed",
+    "Verdict",
+    "Proposal",
+    "fingerprint",
+    "FINGERPRINT_LENGTH",
+]
+
+FINGERPRINT_LENGTH = 16
+
+
+def fingerprint(code: str) -> str:
+    return sha256(code.encode()).hexdigest()[:FINGERPRINT_LENGTH]
+
 
 K = TypeVar("K")
 V = TypeVar("V")

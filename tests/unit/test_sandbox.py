@@ -1,7 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
-from cadence.sandbox import Execution, Job, Sandbox, SandboxRun, Subprocess
+from cadence.execution.sandboxes.subprocess import (
+    Execution,
+    Job,
+    Sandbox,
+    SandboxRun,
+    Subprocess,
+)
 from cadence.states import SandboxRunState
 
 

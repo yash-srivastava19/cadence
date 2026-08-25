@@ -5,7 +5,7 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from cadence.storage import dsn, metadata
+from cadence.control.storage import dsn, metadata
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
