@@ -1,3 +1,5 @@
+import difflib
+import inspect
 import shlex
 from pathlib import Path
 
@@ -36,7 +38,43 @@ def resolve(kind: str, known: dict, plugin: Plugin, **extra):
         raise Unknown(
             f"no {kind} named {plugin.name!r}; known {kind}s: {', '.join(sorted(known))}"
         )
-    return known[plugin.name](**extra, **plugin.options)
+    factory = known[plugin.name]
+    _reject_unknown_options(kind, plugin, factory, extra)
+    try:
+        return factory(**extra, **plugin.options)
+    except TypeError as error:
+        raise Unknown(f"{kind} {plugin.name!r}: {error}") from error
+
+
+def _reject_unknown_options(kind: str, plugin: Plugin, factory, extra: dict) -> None:
+    """Say which option is wrong, and what the right ones are.
+
+    Plugin options are a free-form mapping splatted into a constructor, so a
+    typo would otherwise surface as a TypeError. Python words that message
+    differently across versions and does not list the alternatives, so build
+    it here instead of translating theirs.
+    """
+    try:
+        parameters = inspect.signature(factory).parameters
+    except (TypeError, ValueError):  # pragma: no cover - builtins, C callables
+        return
+    if any(p.kind is p.VAR_KEYWORD for p in parameters.values()):
+        return
+    settable = {
+        name
+        for name, p in parameters.items()
+        if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY) and name not in extra
+    }
+    for name in plugin.options:
+        if name in settable:
+            continue
+        close = difflib.get_close_matches(name, settable, n=1)
+        suggestion = f" Did you mean {close[0]!r}?" if close else ""
+        known_options = ", ".join(sorted(settable)) or "none"
+        raise Unknown(
+            f"{kind} {plugin.name!r} has no option {name!r}.{suggestion}"
+            f" Options: {known_options}"
+        )
 
 
 def objective_for(manifest: Manifest):
@@ -67,6 +105,7 @@ def build(manifest: Manifest, root: Path, run_id: str, backend=None) -> Experime
         model=Model(
             backend=backend or resolve("backend", BACKENDS, manifest.model),
             markers=(manifest.markers.begin, manifest.markers.end),
+            guidance=guidance(manifest, root),
         ),
         runner=TrialRunner(
             program=manifest.program,

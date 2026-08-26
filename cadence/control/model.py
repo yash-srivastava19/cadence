@@ -12,6 +12,13 @@ from cadence.verdict import Proposal
 
 __all__ = ["TEMPLATES", "render", "parse_patch", "parse_program", "Suggestion", "Model"]
 
+GUIDANCE = """
+
+What matters here, from the person who wrote this:
+{guidance}\
+"""  # joined directly onto {hint}, so an empty guidance leaves no gap
+
+
 IMPROVE = """\
 You are improving a program.
 
@@ -19,7 +26,7 @@ The current program:
 {code}
 
 What to try:
-{hint}
+{hint}{guidance}
 
 Reply with a unified diff inside a ```diff fenced block, and nothing else.\
 """
@@ -31,7 +38,7 @@ The current program:
 {code}
 
 What to try:
-{hint}
+{hint}{guidance}
 
 Reply with the complete new program inside a ```python fenced block, and
 nothing else. Include every line, even the ones you did not change.\
@@ -44,7 +51,7 @@ have context, but you may only change what lies between the markers.
 {code}
 
 What to try:
-{hint}
+{hint}{guidance}
 
 Reply with the replacement for the marked section only, inside a ```python
 fenced block. Do not include the marker lines themselves, and do not change
@@ -60,6 +67,12 @@ WHOLE = {"rewrite", "region"}
 
 DIFF_BLOCK = re.compile(r"```diff\n(?P<body>.*?)```", re.DOTALL)
 CODE_BLOCK = re.compile(r"```(?:python)?\n(?P<body>.*?)```", re.DOTALL)
+
+
+def _guidance_block(guidance: str | None) -> str:
+    if guidance is None or not guidance.strip():
+        return ""
+    return GUIDANCE.format(guidance=guidance.strip())
 
 
 def render(recipe: Mapping[str, Any]) -> str:
@@ -108,6 +121,7 @@ class Model:
         self,
         backend: Backend,
         template: str = "region",
+        guidance: str | None = None,
         calls: Calls | None = None,
         markers: tuple[str, str] = (BEGIN, END),
     ) -> None:
@@ -115,14 +129,18 @@ class Model:
             raise KeyError(f"no template named {template!r}")
         self.backend = backend
         self.template = template
+        self.guidance = guidance
         self.calls = calls
         self.markers = markers
 
     def recipe(self, directive: Directive) -> Mapping[str, Any]:
+        # Guidance is part of the recipe, not an extra applied afterwards:
+        # rebuilding the prompt from the recipe has to reproduce it exactly.
         return {
             "template": self.template,
             "code": directive.code,
             "hint": directive.hint,
+            "guidance": _guidance_block(self.guidance),
         }
 
     def propose(self, directive: Directive, key: str | None = None) -> Suggestion:
