@@ -77,6 +77,7 @@ class TestScoring:
                 command=("python", "prog.py"),
                 metrics={},
                 sandbox=Subprocess(),
+                seeds=(0,),
             )
 
 
@@ -109,3 +110,10 @@ class TestFailuresAreDistinguished:
             "print('value: 1')"
         )
         assert not a_runner(seeds=(0, 2)).try_(code).is_scored
+
+
+class TestOutOfMemoryReachesTheVerdict:
+    def test_a_greedy_candidate_is_out_of_memory_not_crashed(self):
+        verdict = a_runner(memory_mb=64).try_("x = bytearray(500 * 1024 * 1024)")
+        assert verdict.outcome is Outcome.OUT_OF_MEMORY
+        assert "memory" in verdict.reason

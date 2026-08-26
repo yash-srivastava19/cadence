@@ -6,9 +6,7 @@ from cadence.reading import MetricNotReported, read
 from cadence.execution.sandboxes.subprocess import Execution, Job, Sandbox
 from cadence.verdict import Failed, Outcome, Scored, Verdict, fingerprint
 
-__all__ = ["TrialRunner", "DEFAULT_SEEDS"]
-
-DEFAULT_SEEDS = (0, 1, 2)
+__all__ = ["TrialRunner"]
 
 
 class TrialRunner:
@@ -18,8 +16,8 @@ class TrialRunner:
         command: Sequence[str],
         metrics: Mapping[str, str],
         sandbox: Sandbox,
+        seeds: Sequence[int],
         workspace: str | None = None,
-        seeds: Sequence[int] = DEFAULT_SEEDS,
         seconds: float = 10.0,
         memory_mb: int = 256,
     ) -> None:

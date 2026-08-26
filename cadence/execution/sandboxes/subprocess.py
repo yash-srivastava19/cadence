@@ -27,6 +27,9 @@ __all__ = [
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 KILLED_BY_TIMEOUT = "wall clock"
+# RLIMIT_AS does not kill the process; it makes the allocation fail and the
+# runtime say so. Only the kernel's OOM killer sends SIGKILL.
+OOM_SIGNS = ("memoryerror", "std::bad_alloc", "cannot allocate memory", "out of memory")
 IGNORED = shutil.ignore_patterns(".git", "__pycache__", ".venv", "*.pyc")
 GRACE_SECONDS = 0.5
 
@@ -63,7 +66,12 @@ class Execution(BaseModel):
 
     @property
     def out_of_memory(self) -> bool:
-        return self.exit_status == -signal.SIGKILL and self.killed_by is None
+        if self.killed_by is not None or self.exit_status == 0:
+            return False
+        if self.exit_status == -signal.SIGKILL:
+            return True
+        blamed = self.stderr.lower()
+        return any(sign in blamed for sign in OOM_SIGNS)
 
 
 class SandboxRunMachine(StateMachine):

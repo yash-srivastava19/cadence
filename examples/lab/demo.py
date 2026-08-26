@@ -8,6 +8,7 @@ Same thing `cadence run` does, but with scripted answers instead of an API key.
 from pathlib import Path
 
 from cadence.control.backends.served import Scripted
+from cadence.control.entities import Trial
 from cadence.control.manifest import load
 from cadence.control.region import split
 from cadence.control.registry import build
@@ -33,7 +34,9 @@ def watch(fact):
         print(
             f"    {fact.verdict.outcome}  {fact.verdict.reason.splitlines()[-1][:50]}"
         )
-    elif isinstance(fact, (PatchRejected, TrialAbandoned)):
+    elif isinstance(fact, PatchRejected):
+        print(f"    retry    {fact.reason[:50]}")
+    elif isinstance(fact, TrialAbandoned):
         print(f"    rejected {fact.reason[:50]}")
 
 
@@ -46,7 +49,9 @@ def main() -> None:
     print("    " + (split(start).body.strip() or start)[:70])
 
     improved = f"def pack(items, capacity):\n{GREEDY}"
-    answers = [as_region(improved), "I'd use DP."]
+    # Trial 2 gets prose every time, so it is retried and then given up on
+    # without taking down the run.
+    answers = [as_region(improved)] + ["I'd use DP."] * (Trial.max_attempts + 1)
     experiment = build(manifest, root, "demo", backend=Scripted(*answers))
 
     print(f"\nrunning {manifest.budget.trials} trials against a fake model:\n")

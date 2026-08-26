@@ -108,7 +108,6 @@ class Model:
         self,
         backend: Backend,
         template: str = "region",
-        attempts: int = 3,
         calls: Calls | None = None,
         markers: tuple[str, str] = (BEGIN, END),
     ) -> None:
@@ -116,7 +115,6 @@ class Model:
             raise KeyError(f"no template named {template!r}")
         self.backend = backend
         self.template = template
-        self.attempts = attempts
         self.calls = calls
         self.markers = markers
 

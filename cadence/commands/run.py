@@ -15,10 +15,10 @@ def run(
     """Improve the program named by .cadence."""
     try:
         experiment = build(load(root), root, run_id)
+        report = experiment.run()
     except CadenceError as error:
         die(str(error))
-
-    report = experiment.run()
+        raise  # unreachable; die() exits. keeps `report` definitely bound.
     typer.echo(f"\n{report.status}  {report.scored}/{report.trials} scored")
     if report.reason:
         die(report.reason)
