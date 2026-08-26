@@ -1,5 +1,6 @@
 from cadence.control.backends.served import Scripted
 from cadence.exceptions import TerminalModelError
+from cadence.control.entities import Trial
 from cadence.control.experiment import Experiment, Report
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
@@ -20,6 +21,8 @@ IMPROVES = rewritten("print('value: 9')")
 SILENT = rewritten("print('nothing to report')")
 CRASHES = rewritten("raise ValueError('the evolved code is broken')")
 NONSENSE = "I would change the loop, but here is prose instead."
+# One first ask plus every retry the trial is allowed.
+GIVES_UP = [NONSENSE] * (Trial.max_attempts + 1)
 
 
 def an_experiment(*responses, budget=1, metrics=None):
@@ -97,15 +100,30 @@ class TestTheRunIsTraceable:
         from cadence.signals import TrialAbandoned
 
         with cadence.recording() as tape:
-            an_experiment(NONSENSE).run()
+            an_experiment(*GIVES_UP).run()
         assert "```python block" in tape.of(TrialAbandoned)[0].reason
 
 
 class TestFailingWell:
     def test_an_unparseable_answer_abandons_the_trial_not_the_run(self):
-        report = an_experiment(NONSENSE).run()
+        report = an_experiment(*GIVES_UP).run()
         assert report.status == RunState.FINISHED
         assert report.scored == 0
+
+    def test_an_unparseable_answer_is_asked_again_before_being_given_up_on(self):
+        experiment = an_experiment(NONSENSE, IMPROVES)
+        report = experiment.run()
+        assert report.scored == 1
+        assert len(experiment.model.backend.prompts) == 2
+
+    def test_a_retry_does_not_cost_a_trial(self):
+        report = an_experiment(NONSENSE, IMPROVES).run()
+        assert report.trials == 1
+
+    def test_retries_are_bounded_by_the_trial_budget(self):
+        experiment = an_experiment(*GIVES_UP)
+        experiment.run()
+        assert len(experiment.model.backend.prompts) == Trial.max_attempts + 1
 
     def test_a_program_that_crashes_is_measured_not_fatal(self):
         report = an_experiment(CRASHES).run()
@@ -124,4 +142,27 @@ class TestFailingWell:
     def test_a_terminal_model_error_is_not_retried_into_the_ground(self):
         experiment = an_experiment(TerminalModelError("401"))
         assert experiment.run().status == RunState.FAILED
+        assert len(experiment.model.backend.prompts) == 1
+
+
+class TestABrokenProjectStopsTheRun:
+    TWO_MARKERS = "# CADENCE:BEGIN\nx = 1\n# CADENCE:BEGIN\ny = 2\n# CADENCE:END\n"
+
+    def _marked(self, program):
+        experiment = an_experiment(IMPROVES)
+        experiment.seeds = (program,)
+        experiment.model.template = "region"
+        return experiment
+
+    def test_a_malformed_marked_region_fails_the_run(self):
+        report = self._marked(self.TWO_MARKERS).run()
+        assert report.status == RunState.FAILED
+
+    def test_it_says_which_marker_is_wrong(self):
+        report = self._marked(self.TWO_MARKERS).run()
+        assert "CADENCE:BEGIN" in report.reason
+
+    def test_it_is_not_retried_because_retrying_cannot_help(self):
+        experiment = self._marked(self.TWO_MARKERS)
+        experiment.run()
         assert len(experiment.model.backend.prompts) == 1

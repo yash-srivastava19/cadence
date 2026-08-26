@@ -3,7 +3,7 @@ from collections.abc import Mapping, Sequence
 from pydantic import BaseModel, ConfigDict, Field
 
 from cadence.control.entities import Candidate, Run, Trial, trial_id
-from cadence.exceptions import ModelError, NoCandidates, PatchError
+from cadence.exceptions import ModelError, NoCandidates, PatchError, SetupError
 from cadence.events import Emitter
 from cadence.interfaces import Attempt, Directive, History, Ledger, Method
 from cadence.control.model import Model
@@ -74,6 +74,8 @@ class Experiment:
             return self._fail(run, str(error))
         except ModelError as error:
             return self._fail(run, f"{type(error).__name__}: {error}")
+        except SetupError as error:
+            return self._fail(run, f"{type(error).__name__}: {error}")
 
     def _search(self, run: Run) -> Report:
         attempts: list[Attempt] = []
@@ -106,14 +108,10 @@ class Experiment:
         trace.emit(TrialStarted, parent=directive.parent)
 
         trial.prompt()
-        try:
-            proposal, completion, replayed = self.model.propose(
-                directive, key=key_for(self.run_id, run.trials)
-            )
-        except PatchError as error:
-            trial.abandon(reason=str(error))
-            trace.emit(TrialAbandoned, reason=str(error))
+        suggestion = self._propose(run, trial, trace, directive)
+        if suggestion is None:
             return None
+        proposal, completion, replayed = suggestion
         trace.emit(
             ModelCalled,
             backend=self.model.backend.name,
@@ -137,6 +135,24 @@ class Experiment:
         trial.measure(verdict=verdict)
         trace.emit(TrialMeasured, verdict=verdict)
         return Attempt(code=code, verdict=verdict)
+
+    def _propose(self, run: Run, trial: Trial, trace, directive: Directive):
+        # An unparseable reply is worth asking again for: it costs a model call,
+        # not a trial. Only once the retry budget is gone is the trial lost.
+        while True:
+            try:
+                return self.model.propose(
+                    directive,
+                    key=key_for(self.run_id, run.trials, trial.attempts),
+                )
+            except PatchError as error:
+                if trial.may_retry:
+                    trial.retry()
+                    trace.emit(PatchRejected, reason=str(error))
+                    continue
+                trial.abandon(reason=str(error))
+                trace.emit(TrialAbandoned, reason=str(error))
+                return None
 
     def _finish(self, run: Run, history: History, scored: int) -> Report:
         best = self.method.best(history)

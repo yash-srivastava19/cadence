@@ -1,11 +1,12 @@
 from collections.abc import Mapping
 
+from cadence.exceptions import SetupError
 from cadence.interfaces import Metrics
 
 __all__ = ["WeightedSum", "Pareto", "MissingMetric"]
 
 
-class MissingMetric(KeyError):
+class MissingMetric(SetupError):
     pass
 
 

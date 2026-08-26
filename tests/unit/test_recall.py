@@ -19,6 +19,9 @@ from cadence.states import RunState
 
 BASELINE = "print('value: 0')"
 ANSWER = "```python\nprint('value: 9')\n```"
+# A second, different answer: repeating the first would come back unchanged,
+# which is a PatchError and would spend the trial's retries.
+ANSWERS = (ANSWER, "```python\nprint('value: 11')\n```")
 
 
 def a_completion(text="hello"):
@@ -96,7 +99,7 @@ class TestAModelThatRemembers:
         assert model.propose(directive, key="h1/0").replayed
 
     def test_without_a_store_nothing_is_remembered(self):
-        model = Model(backend=Scripted(ANSWER, ANSWER))
+        model = Model(backend=Scripted(*ANSWERS))
         directive = _a_directive()
         model.propose(directive)
         model.propose(directive)
@@ -106,7 +109,7 @@ class TestAModelThatRemembers:
 class TestResumingARunCostsNothing:
     def test_the_second_run_makes_no_model_calls(self):
         calls = Remembered()
-        first = _an_experiment(calls, Scripted(ANSWER, ANSWER))
+        first = _an_experiment(calls, Scripted(*ANSWERS))
         assert first.run().status == RunState.FINISHED
 
         second = _an_experiment(calls, Scripted())
@@ -116,21 +119,21 @@ class TestResumingARunCostsNothing:
 
     def test_it_reaches_the_same_answer(self):
         calls = Remembered()
-        first = _an_experiment(calls, Scripted(ANSWER, ANSWER)).run()
+        first = _an_experiment(calls, Scripted(*ANSWERS)).run()
         second = _an_experiment(calls, Scripted()).run()
         assert second.best == first.best
         assert second.program == first.program
 
     def test_the_tape_marks_the_call_as_replayed(self):
         calls = Remembered()
-        _an_experiment(calls, Scripted(ANSWER, ANSWER)).run()
+        _an_experiment(calls, Scripted(*ANSWERS)).run()
         with cadence.recording() as tape:
             _an_experiment(calls, Scripted()).run()
         assert all(fact.replayed for fact in tape.of(ModelCalled))
 
     def test_the_first_run_is_not_marked_replayed(self):
         with cadence.recording() as tape:
-            _an_experiment(Remembered(), Scripted(ANSWER, ANSWER)).run()
+            _an_experiment(Remembered(), Scripted(*ANSWERS)).run()
         assert not any(fact.replayed for fact in tape.of(ModelCalled))
 
 

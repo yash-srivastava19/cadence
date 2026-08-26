@@ -44,8 +44,10 @@ class Remembered:
         return len(self.calls)
 
 
-def key_for(run_id: str, index: int) -> str:
-    return f"{run_id}/{index}"
+def key_for(run_id: str, index: int, attempt: int = 0) -> str:
+    # A retry asks the same question again, so it must not replay the answer
+    # that already failed to parse.
+    return f"{run_id}/{index}" if not attempt else f"{run_id}/{index}#{attempt}"
 
 
 def digest(prompt: str) -> str:

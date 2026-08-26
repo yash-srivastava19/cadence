@@ -86,3 +86,31 @@ class TestSchema:
 class TestRun:
     def test_it_needs_a_manifest(self, tmp_path):
         assert runner.invoke(app, ["run", str(tmp_path)]).exit_code == 1
+
+
+class TestRunFailsWithAMessageNotATraceback:
+    """`experiment.run()` used to sit outside the try, so anything it raised
+    reached the user as a traceback."""
+
+    def _run(self, tmp_path, program):
+        (tmp_path / ".cadence").write_text(
+            "apiVersion: cadence/v1alpha1\n"
+            "program: p.py\n"
+            "metrics: {value: maximize}\n"
+            "budget: {trials: 1}\n"
+        )
+        (tmp_path / "p.py").write_text(program)
+        return runner.invoke(app, ["run", str(tmp_path)])
+
+    WORKS = "# CADENCE:BEGIN\nx = 1\n# CADENCE:END\nprint('value: 1')\n"
+
+    def test_a_failed_run_exits_one(self, tmp_path):
+        assert self._run(tmp_path, self.WORKS).exit_code == 1
+
+    def test_it_explains_itself(self, tmp_path):
+        assert "ran out of responses" in self._run(tmp_path, self.WORKS).output
+
+    def test_it_leaves_no_traceback(self, tmp_path):
+        result = self._run(tmp_path, self.WORKS)
+        assert isinstance(result.exception, SystemExit)
+        assert "Traceback" not in result.output

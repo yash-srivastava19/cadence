@@ -1,5 +1,6 @@
 __all__ = [
     "CadenceError",
+    "SetupError",
     "ModelError",
     "RetryableModelError",
     "TerminalModelError",
@@ -9,6 +10,10 @@ __all__ = [
 
 
 class CadenceError(Exception): ...
+
+
+class SetupError(CadenceError):
+    """The user's project is wrong. Retrying cannot help, so the run stops."""
 
 
 class ModelError(CadenceError): ...

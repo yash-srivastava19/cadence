@@ -171,3 +171,25 @@ class TestTheJobAndTheExecution:
     def test_a_job_cannot_be_edited(self):
         with pytest.raises(ValidationError):
             a_job(PRINTS).seconds = 99.0
+
+
+class TestRunningOutOfMemoryIsNotJustACrash:
+    def test_an_allocation_past_the_cap_is_named_out_of_memory(self):
+        execution = Subprocess().run(
+            a_job("x = bytearray(500 * 1024 * 1024)", memory_mb=64)
+        )
+        assert not execution.ok
+        assert execution.out_of_memory
+
+    def test_an_ordinary_crash_is_not_out_of_memory(self):
+        execution = Subprocess().run(a_job("raise ValueError('nope')"))
+        assert not execution.ok
+        assert not execution.out_of_memory
+
+    def test_a_timeout_is_not_out_of_memory(self):
+        execution = Subprocess().run(a_job("while True: pass", seconds=0.5))
+        assert execution.timed_out
+        assert not execution.out_of_memory
+
+    def test_a_clean_run_is_not_out_of_memory(self):
+        assert not Subprocess().run(a_job(PRINTS)).out_of_memory
