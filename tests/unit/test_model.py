@@ -187,3 +187,29 @@ class TestMarkersAreConfigurable:
             markers=("EVOLVE-START", "EVOLVE-END"),
         )
         assert "+x = 9" in model.propose(directive).proposal.patch
+
+
+class TestGuidanceReachesTheModel:
+    def test_it_appears_in_the_prompt(self):
+        model = Model(
+            backend=Scripted(ANSWER),
+            template="improve",
+            guidance="Do not edit items.py.",
+        )
+        suggestion = model.propose(a_directive())
+        assert "Do not edit items.py." in suggestion.proposal.prompt
+
+    def test_it_is_part_of_the_recipe_so_replay_reproduces_it(self):
+        model = Model(
+            backend=Scripted(ANSWER),
+            template="improve",
+            guidance="Do not edit items.py.",
+        )
+        proposal = model.propose(a_directive()).proposal
+        assert render(proposal.recipe) == proposal.prompt
+
+    def test_no_guidance_leaves_no_gap_in_the_prompt(self):
+        model = Model(backend=Scripted(ANSWER), template="improve")
+        prompt = model.propose(a_directive()).proposal.prompt
+        assert "What matters here" not in prompt
+        assert "\n\n\n" not in prompt

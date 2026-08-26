@@ -7,6 +7,10 @@ from cadence.commands import app
 LAB = Path(__file__).resolve().parents[2] / "examples" / "lab"
 runner = CliRunner()
 
+# check requires a marked region: without one, the model's reply would
+# replace the whole file.
+MARKED = "# CADENCE:BEGIN\n%s\n# CADENCE:END\n"
+
 
 class TestCheck:
     def test_a_real_repo_passes(self):
@@ -35,7 +39,7 @@ class TestCheck:
         (tmp_path / ".cadence").write_text(
             "apiVersion: cadence/v1alpha1\nprogram: p.py\nmetrics: {absent: maximize}\n"
         )
-        (tmp_path / "p.py").write_text("print('done')")
+        (tmp_path / "p.py").write_text(MARKED % "print('done')")
         result = runner.invoke(app, ["check", str(tmp_path)])
         assert result.exit_code == 1
         assert "absent" in result.output
@@ -45,7 +49,7 @@ class TestCheck:
             "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
             "metrics: {v: maximize}\nmethod: {evolutin: {}}\n"
         )
-        (tmp_path / "p.py").write_text("print('v: 1')")
+        (tmp_path / "p.py").write_text(MARKED % "print('v: 1')")
         result = runner.invoke(app, ["check", str(tmp_path)])
         assert result.exit_code == 1
 
@@ -58,7 +62,7 @@ class TestCheckAsksAboutTheProjectNotTheMachine:
             "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
             "metrics: {v: maximize}\nmodel: {gemini: {}}\n"
         )
-        (tmp_path / "p.py").write_text("print('v: 1')")
+        (tmp_path / "p.py").write_text(MARKED % "print('v: 1')")
         result = runner.invoke(app, ["check", str(tmp_path)])
         assert result.exit_code == 0, result.output
 
@@ -67,7 +71,7 @@ class TestCheckAsksAboutTheProjectNotTheMachine:
             "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
             "metrics: {v: maximize}\nmodel: {gemini: {}}\n"
         )
-        (tmp_path / "p.py").write_text("print('v: 1')")
+        (tmp_path / "p.py").write_text(MARKED % "print('v: 1')")
         assert "key" not in runner.invoke(app, ["check", str(tmp_path)]).output
 
 
@@ -114,3 +118,76 @@ class TestRunFailsWithAMessageNotATraceback:
         result = self._run(tmp_path, self.WORKS)
         assert isinstance(result.exception, SystemExit)
         assert "Traceback" not in result.output
+
+
+class TestCheckSaysWhatItVerified:
+    def _project(self, tmp_path, extra="", program="print('value: 1')"):
+        (tmp_path / ".cadence").write_text(
+            "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
+            "metrics: {value: maximize}\n" + extra
+        )
+        (tmp_path / "p.py").write_text(MARKED % program)
+        return runner.invoke(app, ["check", str(tmp_path)])
+
+    def test_it_names_the_lines_the_model_may_rewrite(self, tmp_path):
+        assert "lines 2-2" in self._project(tmp_path).output
+
+    def test_it_shows_the_options_the_method_was_built_with(self, tmp_path):
+        assert "size=8, tournament=3" in self._project(tmp_path).output
+
+    def test_it_names_the_objective_it_derived(self, tmp_path):
+        assert "weighted_sum" in self._project(tmp_path).output
+
+    def test_it_says_the_metric_and_which_way_is_better(self, tmp_path):
+        output = self._project(tmp_path).output
+        assert "value = 1" in output and "maximize is better" in output
+
+    def test_it_says_when_guidance_is_missing(self, tmp_path):
+        assert "no IMPROVE.md" in self._project(tmp_path).output
+
+    def test_findings_go_to_stdout_and_the_verdict_to_stderr(self, tmp_path):
+        result = runner.invoke(app, ["check", str(tmp_path)])  # noqa: F841
+        # CliRunner merges the streams, so assert both halves are present.
+        output = self._project(tmp_path).output
+        assert "manifest" in output and "ready." in output
+
+
+class TestCheckCatchesWhatItUsedToWaveThrough:
+    def test_an_unmarked_program_fails(self, tmp_path):
+        (tmp_path / ".cadence").write_text(
+            "apiVersion: cadence/v1alpha1\nprogram: p.py\nmetrics: {v: maximize}\n"
+        )
+        (tmp_path / "p.py").write_text("print('v: 1')")
+        result = runner.invoke(app, ["check", str(tmp_path)])
+        assert result.exit_code == 1
+        assert "CADENCE:BEGIN" in result.output
+
+    def test_two_begin_markers_fail(self, tmp_path):
+        (tmp_path / ".cadence").write_text(
+            "apiVersion: cadence/v1alpha1\nprogram: p.py\nmetrics: {v: maximize}\n"
+        )
+        (tmp_path / "p.py").write_text(
+            "# CADENCE:BEGIN\nx = 1\n# CADENCE:BEGIN\ny = 2\n# CADENCE:END\n"
+        )
+        assert runner.invoke(app, ["check", str(tmp_path)]).exit_code == 1
+
+    def test_a_mistyped_method_option_fails_here_not_at_run_time(self, tmp_path):
+        (tmp_path / ".cadence").write_text(
+            "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
+            "metrics: {value: maximize}\nmethod: {evolution: {sizee: 12}}\n"
+        )
+        (tmp_path / "p.py").write_text(MARKED % "print('value: 1')")
+        result = runner.invoke(app, ["check", str(tmp_path)])
+        assert result.exit_code == 1
+        assert "sizee" in result.output
+
+    def test_it_keeps_the_suggestion_python_already_makes(self, tmp_path):
+        (tmp_path / ".cadence").write_text(
+            "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
+            "metrics: {value: maximize}\nmethod: {evolution: {sizee: 12}}\n"
+        )
+        (tmp_path / "p.py").write_text(MARKED % "print('value: 1')")
+        assert (
+            "Did you mean 'size'?"
+            in runner.invoke(app, ["check", str(tmp_path)]).output
+        )

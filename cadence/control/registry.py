@@ -36,7 +36,12 @@ def resolve(kind: str, known: dict, plugin: Plugin, **extra):
         raise Unknown(
             f"no {kind} named {plugin.name!r}; known {kind}s: {', '.join(sorted(known))}"
         )
-    return known[plugin.name](**extra, **plugin.options)
+    try:
+        return known[plugin.name](**extra, **plugin.options)
+    except TypeError as error:
+        # Plugin options are a free-form mapping splatted into a constructor,
+        # so a typo arrives as a TypeError rather than a manifest error.
+        raise Unknown(f"{kind} {plugin.name!r}: {error}") from error
 
 
 def objective_for(manifest: Manifest):
@@ -67,6 +72,7 @@ def build(manifest: Manifest, root: Path, run_id: str, backend=None) -> Experime
         model=Model(
             backend=backend or resolve("backend", BACKENDS, manifest.model),
             markers=(manifest.markers.begin, manifest.markers.end),
+            guidance=guidance(manifest, root),
         ),
         runner=TrialRunner(
             program=manifest.program,
