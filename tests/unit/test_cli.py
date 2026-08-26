@@ -181,13 +181,15 @@ class TestCheckCatchesWhatItUsedToWaveThrough:
         assert result.exit_code == 1
         assert "sizee" in result.output
 
-    def test_it_keeps_the_suggestion_python_already_makes(self, tmp_path):
+    def test_it_suggests_the_option_that_was_meant(self, tmp_path):
         (tmp_path / ".cadence").write_text(
             "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
             "metrics: {value: maximize}\nmethod: {evolution: {sizee: 12}}\n"
         )
         (tmp_path / "p.py").write_text(MARKED % "print('value: 1')")
-        assert (
-            "Did you mean 'size'?"
-            in runner.invoke(app, ["check", str(tmp_path)]).output
-        )
+        output = runner.invoke(app, ["check", str(tmp_path)]).output
+        # Cadence writes this, not CPython: the interpreter only started
+        # suggesting keyword arguments in 3.12, and never lists the rest.
+        assert "has no option 'sizee'" in output
+        assert "Did you mean 'size'?" in output
+        assert "Options: size, tournament" in output
