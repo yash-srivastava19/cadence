@@ -19,8 +19,27 @@ from sqlalchemy.exc import ProgrammingError  # noqa: E402
 from statemachine.exceptions import TransitionNotAllowed  # noqa: E402
 
 from cadence.control.entities import Run  # noqa: E402
-from cadence.control.storage import engine, runs  # noqa: E402
+from cadence.control.storage import (  # noqa: E402
+    blobs,
+    budget,
+    candidates,
+    engine,
+    events,
+    idempotency_keys,
+    manifests,
+    model_calls,
+    quarantine,
+    runs,
+    templates,
+    trials,
+    verdicts,
+)
 from cadence.states import RunState  # noqa: E402
+
+# What the migration granted, and what a reviewer can read off `\dp` in psql.
+APPEND_ONLY = (blobs, manifests, templates, verdicts, events, model_calls)
+ADVANCES = (runs, trials, candidates, budget, quarantine)
+SWEEPABLE = (idempotency_keys,)
 
 
 # One engine per role for the whole module, disposed at the end. A fresh
@@ -135,3 +154,43 @@ class TestWhatTheApplicationRoleMayDo:
         app.commit()
         with pytest.raises(ProgrammingError):
             app.execute(sa.delete(runs))
+
+
+def _as_app(table, statement):
+    """Run one statement as the restricted role, in its own connection."""
+    with (
+        engine(APP).connect() as connection,
+        pytest.raises(ProgrammingError, match="permission denied"),
+    ):
+        connection.execute(statement)
+
+
+class TestTheLedgerCannotBeRewritten:
+    """The reason this project needs Postgres rather than SQLite.
+
+    SQLite has no GRANT, so "the log can never be edited" would be a habit.
+    Here it is a property of the database, and these tests are what keep it
+    one as tables are added.
+    """
+
+    @pytest.mark.parametrize("table", APPEND_ONLY, ids=lambda t: t.name)
+    def test_an_append_only_table_cannot_be_updated(self, table):
+        column = next(iter(table.c))
+        _as_app(table, sa.update(table).values({column: column}))
+
+    @pytest.mark.parametrize("table", APPEND_ONLY, ids=lambda t: t.name)
+    def test_an_append_only_table_cannot_be_deleted_from(self, table):
+        _as_app(table, sa.delete(table))
+
+    @pytest.mark.parametrize("table", ADVANCES, ids=lambda t: t.name)
+    def test_a_table_that_advances_cannot_be_deleted_from(self, table):
+        _as_app(table, sa.delete(table))
+
+
+class TestTheOneTableASweeperOwns:
+    @pytest.mark.parametrize("table", SWEEPABLE, ids=lambda t: t.name)
+    def test_expired_keys_can_be_deleted(self, table):
+        # Every other table refuses DELETE. This one must allow it, or an
+        # idempotency key with a TTL would live forever.
+        with engine(APP).begin() as connection:
+            connection.execute(sa.delete(table))
