@@ -98,7 +98,6 @@ class Reliable:
         return self.backend.name
 
     def call(self, prompt: str) -> Completion:
-        last: Exception | None = None
         for attempt in range(1, self.attempts + 1):
             try:
                 completion = self.backend.call(prompt)
@@ -108,11 +107,11 @@ class Reliable:
                 self._record(attempt, error)
                 raise
             except RetryableModelError as error:
-                last = error
                 self._record(attempt, error)
-                if attempt < self.attempts:
-                    time.sleep(self.backoff * attempt)
-        raise last
+                if attempt == self.attempts:
+                    raise
+                time.sleep(self.backoff * attempt)
+        raise AssertionError("unreachable: attempts is at least 1")
 
     def _record(self, attempt: int, error: Exception | None) -> None:
         if self.audit is not None:

@@ -8,7 +8,9 @@ repos:
       - id: check-added-large-files
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.1
+    # Keep in step with the ruff a developer runs; a stale pin means CI and
+    # the editor disagree about both rules and formatting.
+    rev: v0.16.4
     hooks:
       - id: ruff-check
         types_or: [ python, pyi ]

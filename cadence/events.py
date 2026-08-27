@@ -45,9 +45,7 @@ class Fact(BaseModel):
 
     at: datetime = Field(default_factory=_now)
 
-    def __init_subclass__(
-        cls, channel: Channel | None = None, **kwargs: object
-    ) -> None:
+    def __init_subclass__(cls, channel: Channel | None = None, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         if channel is not None:
             cls.channel = channel
