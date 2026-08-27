@@ -1,12 +1,12 @@
 import logging
 from collections.abc import Callable, Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, ClassVar
 
 from blinker import ANY, Signal
 from pydantic import BaseModel, ConfigDict, Field
 
-__all__ = ["Channel", "Fact", "Recorder", "Emitter"]
+__all__ = ["Channel", "Emitter", "Fact", "Recorder"]
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ Unsubscribe = Callable[[], None]
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Channel:

@@ -2,15 +2,15 @@
 Tests for the evaluator module.
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.evaluator import (
-    euclidean,
-    compute_total_distance,
-    generate_test_instance,
-    execute_single_seed,
-    execute,
     INFEASIBLE_COST,
+    compute_total_distance,
+    euclidean,
+    execute,
+    execute_single_seed,
+    generate_test_instance,
 )
 from src.tasks.tsp_task import TSPTask
 

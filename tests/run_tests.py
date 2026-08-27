@@ -6,9 +6,9 @@ This script provides convenient commands for running different types of tests
 with appropriate configurations and reporting.
 """
 
-import sys
-import subprocess
 import argparse
+import subprocess
+import sys
 
 
 def run_command(cmd, description):
@@ -65,19 +65,20 @@ def main():
     success = True
 
     if args.test_type == "unit":
-        cmd = base_cmd + [unit_path]
+        cmd = [*base_cmd, unit_path]
         success = run_command(cmd, "Unit Tests")
 
     elif args.test_type == "integration":
-        cmd = base_cmd + [integration_path]
+        cmd = [*base_cmd, integration_path]
         success = run_command(cmd, "Integration Tests")
 
     elif args.test_type == "performance":
-        cmd = base_cmd + [performance_path, "--durations=10"]
+        cmd = [*base_cmd, performance_path, "--durations=10"]
         success = run_command(cmd, "Performance Tests")
 
     elif args.test_type == "coverage":
-        cmd = base_cmd + [
+        cmd = [
+            *base_cmd,
             "--cov=src",
             "--cov-report=html",
             "--cov-report=term-missing",
@@ -89,15 +90,15 @@ def main():
 
     elif args.test_type == "quick":
         # Run only fast unit tests
-        cmd = base_cmd + [unit_path, "-m", "not slow"]
+        cmd = [*base_cmd, unit_path, "-m", "not slow"]
         success = run_command(cmd, "Quick Tests")
 
     elif args.test_type == "all":
         # Run all test categories in sequence
         test_suites = [
-            (base_cmd + [unit_path], "Unit Tests"),
-            (base_cmd + [integration_path], "Integration Tests"),
-            (base_cmd + [performance_path], "Performance Tests"),
+            ([*base_cmd, unit_path], "Unit Tests"),
+            ([*base_cmd, integration_path], "Integration Tests"),
+            ([*base_cmd, performance_path], "Performance Tests"),
         ]
 
         for cmd, description in test_suites:

@@ -136,6 +136,40 @@ executionEnvironments = [
 [tool.ruff]
 line-length = 88
 target-version = "py311"
+# The replaced loop -- src/ and the Hydra scripts that drive it. All of it
+# goes when src/ does, so linting it now is churn.
+extend-exclude = [
+    "src",
+    "*.ipynb",
+    "main.py",
+    "analyze_results.py",
+    "run_h1_experiment.py",
+    "run_h2_experiment.py",
+    "train_rl.py",
+    "experiments",
+    "ui",
+    # Ruff formats python blocks inside markdown. The docs still describe the
+    # replaced loop, so they get rewritten rather than reformatted.
+    "*.md",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import order, so isort has nothing left to do
+    "B",        # bugbear: the real bugs in this list
+    "C4",       # comprehensions
+    "SIM",      # simplifications
+    "UP",       # syntax this Python version made obsolete
+    "PIE",      # small misfeatures
+    "PT",       # pytest style
+    "RUF",      # ruff's own
+]
+ignore = [
+    # typer's documented idiom is a call in the default: Argument(), Option().
+    "B008",
+]
 
 # isort configuration
 [tool.isort]

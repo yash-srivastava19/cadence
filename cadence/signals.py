@@ -7,16 +7,16 @@ from cadence.events import Channel, Fact
 from cadence.verdict import Verdict
 
 __all__ = [
-    "cadence",
     "Event",
-    "RunStarted",
-    "RunFinished",
-    "TrialStarted",
     "ModelCalled",
-    "ProposalReceived",
     "PatchRejected",
-    "TrialMeasured",
+    "ProposalReceived",
+    "RunFinished",
+    "RunStarted",
     "TrialAbandoned",
+    "TrialMeasured",
+    "TrialStarted",
+    "cadence",
 ]
 
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]

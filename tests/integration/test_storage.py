@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 
@@ -13,27 +14,37 @@ if not (OWNER and APP):
 
 sa = pytest.importorskip("sqlalchemy", reason="run 'pip install -e .'")
 
+from sqlalchemy import orm  # noqa: E402
 from sqlalchemy.exc import ProgrammingError  # noqa: E402
+from statemachine.exceptions import TransitionNotAllowed  # noqa: E402
 
 from cadence.control.entities import Run  # noqa: E402
+from cadence.control.storage import engine, runs  # noqa: E402
 from cadence.states import RunState  # noqa: E402
-from cadence.control.storage import engine, runs, sessions  # noqa: E402
+
+
+# One engine per role for the whole module, disposed at the end. A fresh
+# engine per test leaks its pool, and psycopg says so.
+@pytest.fixture(scope="module")
+def engines():
+    made = {"owner": engine(OWNER), "app": engine(APP)}
+    yield made
+    for one in made.values():
+        one.dispose()
 
 
 @pytest.fixture
-def owner():
-    made = sessions(OWNER)
-    with made() as session:
+def owner(engines):
+    with orm.Session(engines["owner"], expire_on_commit=False) as session:
         yield session
         session.rollback()
-    with engine(OWNER).begin() as connection:
+    with engines["owner"].begin() as connection:
         connection.execute(sa.delete(runs))
 
 
 @pytest.fixture
-def app():
-    made = sessions(APP)
-    with made() as session:
+def app(engines):
+    with orm.Session(engines["app"], expire_on_commit=False) as session:
         yield session
         session.rollback()
 
@@ -84,7 +95,7 @@ class TestARunSurvivesARestart:
         owner.expunge_all()
 
         reloaded = owner.get(Run, "r1")
-        with pytest.raises(Exception):
+        with pytest.raises(TransitionNotAllowed):
             reloaded.fail(reason="")
 
     def test_the_column_holds_the_value_not_the_member_name(self, owner):
@@ -101,7 +112,7 @@ class TestTheEntityStaysPlain:
         import cadence.control.entities as entities
 
         assert "sqlalchemy" not in entities.__dict__
-        source = open(entities.__file__).read()
+        source = Path(entities.__file__).read_text()
         assert "sqlalchemy" not in source
 
 
@@ -124,4 +135,3 @@ class TestWhatTheApplicationRoleMayDo:
         app.commit()
         with pytest.raises(ProgrammingError):
             app.execute(sa.delete(runs))
-            app.commit()

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, registry, sessionmaker
 from cadence.control.entities import Run
 from cadence.states import RunState
 
-__all__ = ["metadata", "runs", "engine", "sessions", "dsn"]
+__all__ = ["dsn", "engine", "metadata", "runs", "sessions"]
 
 DRIVER = "postgresql+psycopg://"
 

@@ -3,13 +3,13 @@ from collections.abc import Mapping, Sequence
 from pydantic import BaseModel, ConfigDict, Field
 
 from cadence.control.entities import Candidate, Run, Trial, trial_id
-from cadence.exceptions import ModelError, NoCandidates, PatchError, SetupError
-from cadence.events import Emitter
-from cadence.interfaces import Attempt, Directive, History, Ledger, Method
 from cadence.control.model import Model
 from cadence.control.patcher import apply_patch
 from cadence.control.recall import key_for
+from cadence.events import Emitter
+from cadence.exceptions import ModelError, NoCandidates, PatchError, SetupError
 from cadence.execution.runner import TrialRunner
+from cadence.interfaces import Attempt, Directive, History, Ledger, Method
 from cadence.signals import (
     ModelCalled,
     PatchRejected,
@@ -22,7 +22,7 @@ from cadence.signals import (
 )
 from cadence.states import RunState
 
-__all__ = ["Report", "Experiment"]
+__all__ = ["Experiment", "Report"]
 
 
 def _files(patch) -> int:

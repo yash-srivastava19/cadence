@@ -4,17 +4,17 @@ import shlex
 from pathlib import Path
 
 from cadence.control.backends.served import Scripted, known, served
-from cadence.exceptions import CadenceError
 from cadence.control.experiment import Experiment
 from cadence.control.manifest import Manifest, Plugin
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import Pareto, WeightedSum
-from cadence.reading import direction
+from cadence.exceptions import CadenceError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
+from cadence.reading import direction
 
-__all__ = ["METHODS", "OBJECTIVES", "BACKENDS", "Unknown", "build", "seed_program"]
+__all__ = ["BACKENDS", "METHODS", "OBJECTIVES", "Unknown", "build", "seed_program"]
 
 
 class Unknown(CadenceError):
@@ -36,7 +36,8 @@ BACKENDS = {"scripted": Scripted, **{name: _make(name) for name in known()}}
 def resolve(kind: str, known: dict, plugin: Plugin, **extra):
     if plugin.name not in known:
         raise Unknown(
-            f"no {kind} named {plugin.name!r}; known {kind}s: {', '.join(sorted(known))}"
+            f"no {kind} named {plugin.name!r};"
+            f" known {kind}s: {', '.join(sorted(known))}"
         )
     factory = known[plugin.name]
     _reject_unknown_options(kind, plugin, factory, extra)

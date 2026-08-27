@@ -83,5 +83,8 @@ def tsp(cities):
 def another_function():
     pass
 ### END_BLOCK""",
-    "meta_prompt": "Focus on implementing greedy nearest-neighbor algorithms for better TSP solutions.",
+    "meta_prompt": (
+        "Focus on implementing greedy nearest-neighbor algorithms"
+        " for better TSP solutions."
+    ),
 }

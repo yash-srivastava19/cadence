@@ -3,10 +3,10 @@ Tests for the prompt_sampler module.
 """
 
 from src.prompt_sampler import (
-    update_instruction,
-    extract_code_blocks,
-    build,
     INSTRUCTION_TEMPLATE,
+    build,
+    extract_code_blocks,
+    update_instruction,
 )
 
 
@@ -239,7 +239,9 @@ def tsp(cities):
 
     while remaining:
         current = tour[-1]
-        next_city = min(remaining, key=lambda c: euclidean_distance(cities[current], cities[c]))
+        next_city = min(
+            remaining, key=lambda c: euclidean_distance(cities[current], cities[c])
+        )
         tour.append(next_city)
         remaining.remove(next_city)
 

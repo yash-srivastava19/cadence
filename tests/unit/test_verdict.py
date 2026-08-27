@@ -139,7 +139,9 @@ class TestProposal:
 
     def test_carries_the_evidence_not_just_the_patch(self):
         p = self.make()
-        assert p.prompt and p.recipe and p.raw_response
+        assert p.prompt
+        assert p.recipe
+        assert p.raw_response
 
     def test_a_recipe_is_required(self):
         with pytest.raises(ValidationError):
@@ -171,11 +173,15 @@ class TestErrorTaxonomy:
         assert not issubclass(RetryableModelError, TerminalModelError)
 
     def test_catching_terminal_does_not_catch_retryable(self):
-        with pytest.raises(RetryableModelError):
+
+        def catch_only_terminal():
             try:
                 raise RetryableModelError("429")
             except TerminalModelError:
                 pytest.fail("a retryable error was swallowed as terminal")
+
+        with pytest.raises(RetryableModelError):
+            catch_only_terminal()
 
     def test_everything_descends_from_one_base(self):
         for err in (ModelError, RetryableModelError, TerminalModelError):

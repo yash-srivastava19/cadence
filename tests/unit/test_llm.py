@@ -2,11 +2,11 @@
 Tests for the LLM module.
 """
 
+import os
 from types import SimpleNamespace
 from unittest.mock import patch
-import os
 
-from src.llm import mutate_instruction, generate, extract_valid_blocks
+from src.llm import extract_valid_blocks, generate, mutate_instruction
 
 
 def _api_response(text: str) -> SimpleNamespace:

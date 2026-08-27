@@ -1,4 +1,6 @@
+import re
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -98,7 +100,7 @@ class TestTyposAreErrorsNotDefaults:
 
     def test_a_problem_says_where_it_is(self, tmp_path):
         text = COMPLETE.replace("  seconds: 5", "  seconds: -1")
-        with pytest.raises(ManifestError, match="sandbox.seconds"):
+        with pytest.raises(ManifestError, match=re.escape("sandbox.seconds")):
             load(write(tmp_path, text))
 
 
@@ -176,10 +178,8 @@ class TestPlugins:
             load(write(tmp_path, text))
 
     def test_the_manifest_does_not_know_what_a_method_is(self):
-        assert (
-            "Evolution"
-            not in open(Manifest.__module__.replace(".", "/") + ".py").read()
-        )
+        source = Path(Manifest.__module__.replace(".", "/") + ".py").read_text()
+        assert "Evolution" not in source
 
 
 class TestThePlan:
@@ -217,7 +217,7 @@ class TestMarkers:
 
     def test_a_blank_marker_is_refused(self, tmp_path):
         text = MINIMAL + "markers: {begin: '  '}\n"
-        with pytest.raises(ManifestError, match="markers.begin"):
+        with pytest.raises(ManifestError, match=re.escape("markers.begin")):
             load(write(tmp_path, text))
 
     def test_the_plan_shows_them(self, tmp_path):

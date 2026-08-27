@@ -5,6 +5,8 @@ Anything that is not a finding goes to stderr, so `cadence check > findings`
 keeps only the findings.
 """
 
+from typing import NoReturn
+
 import typer
 
 LABEL = 12
@@ -24,7 +26,7 @@ def note(line: str) -> None:
     typer.echo(line, err=True)
 
 
-def die(message: str, fix: str | None = None) -> None:
+def die(message: str, fix: str | None = None) -> NoReturn:
     typer.echo(f"\n{message}", err=True)
     if fix:
         typer.echo(f"\n{fix}", err=True)

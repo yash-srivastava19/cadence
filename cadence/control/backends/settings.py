@@ -9,12 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from cadence.exceptions import CadenceError
 
 __all__ = [
+    "LOCAL",
+    "MissingKey",
     "Settings",
     "UnknownProvider",
-    "MissingKey",
     "known",
     "settings_for",
-    "LOCAL",
 ]
 
 FILE = Path(__file__).with_name("providers.yml")

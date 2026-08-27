@@ -2,7 +2,7 @@
 Tests for the evolve module.
 """
 
-from src.evolve import apply_diff, _apply_diff_in_strs
+from src.evolve import _apply_diff_in_strs, apply_diff
 
 
 class TestEvolve:
@@ -226,7 +226,7 @@ class Example:
 
     def test_apply_diff_complex_regex_content(self):
         """Test applying diff with regex-special characters."""
-        parent_program = """
+        parent_program = r"""
 def example():
     ### START_BLOCK
     pattern = r".*\d+.*"

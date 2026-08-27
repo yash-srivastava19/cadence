@@ -1,10 +1,10 @@
-import logging
 import json
-from ..src.tasks.tsp_task import TSPTask
+import logging
+
 from ..src.evaluator import execute
 from ..src.prompt_sampler import build
 from ..src.rl.agent import RLAgent
-
+from ..src.tasks.tsp_task import TSPTask
 
 # Setup
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +36,7 @@ for generation in range(NUM_GENERATIONS):
     # Step 4: Evaluate
     result = execute(child_program_code, task, seeds=SEEDS)
 
-    if "error" in result and result["error"]:
+    if result.get("error"):
         logging.warning(f"Evaluation error: {result['error']}")
         reward = -1e6  # harsh penalty
     else:

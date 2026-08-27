@@ -1,3 +1,4 @@
+import contextlib
 import os
 import resource
 import shutil
@@ -16,8 +17,8 @@ from cadence.stateful import Stateful
 from cadence.states import SandboxRunState
 
 __all__ = [
-    "Job",
     "Execution",
+    "Job",
     "Sandbox",
     "SandboxRun",
     "SandboxRunMachine",
@@ -167,10 +168,8 @@ class Subprocess:
         try:
             stdout, stderr = process.communicate(timeout=GRACE_SECONDS)
         except subprocess.TimeoutExpired:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 os.killpg(run.pgid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
             stdout, stderr = process.communicate()
         run.kill()
         return stdout, stderr

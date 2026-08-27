@@ -2,16 +2,16 @@
 Tests for the database module.
 """
 
+import os
 import sqlite3
 import tempfile
-import os
 from unittest.mock import patch
 
 from src.database import (
-    add_instance,
     add,
-    sample,
+    add_instance,
     get_best_program,
+    sample,
 )
 
 
@@ -20,7 +20,10 @@ class TestDatabase:
 
     def setup_method(self):
         """Setup test database."""
-        self.test_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        # Owned across the whole test, so it cannot live in a with-block.
+        self.test_db = tempfile.NamedTemporaryFile(  # noqa: SIM115
+            delete=False, suffix=".db"
+        )
         self.test_db.close()
 
     def teardown_method(self):

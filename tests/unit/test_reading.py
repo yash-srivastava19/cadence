@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from cadence.reading import MetricNotReported, direction, read
@@ -56,7 +58,7 @@ class TestWhenTheNumberIsMissing:
             read("nothing useful here\n", ["val_bpb"])
 
     def test_it_says_how_to_report_one(self):
-        with pytest.raises(MetricNotReported, match="val_bpb: 1.23"):
+        with pytest.raises(MetricNotReported, match=re.escape("val_bpb: 1.23")):
             read("", ["val_bpb"])
 
     def test_one_missing_metric_fails_the_whole_reading(self):

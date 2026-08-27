@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-__all__ = ["RunState", "TrialState", "CandidateState", "SandboxRunState"]
+__all__ = ["CandidateState", "RunState", "SandboxRunState", "TrialState"]
 
 
 class RunState(StrEnum):

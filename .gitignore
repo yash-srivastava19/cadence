@@ -25,3 +25,7 @@ multirun/
 providers.local.yml
 
 thoughts/
+
+# Editor
+.zed/
+.idea/

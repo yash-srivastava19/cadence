@@ -2,7 +2,7 @@ from typing import NamedTuple
 
 from cadence.exceptions import SetupError
 
-__all__ = ["BEGIN", "END", "Region", "split", "splice", "MarkerError"]
+__all__ = ["BEGIN", "END", "MarkerError", "Region", "splice", "split"]
 
 BEGIN = "CADENCE:BEGIN"
 END = "CADENCE:END"

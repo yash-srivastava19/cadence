@@ -1,25 +1,24 @@
 import time
 from collections import deque
 from collections.abc import Callable, Mapping
-from typing import Any
-from typing import Annotated, Protocol, runtime_checkable
+from typing import Annotated, Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from cadence.control.backends.settings import Settings, known, settings_for
 from cadence.exceptions import RetryableModelError, TerminalModelError
 from cadence.http import Http
-from cadence.control.backends.settings import Settings, known, settings_for
 
 __all__ = [
-    "Completion",
     "Backend",
+    "Completion",
+    "Gemini",
+    "Ollama",
+    "Reliable",
     "Scripted",
     "Served",
-    "Reliable",
     "known",
     "served",
-    "Ollama",
-    "Gemini",
 ]
 
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
