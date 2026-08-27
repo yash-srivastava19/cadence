@@ -1,9 +1,9 @@
 from collections.abc import Mapping, Sequence
 from statistics import fmean
 
+from cadence.execution.sandboxes.subprocess import Execution, Job, Sandbox
 from cadence.interfaces import Metrics
 from cadence.reading import MetricNotReported, read
-from cadence.execution.sandboxes.subprocess import Execution, Job, Sandbox
 from cadence.verdict import Failed, Outcome, Scored, Verdict, fingerprint
 
 __all__ = ["TrialRunner"]

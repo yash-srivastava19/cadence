@@ -1,10 +1,10 @@
 from cadence.control.backends.served import Scripted
-from cadence.exceptions import TerminalModelError
 from cadence.control.entities import Trial
 from cadence.control.experiment import Experiment, Report
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import WeightedSum
+from cadence.exceptions import TerminalModelError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
 from cadence.signals import cadence
@@ -87,7 +87,8 @@ class TestTheRunIsTraceable:
         with cadence.recording() as tape:
             an_experiment(IMPROVES).run()
         called = tape.of(ModelCalled)[0]
-        assert called.tokens_in > 0 and called.tokens_out > 0
+        assert called.tokens_in > 0
+        assert called.tokens_out > 0
 
     def test_the_measured_event_carries_the_verdict(self):
         from cadence.signals import TrialMeasured

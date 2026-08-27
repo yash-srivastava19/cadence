@@ -14,7 +14,9 @@ from cadence.control.region import split
 from cadence.control.registry import build
 from cadence.signals import PatchRejected, TrialAbandoned, TrialMeasured, cadence
 
-GREEDY = """    order = sorted(range(len(items)), key=lambda i: -items[i][1] / items[i][0])
+GREEDY = """    order = sorted(
+        range(len(items)), key=lambda i: -items[i][1] / items[i][0]
+    )
     chosen, used = [], 0
     for index in order:
         if used + items[index][0] <= capacity:

@@ -140,16 +140,17 @@ class TestCheckSaysWhatItVerified:
 
     def test_it_says_the_metric_and_which_way_is_better(self, tmp_path):
         output = self._project(tmp_path).output
-        assert "value = 1" in output and "maximize is better" in output
+        assert "value = 1" in output
+        assert "maximize is better" in output
 
     def test_it_says_when_guidance_is_missing(self, tmp_path):
         assert "no IMPROVE.md" in self._project(tmp_path).output
 
     def test_findings_go_to_stdout_and_the_verdict_to_stderr(self, tmp_path):
-        result = runner.invoke(app, ["check", str(tmp_path)])  # noqa: F841
         # CliRunner merges the streams, so assert both halves are present.
         output = self._project(tmp_path).output
-        assert "manifest" in output and "ready." in output
+        assert "manifest" in output
+        assert "ready." in output
 
 
 class TestCheckCatchesWhatItUsedToWaveThrough:

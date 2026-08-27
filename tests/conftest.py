@@ -8,17 +8,19 @@ the Cadence evolution system with proper type safety.
 import os
 import sqlite3
 import tempfile
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import patch
-from typing import Generator, Any, List, Tuple
 
 import pytest
+
+from tests.fixtures.mock_responses import MOCK_RESPONSES, MockLLMClient
 from tests.fixtures.sample_code import (
     SAMPLE_CITIES_4,
     SAMPLE_CITIES_10,
     SAMPLE_TSP_BASELINE,
     SAMPLE_TSP_IMPROVED,
 )
-from tests.fixtures.mock_responses import MockLLMClient, MOCK_RESPONSES
 
 
 @pytest.fixture
@@ -63,7 +65,9 @@ def temp_database() -> Generator[sqlite3.Connection, None, None]:
 @pytest.fixture
 def temp_db_file() -> Generator[str, None, None]:
     """Provide a temporary database file for testing."""
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    # The fixture owns this for its whole life, so it cannot live in a
+    # with-block; it is closed below and removed on teardown.
+    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")  # noqa: SIM115
     temp_db.close()
 
     yield temp_db.name
@@ -96,13 +100,13 @@ def tsp_task():
 
 
 @pytest.fixture
-def sample_cities_4() -> List[Tuple[float, float]]:
+def sample_cities_4() -> list[tuple[float, float]]:
     """Sample 4-city TSP instance."""
     return SAMPLE_CITIES_4
 
 
 @pytest.fixture
-def sample_cities_10() -> List[Tuple[float, float]]:
+def sample_cities_10() -> list[tuple[float, float]]:
     """Sample 10-city TSP instance."""
     return SAMPLE_CITIES_10
 
@@ -126,7 +130,7 @@ def sample_tsp_program() -> str:
 
 
 @pytest.fixture
-def sample_cities() -> List[Tuple[float, float]]:
+def sample_cities() -> list[tuple[float, float]]:
     """Provide sample city coordinates for testing."""
     return [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.5, 0.5)]
 
@@ -139,7 +143,7 @@ def pytest_configure(config: Any) -> None:
     config.addinivalue_line("markers", "llm: mark test as requiring LLM API")
 
 
-def pytest_collection_modifyitems(config: Any, items: List[Any]) -> None:
+def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     """Add markers to tests based on their names."""
     for item in items:
         # Mark integration tests

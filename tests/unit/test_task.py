@@ -3,6 +3,7 @@ Tests for the task module.
 """
 
 import pytest
+
 from src.task import Task
 
 
@@ -207,11 +208,11 @@ def concrete_function(data):
 
         # Test function_name is a property
         assert hasattr(MockTask, "function_name")
-        assert isinstance(getattr(MockTask, "function_name"), property)
+        assert isinstance(MockTask.function_name, property)
 
         # Test baseline_program is a property
         assert hasattr(MockTask, "baseline_program")
-        assert isinstance(getattr(MockTask, "baseline_program"), property)
+        assert isinstance(MockTask.baseline_program, property)
 
         # Test methods are callable
         assert callable(task.generate_inputs)

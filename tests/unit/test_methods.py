@@ -1,9 +1,10 @@
 import pytest
+from pydantic import ValidationError
 
-from cadence.exceptions import NoCandidates
-from cadence.interfaces import Attempt, Directive, History, Ledger, Method
 from cadence.control.methods.evolution import Evolution, Member, rng_for
 from cadence.control.objectives.ranking import Pareto, WeightedSum
+from cadence.exceptions import NoCandidates
+from cadence.interfaces import Attempt, Directive, History, Ledger, Method
 from cadence.verdict import Failed, Outcome, Scored
 
 SEED = "def solve(): return []"
@@ -144,15 +145,15 @@ class TestTheObjectiveDecides:
 
 class TestRunningOut:
     def test_a_history_needs_at_least_one_seed(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="at least 1 item"):
             History(run_id="h1", seeds=())
 
     def test_a_tournament_needs_an_entrant(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="at least one entrant"):
             an_evolution(tournament=0)
 
     def test_a_population_needs_room(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="room for at least one"):
             an_evolution(size=0)
 
     def test_an_empty_population_says_so(self):

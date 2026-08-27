@@ -2,9 +2,9 @@ import pytest
 from pydantic import ValidationError
 
 from cadence.control.backends.served import Scripted
+from cadence.control.model import Model, parse_patch, render
 from cadence.exceptions import PatchError, TerminalModelError
 from cadence.interfaces import Directive
-from cadence.control.model import Model, parse_patch, render
 
 PATCH = """\
 --- a/solve.py
@@ -99,8 +99,8 @@ class TestAskingForTheWholeProgram:
             )
 
     def test_only_the_marked_region_is_replaced(self):
-        from cadence.interfaces import Directive
         from cadence.control.patcher import apply_patch
+        from cadence.interfaces import Directive
 
         marked = "before = 1\n# CADENCE:BEGIN\nx = 1\n# CADENCE:END\nafter = 2\n"
         directive = Directive(parent="p", code=marked, hint="try something")
@@ -131,14 +131,14 @@ class TestProposing:
 
     def test_an_unparseable_answer_raises_rather_than_returning_nothing(self):
         with pytest.raises(PatchError):
-            a_model("no diff here").propose(a_directive()).proposal
+            _ = a_model("no diff here").propose(a_directive()).proposal
 
 
 class TestRetryClassification:
     def test_a_terminal_error_is_not_retried(self):
         model = a_model(TerminalModelError("401"), ANSWER)
         with pytest.raises(TerminalModelError):
-            model.propose(a_directive()).proposal
+            _ = model.propose(a_directive()).proposal
         assert len(model.backend.prompts) == 1
 
 

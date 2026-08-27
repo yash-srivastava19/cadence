@@ -4,13 +4,13 @@ from collections.abc import Mapping
 from typing import Any, NamedTuple
 
 from cadence.control.backends.served import Backend, Completion
+from cadence.control.recall import Calls, through
+from cadence.control.region import BEGIN, END, splice, split
 from cadence.exceptions import PatchError
 from cadence.interfaces import Directive
-from cadence.control.recall import Calls, through
-from cadence.control.region import BEGIN, END, split, splice
 from cadence.verdict import Proposal
 
-__all__ = ["TEMPLATES", "render", "parse_patch", "parse_program", "Suggestion", "Model"]
+__all__ = ["TEMPLATES", "Model", "Suggestion", "parse_patch", "parse_program", "render"]
 
 GUIDANCE = """
 

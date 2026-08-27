@@ -1,7 +1,8 @@
+from collections.abc import Mapping
 from enum import StrEnum
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Annotated, Any, Literal, Mapping, TypeVar
+from typing import Annotated, Any, Literal, TypeVar
 
 from pydantic import (
     AfterValidator,
@@ -13,14 +14,14 @@ from pydantic import (
 )
 
 __all__ = [
-    "Outcome",
     "FAILURES",
-    "Scored",
-    "Failed",
-    "Verdict",
-    "Proposal",
-    "fingerprint",
     "FINGERPRINT_LENGTH",
+    "Failed",
+    "Outcome",
+    "Proposal",
+    "Scored",
+    "Verdict",
+    "fingerprint",
 ]
 
 FINGERPRINT_LENGTH = 16

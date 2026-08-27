@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import ast
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-DOC_FILES = sorted(REPO.glob("docs/**/*.md")) + [REPO / "README.md"]
+DOC_FILES = [*sorted(REPO.glob("docs/**/*.md")), REPO / "README.md"]
 
 FENCE = re.compile(
     r"(?P<skip><!--\s*docs-test:\s*skip\s*-->\s*\n)?"
@@ -131,7 +131,7 @@ def _documented_imports() -> list[tuple[Path, int, str, list[str]]]:
 
 
 @pytest.mark.parametrize(
-    "doc,line,module,names",
+    ("doc", "line", "module", "names"),
     _documented_imports(),
     ids=lambda v: v if isinstance(v, str) else "",
 )

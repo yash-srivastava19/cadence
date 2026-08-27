@@ -5,13 +5,13 @@ from cadence.states import CandidateState, RunState, TrialState
 from cadence.verdict import fingerprint
 
 __all__ = [
-    "trial_id",
     "Candidate",
     "CandidateMachine",
-    "Trial",
-    "TrialMachine",
     "Run",
     "RunMachine",
+    "Trial",
+    "TrialMachine",
+    "trial_id",
 ]
 
 

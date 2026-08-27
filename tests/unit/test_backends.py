@@ -8,10 +8,10 @@ from cadence.control.backends.served import (
     Scripted,
     served,
 )
+from cadence.control.backends.settings import MissingKey, known, settings_for
+from cadence.control.registry import BACKENDS
 from cadence.exceptions import RetryableModelError, TerminalModelError
 from cadence.http import RETRYABLE, Answer, Http
-from cadence.control.registry import BACKENDS
-from cadence.control.backends.settings import MissingKey, known, settings_for
 
 
 class Recorded:
@@ -225,7 +225,8 @@ class TestEveryCallIsAudited:
     def test_a_success_is_recorded(self):
         seen = []
         Ollama(http=Recorded(spoke()), audit=seen.append).call("p")
-        assert seen[0]["backend"] == "ollama" and seen[0]["error"] is None
+        assert seen[0]["backend"] == "ollama"
+        assert seen[0]["error"] is None
 
     def test_a_failure_is_recorded_with_its_error(self):
         seen = []

@@ -9,12 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from cadence.exceptions import CadenceError
 
 __all__ = [
+    "LOCAL",
+    "MissingKey",
     "Settings",
     "UnknownProvider",
-    "MissingKey",
     "known",
     "settings_for",
-    "LOCAL",
 ]
 
 FILE = Path(__file__).with_name("providers.yml")
@@ -35,7 +35,7 @@ class Settings(BaseModel):
     name: str
     base_url: str
     key_from: tuple[str, ...] = ()
-    model: str | None = None
+    model: str
     temperature: float = Field(ge=0)
     timeout: float = Field(gt=0)
     attempts: int = Field(ge=1)

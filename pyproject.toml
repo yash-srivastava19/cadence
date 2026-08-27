@@ -3,7 +3,9 @@
 name = "cadence"
 version = "0.1.0"
 description = "LLM-based program evolution framework, similar to AlphaEvolve"
-requires-python = ">=3.11.4"
+# Upper bound because pydantic-core has no wheel for 3.14 and PyO3 will not
+# build against it, so a 3.14 venv fails to sync rather than failing loudly.
+requires-python = ">=3.11.4,<3.14"
 
 dependencies = [
   "matplotlib",
@@ -118,24 +120,63 @@ exclude_lines = [
 directory = "htmlcov"
 
 # PyRight configuration
+# Read by pyright and by basedpyright, which editors tend to supply. Without
+# an explicit mode basedpyright applies its own "recommended" set -- reportAny,
+# reportUnknownMemberType, reportUnusedCallResult -- which buries the findings
+# worth acting on under a few thousand that are not.
 [tool.pyright]
-include = ["cadence", "src", "tests"]
+include = ["cadence", "tests"]
 exclude = ["**/__pycache__"]
+typeCheckingMode = "standard"
+# So the editor and the CLI resolve the same interpreter.
+venvPath = "."
+venv = ".venv"
 defineConstant = { DEBUG = true }
 stubPath = "typings"
 reportMissingImports = true
 reportMissingTypeStubs = false
 pythonVersion = "3.11"
 pythonPlatform = "All"
-executionEnvironments = [
-  { root = "src", pythonVersion = "3.11" },
-  { root = "tests", pythonVersion = "3.11" }
-]
+executionEnvironments = [{ root = "tests", pythonVersion = "3.11" }]
 
 # Ruff is the only formatter; see .pre-commit-config.yaml
 [tool.ruff]
 line-length = 88
 target-version = "py311"
+# The replaced loop -- src/ and the Hydra scripts that drive it. All of it
+# goes when src/ does, so linting it now is churn.
+extend-exclude = [
+    "src",
+    "*.ipynb",
+    "main.py",
+    "analyze_results.py",
+    "run_h1_experiment.py",
+    "run_h2_experiment.py",
+    "train_rl.py",
+    "experiments",
+    "ui",
+    # Ruff formats python blocks inside markdown. The docs still describe the
+    # replaced loop, so they get rewritten rather than reformatted.
+    "*.md",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import order, so isort has nothing left to do
+    "B",        # bugbear: the real bugs in this list
+    "C4",       # comprehensions
+    "SIM",      # simplifications
+    "UP",       # syntax this Python version made obsolete
+    "PIE",      # small misfeatures
+    "PT",       # pytest style
+    "RUF",      # ruff's own
+]
+ignore = [
+    # typer's documented idiom is a call in the default: Argument(), Option().
+    "B008",
+]
 
 # isort configuration
 [tool.isort]
@@ -144,9 +185,3 @@ multi_line_output = 3
 line_length = 88
 known_first_party = ["cadence", "src"]
 skip_glob = ["*/migrations/*"]
-
-[[tool.ty.overrides]]
-exclude = [
-    "*.ipynb",
-    "tests/**",
-]

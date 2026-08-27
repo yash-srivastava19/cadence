@@ -1,11 +1,11 @@
 __all__ = [
     "CadenceError",
-    "SetupError",
     "ModelError",
-    "RetryableModelError",
-    "TerminalModelError",
-    "PatchError",
     "NoCandidates",
+    "PatchError",
+    "RetryableModelError",
+    "SetupError",
+    "TerminalModelError",
 ]
 
 

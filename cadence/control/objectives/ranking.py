@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from cadence.exceptions import SetupError
 from cadence.interfaces import Metrics
 
-__all__ = ["WeightedSum", "Pareto", "MissingMetric"]
+__all__ = ["MissingMetric", "Pareto", "WeightedSum"]
 
 
 class MissingMetric(SetupError):
@@ -26,7 +26,8 @@ class WeightedSum:
     def total(self, metrics: Metrics) -> float:
         values = _read(metrics, self.weights)
         return sum(
-            weight * value for weight, value in zip(self.weights.values(), values)
+            weight * value
+            for weight, value in zip(self.weights.values(), values, strict=True)
         )
 
     def dominates(self, a: Metrics, b: Metrics) -> bool:
@@ -43,8 +44,11 @@ class Pareto:
 
     def _oriented(self, metrics: Metrics) -> list[float]:
         values = _read(metrics, self.senses)
-        return [sense * value for sense, value in zip(self.senses.values(), values)]
+        return [
+            sense * value
+            for sense, value in zip(self.senses.values(), values, strict=True)
+        ]
 
     def dominates(self, a: Metrics, b: Metrics) -> bool:
         mine, theirs = self._oriented(a), self._oriented(b)
-        return all(x >= y for x, y in zip(mine, theirs)) and mine != theirs
+        return all(x >= y for x, y in zip(mine, theirs, strict=True)) and mine != theirs

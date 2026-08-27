@@ -42,7 +42,7 @@ class TestTheStore:
 class TestPayingOnlyOnce:
     def test_the_first_call_goes_through(self):
         calls, spent = Remembered(), []
-        completion, replayed = through(
+        _completion, replayed = through(
             calls, "h1/0", "p", lambda: spent.append(1) or a_completion()
         )
         assert not replayed
@@ -56,7 +56,7 @@ class TestPayingOnlyOnce:
             return a_completion()
 
         through(calls, "h1/0", "p", make)
-        completion, replayed = through(calls, "h1/0", "p", make)
+        _completion, replayed = through(calls, "h1/0", "p", make)
         assert replayed
         assert len(spent) == 1
 

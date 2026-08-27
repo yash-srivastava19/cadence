@@ -1,7 +1,7 @@
 import pytest
 
-from cadence.exceptions import PatchError
 from cadence.control.patcher import apply_patch
+from cadence.exceptions import PatchError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
 from cadence.verdict import Outcome
@@ -67,11 +67,11 @@ class TestScoring:
         assert verdict.metrics["value"] == 1.0
 
     def test_a_runner_needs_a_seed(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="at least one seed"):
             a_runner(seeds=())
 
     def test_a_runner_needs_a_metric(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="at least one metric"):
             TrialRunner(
                 program="prog.py",
                 command=("python", "prog.py"),

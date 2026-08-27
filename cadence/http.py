@@ -7,7 +7,7 @@ from typing import Any
 
 from cadence.exceptions import RetryableModelError, TerminalModelError
 
-__all__ = ["Http", "Answer", "RETRYABLE"]
+__all__ = ["RETRYABLE", "Answer", "Http"]
 
 RETRYABLE = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 

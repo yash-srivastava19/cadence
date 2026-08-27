@@ -4,7 +4,7 @@ from collections.abc import Iterable, Mapping
 
 from cadence.exceptions import CadenceError
 
-__all__ = ["Goal", "MetricNotReported", "read", "direction"]
+__all__ = ["Goal", "MetricNotReported", "direction", "read"]
 
 Goal = str
 

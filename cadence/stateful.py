@@ -1,4 +1,4 @@
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from statemachine import StateMachine
 
@@ -21,7 +21,7 @@ class Stateful:
         cls,
         machine: type[StateMachine] | None = None,
         state_field: str | None = None,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> None:
         super().__init_subclass__(**kwargs)
         if state_field is not None:

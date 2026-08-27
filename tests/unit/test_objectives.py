@@ -37,7 +37,7 @@ class TestWeightedSum:
             WeightedSum(value=1.0).dominates({"other": 1.0}, {"value": 1.0})
 
     def test_it_needs_at_least_one_weight(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="at least one weight"):
             WeightedSum()
 
 
@@ -66,7 +66,7 @@ class TestPareto:
         assert not objective.dominates({"value": 1.0}, {"value": 1.0})
 
     def test_a_sense_of_zero_is_refused(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="no direction"):
             Pareto(value=0)
 
     def test_a_missing_metric_says_which(self):

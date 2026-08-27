@@ -1,25 +1,24 @@
 import time
 from collections import deque
 from collections.abc import Callable, Mapping
-from typing import Any
-from typing import Annotated, Protocol, runtime_checkable
+from typing import Annotated, Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from cadence.control.backends.settings import Settings, known, settings_for
 from cadence.exceptions import RetryableModelError, TerminalModelError
 from cadence.http import Http
-from cadence.control.backends.settings import Settings, known, settings_for
 
 __all__ = [
-    "Completion",
     "Backend",
+    "Completion",
+    "Gemini",
+    "Ollama",
+    "Reliable",
     "Scripted",
     "Served",
-    "Reliable",
     "known",
     "served",
-    "Ollama",
-    "Gemini",
 ]
 
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -99,7 +98,6 @@ class Reliable:
         return self.backend.name
 
     def call(self, prompt: str) -> Completion:
-        last: Exception | None = None
         for attempt in range(1, self.attempts + 1):
             try:
                 completion = self.backend.call(prompt)
@@ -109,11 +107,11 @@ class Reliable:
                 self._record(attempt, error)
                 raise
             except RetryableModelError as error:
-                last = error
                 self._record(attempt, error)
-                if attempt < self.attempts:
-                    time.sleep(self.backoff * attempt)
-        raise last
+                if attempt == self.attempts:
+                    raise
+                time.sleep(self.backoff * attempt)
+        raise AssertionError("unreachable: attempts is at least 1")
 
     def _record(self, attempt: int, error: Exception | None) -> None:
         if self.audit is not None:

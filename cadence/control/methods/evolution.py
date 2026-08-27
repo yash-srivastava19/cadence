@@ -6,7 +6,7 @@ from cadence.exceptions import NoCandidates
 from cadence.interfaces import Attempt, Directive, History, Ledger, Objective
 from cadence.verdict import Verdict
 
-__all__ = ["HINTS", "Member", "Evolution", "rng_for"]
+__all__ = ["HINTS", "Evolution", "Member", "rng_for"]
 
 HINTS = (
     "make it faster without changing what it returns",

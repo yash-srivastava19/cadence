@@ -5,11 +5,11 @@ from typing import Annotated, Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from cadence.control.region import BEGIN, END
 from cadence.exceptions import CadenceError
 from cadence.reading import GOALS
-from cadence.control.region import BEGIN, END
 
-__all__ = ["API_VERSIONS", "ManifestError", "Plugin", "Manifest", "load"]
+__all__ = ["API_VERSIONS", "Manifest", "ManifestError", "Plugin", "load"]
 
 API_VERSIONS = ("cadence/v1alpha1",)
 FILENAME = ".cadence"
@@ -103,22 +103,30 @@ class Manifest(Strict):
         return f"{self.objective.name} {dict(self.objective.options)}"
 
     @property
+    def _named_metrics(self) -> str:
+        return ", ".join(f"{name} ({goal})" for name, goal in self.metrics.items())
+
+    @property
     def plan(self) -> str:
         return "\n".join(
             [
                 f"  program    {self.program}",
                 f"  run        {self.command}",
-                f"  metrics    {', '.join(f'{k} ({v})' for k, v in self.metrics.items())}",
+                f"  metrics    {self._named_metrics}",
                 f"  guidance   {self.guidance}",
                 f"  markers    {self.markers.begin} .. {self.markers.end}",
-                f"  method     {self.method.name} {dict(self.method.options) or ''}".rstrip(),
+                f"  method     {_plugin(self.method)}",
                 f"  objective  {self._objective}",
-                f"  model      {self.model.name} {dict(self.model.options) or ''}".rstrip(),
+                f"  model      {_plugin(self.model)}",
                 f"  budget     {self.budget.trials} trials",
                 f"  sandbox    {self.sandbox.seconds}s, {self.sandbox.memory_mb}MB,"
                 f" seeds {list(self.sandbox.seeds)}",
             ]
         )
+
+
+def _plugin(plugin: Plugin) -> str:
+    return f"{plugin.name} {dict(plugin.options) or ''}".rstrip()
 
 
 def load(path: str | Path = FILENAME) -> Manifest:
