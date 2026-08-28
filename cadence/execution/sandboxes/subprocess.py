@@ -8,11 +8,12 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Annotated, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field
 from statemachine import State, StateMachine
 
+from cadence.core.types import NonBlank
 from cadence.lifecycle.stateful import Stateful
 from cadence.lifecycle.states import SandboxRunState
 
@@ -24,8 +25,6 @@ __all__ = [
     "SandboxRunMachine",
     "Subprocess",
 ]
-
-NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 KILLED_BY_TIMEOUT = "wall clock"
 # RLIMIT_AS does not kill the process; it makes the allocation fail and the

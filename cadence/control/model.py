@@ -3,11 +3,10 @@ import re
 from collections.abc import Mapping
 from typing import Any, NamedTuple
 
-from cadence.control.backends.served import Backend, Completion
-from cadence.control.recall import Calls, through
+from cadence.control.recall import through
 from cadence.control.region import BEGIN, END, splice, split
-from cadence.core.interfaces import Directive
-from cadence.core.verdict import Proposal
+from cadence.core.dto import Completion, Directive, Proposal
+from cadence.core.ports import Backend, Calls
 from cadence.errors import PatchError
 
 __all__ = ["TEMPLATES", "Model", "Suggestion", "parse_patch", "parse_program", "render"]

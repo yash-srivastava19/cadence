@@ -1,6 +1,6 @@
 from statemachine import State, StateMachine
 
-from cadence.core.verdict import fingerprint
+from cadence.core.identity import fingerprint
 from cadence.lifecycle.stateful import Stateful
 from cadence.lifecycle.states import CandidateState, RunState, TrialState
 

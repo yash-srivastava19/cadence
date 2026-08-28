@@ -52,7 +52,7 @@ class TestScoring:
         assert a_runner().try_(BETTER).metrics["value"] == 9.0
 
     def test_the_verdict_names_the_code_it_measured(self):
-        from cadence.core.verdict import fingerprint
+        from cadence.core.identity import fingerprint
 
         assert a_runner().try_(BETTER).fingerprint == fingerprint(BETTER)
 

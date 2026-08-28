@@ -2,9 +2,9 @@ import json
 import re
 from collections.abc import Iterable, Mapping
 
-from cadence.errors import CadenceError
+from cadence.errors import MetricNotReported
 
-__all__ = ["Goal", "MetricNotReported", "direction", "read"]
+__all__ = ["Goal", "direction", "read"]
 
 Goal = str
 
@@ -16,10 +16,6 @@ NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
 REPORTED = re.compile(
     rf"^\s*(?P<name>[A-Za-z_][\w.]*)\s*[:=]\s*(?P<value>{NUMBER})\s*$"
 )
-
-
-class MetricNotReported(CadenceError):
-    pass
 
 
 def read(output: str, wanted: Iterable[str]) -> Mapping[str, float]:

@@ -2,7 +2,8 @@ import re
 
 import pytest
 
-from cadence.parsing.metrics import MetricNotReported, direction, read
+from cadence.errors import MetricNotReported
+from cadence.parsing.metrics import direction, read
 
 TRAINING_LOG = """\
 step 100  loss 4.21

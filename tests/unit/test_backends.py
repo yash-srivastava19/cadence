@@ -9,9 +9,9 @@ from cadence.control.backends.served import (
     Scripted,
     served,
 )
-from cadence.control.backends.settings import MissingKey, known, settings_for
+from cadence.control.backends.settings import known, settings_for
 from cadence.control.registry import BACKENDS
-from cadence.errors import RetryableModelError, TerminalModelError
+from cadence.errors import MissingKey, RetryableModelError, TerminalModelError
 
 
 class Recorded:
@@ -58,7 +58,7 @@ class TestProvidersAreData:
         assert settings_for("ollama").model
 
     def test_one_it_has_not_makes_you_name_your_own(self):
-        from cadence.control.backends.settings import UnknownProvider
+        from cadence.errors import UnknownProvider
 
         with pytest.raises(UnknownProvider, match="no default model"):
             settings_for("openai")
@@ -67,7 +67,7 @@ class TestProvidersAreData:
         assert settings_for("openai", model="gpt-4.1").model == "gpt-4.1"
 
     def test_an_unknown_one_lists_the_known_ones(self):
-        from cadence.control.backends.settings import UnknownProvider
+        from cadence.errors import UnknownProvider
 
         with pytest.raises(UnknownProvider, match="gemini"):
             served("nope")

@@ -1,33 +1,11 @@
 from collections.abc import Callable
 from hashlib import sha256
-from typing import Annotated, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from cadence.core.dto import Completion, Recalled
+from cadence.core.ports import Calls
+from cadence.errors import PromptChanged
 
-from cadence.control.backends.served import Completion
-from cadence.errors import CadenceError
-
-__all__ = ["Calls", "PromptChanged", "Recalled", "Remembered", "key_for", "through"]
-
-NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-
-
-class PromptChanged(CadenceError):
-    pass
-
-
-class Recalled(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
-
-    prompt_digest: NonBlank
-    completion: Completion
-
-
-@runtime_checkable
-class Calls(Protocol):
-    def get(self, key: str) -> Recalled | None: ...
-
-    def put(self, key: str, recalled: Recalled) -> None: ...
+__all__ = ["Remembered", "key_for", "through"]
 
 
 class Remembered:

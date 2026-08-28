@@ -1,7 +1,8 @@
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from cadence.core.verdict import FAILURES, Failed, Outcome, Proposal, Scored, Verdict
+from cadence.core.dto import Proposal
+from cadence.core.verdict import FAILURES, Failed, Outcome, Scored, Verdict
 from cadence.errors import (
     CadenceError,
     ModelError,

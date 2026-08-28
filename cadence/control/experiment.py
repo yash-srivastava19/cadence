@@ -1,15 +1,13 @@
-from collections.abc import Mapping, Sequence
-
-from pydantic import BaseModel, ConfigDict, Field
+from collections.abc import Sequence
 
 from cadence.control.entities import Candidate, Run, Trial, trial_id
 from cadence.control.model import Model
 from cadence.control.patcher import apply_patch
 from cadence.control.recall import key_for
-from cadence.core.interfaces import Attempt, Directive, History, Ledger, Method
+from cadence.core.dto import Attempt, Directive, History, Ledger, Report
+from cadence.core.ports import Method
 from cadence.errors import ModelError, NoCandidates, PatchError, SetupError
 from cadence.execution.runner import TrialRunner
-from cadence.lifecycle.states import RunState
 from cadence.observe.channel import Emitter
 from cadence.observe.signals import (
     ModelCalled,
@@ -22,24 +20,7 @@ from cadence.observe.signals import (
     TrialStarted,
 )
 
-__all__ = ["Experiment", "Report"]
-
-
-def _files(patch) -> int:
-    return sum(1 for line in patch if line.startswith("+++"))
-
-
-class Report(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
-
-    run_id: str
-    status: RunState
-    trials: int = Field(ge=0)
-    scored: int = Field(ge=0)
-    best: str | None = None
-    program: str | None = None
-    metrics: Mapping[str, float] | None = None
-    reason: str | None = None
+__all__ = ["Experiment"]
 
 
 class Experiment:
@@ -120,7 +101,7 @@ class Experiment:
         )
 
         trial.generate(proposal=proposal)
-        trace.emit(ProposalReceived, files_changed=_files(proposal.patch))
+        trace.emit(ProposalReceived, files_changed=proposal.files_changed)
 
         try:
             code = apply_patch(directive.code, proposal.patch)

@@ -1,53 +1,15 @@
 import time
 from collections import deque
 from collections.abc import Callable, Mapping
-from typing import Annotated, Any, Protocol, runtime_checkable
-
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from typing import Any
 
 from cadence.control.backends.http import Http
 from cadence.control.backends.settings import Settings, known, settings_for
+from cadence.core.dto import Completion
+from cadence.core.ports import Backend
 from cadence.errors import RetryableModelError, TerminalModelError
 
-__all__ = [
-    "Backend",
-    "Completion",
-    "Gemini",
-    "Ollama",
-    "Reliable",
-    "Scripted",
-    "Served",
-    "known",
-    "served",
-]
-
-NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-
-
-class Completion(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
-
-    text: str
-    model: NonBlank
-    tokens_in: int = Field(ge=0)
-    tokens_out: int = Field(ge=0)
-    latency_ms: float = Field(ge=0, allow_inf_nan=False)
-
-    @property
-    def cost(self) -> dict[str, float]:
-        return {
-            "tokens_in": self.tokens_in,
-            "tokens_out": self.tokens_out,
-            "latency_ms": self.latency_ms,
-        }
-
-
-@runtime_checkable
-class Backend(Protocol):
-    @property
-    def name(self) -> str: ...
-
-    def call(self, prompt: str) -> Completion: ...
+__all__ = ["Gemini", "Ollama", "Reliable", "Scripted", "Served", "known", "served"]
 
 
 class Scripted:
@@ -83,7 +45,7 @@ class Reliable:
 
     def __init__(
         self,
-        backend: "Backend",
+        backend: Backend,
         attempts: int = 3,
         backoff: float = 1.0,
         audit: Callable[[Mapping[str, Any]], None] | None = None,

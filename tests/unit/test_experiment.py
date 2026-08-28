@@ -1,9 +1,10 @@
 from cadence.control.backends.served import Scripted
 from cadence.control.entities import Trial
-from cadence.control.experiment import Experiment, Report
+from cadence.control.experiment import Experiment
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import WeightedSum
+from cadence.core.dto import Report
 from cadence.errors import TerminalModelError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess

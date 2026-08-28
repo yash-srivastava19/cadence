@@ -138,7 +138,7 @@ class TestResumingARunCostsNothing:
 
 
 def _a_directive():
-    from cadence.core.interfaces import Directive
+    from cadence.core.dto import Directive
 
     return Directive(parent="abc", code=BASELINE, hint="try something")
 

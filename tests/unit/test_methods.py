@@ -3,7 +3,8 @@ from pydantic import ValidationError
 
 from cadence.control.methods.evolution import Evolution, Member, rng_for
 from cadence.control.objectives.ranking import Pareto, WeightedSum
-from cadence.core.interfaces import Attempt, Directive, History, Ledger, Method
+from cadence.core.dto import Attempt, Directive, History, Ledger
+from cadence.core.ports import Method
 from cadence.core.verdict import Failed, Outcome, Scored
 from cadence.errors import NoCandidates
 

@@ -1,47 +1,21 @@
-from collections.abc import Mapping
+"""What a candidate turned out to be.
+
+One float cannot carry four facts. A single score column forces "did it run",
+"is it valid", "how good" and "why did it fail" through one number, which is
+how sentinels like 1e8 get invented. A verdict is either Scored, and has
+metrics, or Failed, and has a reason. Nothing has both, and nothing has
+neither -- which is what lets a caller read `.metrics` without a guard.
+"""
+
 from enum import StrEnum
-from hashlib import sha256
-from types import MappingProxyType
-from typing import Annotated, Any, Literal, TypeVar
+from typing import Annotated, Literal, get_args
 
-from pydantic import (
-    AfterValidator,
-    BaseModel,
-    ConfigDict,
-    Field,
-    PlainSerializer,
-    StringConstraints,
-)
+from pydantic import Field
 
-__all__ = [
-    "FAILURES",
-    "FINGERPRINT_LENGTH",
-    "Failed",
-    "Outcome",
-    "Proposal",
-    "Scored",
-    "Verdict",
-    "fingerprint",
-]
+from cadence.core.types import Frozen, Metric, NonBlank
+from cadence.core.values import Value
 
-FINGERPRINT_LENGTH = 16
-
-
-def fingerprint(code: str) -> str:
-    return sha256(code.encode()).hexdigest()[:FINGERPRINT_LENGTH]
-
-
-K = TypeVar("K")
-V = TypeVar("V")
-
-
-def _freeze(value: Mapping) -> Mapping:
-    return MappingProxyType(dict(value))
-
-
-Frozen = Annotated[Mapping[K, V], AfterValidator(_freeze), PlainSerializer(dict)]
-Metric = Annotated[float, Field(allow_inf_nan=False)]
-NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+__all__ = ["FAILURES", "Failed", "Failure", "Outcome", "Scored", "Verdict"]
 
 
 class Outcome(StrEnum):
@@ -53,12 +27,26 @@ class Outcome(StrEnum):
     VERIFIER_ERROR = "verifier_error"
 
 
-FAILURES = tuple(o for o in Outcome if o is not Outcome.SCORED)
+#: Every outcome that is not a score. Spelled out rather than unpacked from
+#: FAILURES: a Literal built by a comprehension is a type no checker can read.
+Failure = Literal[
+    Outcome.INVALID,
+    Outcome.CRASHED,
+    Outcome.TIMED_OUT,
+    Outcome.OUT_OF_MEMORY,
+    Outcome.VERIFIER_ERROR,
+]
+
+FAILURES = tuple(outcome for outcome in Outcome if outcome is not Outcome.SCORED)
+
+assert set(get_args(Failure)) == set(FAILURES), "Failure and Outcome disagree"
 
 
-class _Verdict(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
-
+class _Verdict(Value):
+    # Declared here, narrowed by each subclass. Without it the two properties
+    # below read an attribute the base does not have, which every type checker
+    # is right to complain about.
+    outcome: Outcome
     fingerprint: NonBlank
 
     @property
@@ -67,6 +55,7 @@ class _Verdict(BaseModel):
 
     @property
     def escalates(self) -> bool:
+        """The verifier itself broke, so the run stops rather than scoring on."""
         return self.outcome is Outcome.VERIFIER_ERROR
 
 
@@ -76,17 +65,8 @@ class Scored(_Verdict):
 
 
 class Failed(_Verdict):
-    outcome: Literal[*FAILURES]
+    outcome: Failure
     reason: NonBlank
 
 
 Verdict = Annotated[Scored | Failed, Field(discriminator="outcome")]
-
-
-class Proposal(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
-
-    patch: tuple[str, ...]
-    prompt: NonBlank
-    recipe: Frozen[str, Any] = Field(min_length=1)
-    raw_response: str

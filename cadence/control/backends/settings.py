@@ -6,27 +6,12 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from cadence.errors import CadenceError
+from cadence.errors import MissingKey, UnknownProvider
 
-__all__ = [
-    "LOCAL",
-    "MissingKey",
-    "Settings",
-    "UnknownProvider",
-    "known",
-    "settings_for",
-]
+__all__ = ["LOCAL", "Settings", "known", "settings_for"]
 
 FILE = Path(__file__).with_name("providers.yml")
 LOCAL = "providers.local.yml"
-
-
-class UnknownProvider(CadenceError):
-    pass
-
-
-class MissingKey(CadenceError):
-    pass
 
 
 class Settings(BaseModel):

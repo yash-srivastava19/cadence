@@ -1,10 +1,12 @@
 from collections.abc import Mapping, Sequence
 from statistics import fmean
 
-from cadence.core.interfaces import Metrics
-from cadence.core.verdict import Failed, Outcome, Scored, Verdict, fingerprint
+from cadence.core.identity import fingerprint
+from cadence.core.types import Metrics
+from cadence.core.verdict import Failed, Outcome, Scored, Verdict
+from cadence.errors import MetricNotReported
 from cadence.execution.sandboxes.subprocess import Execution, Job, Sandbox
-from cadence.parsing.metrics import MetricNotReported, read
+from cadence.parsing.metrics import read
 
 __all__ = ["TrialRunner"]
 

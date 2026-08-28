@@ -1,13 +1,9 @@
 from collections.abc import Mapping
 
-from cadence.core.interfaces import Metrics
-from cadence.errors import SetupError
+from cadence.core.types import Metrics
+from cadence.errors import MissingMetric
 
-__all__ = ["MissingMetric", "Pareto", "WeightedSum"]
-
-
-class MissingMetric(SetupError):
-    pass
+__all__ = ["Pareto", "WeightedSum"]
 
 
 def _read(metrics: Metrics, names: Mapping[str, float]) -> list[float]:
