@@ -1,4 +1,4 @@
-apiVersion: cadence/v1alpha1
+api_version: cadence/v1alpha2
 program: pack.py
 metrics:
   value: maximize

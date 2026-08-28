@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from cadence.control.manifest import Manifest, ManifestError, load
+from cadence.control.versions import CURRENT
 
 COMPLETE = """\
 apiVersion: cadence/v1alpha1
@@ -63,17 +64,97 @@ class TestReadingAManifest:
 class TestTheVersionIsChecked:
     def test_a_missing_version_is_named(self, tmp_path):
         text = COMPLETE.replace("apiVersion: cadence/v1alpha1\n", "")
-        with pytest.raises(ManifestError, match="apiVersion"):
+        with pytest.raises(ManifestError, match="api_version"):
             load(write(tmp_path, text))
 
-    def test_an_unknown_version_lists_the_known_ones(self, tmp_path):
+    def test_an_unknown_version_lists_the_ones_it_can_read(self, tmp_path):
         text = COMPLETE.replace("cadence/v1alpha1", "cadence/v2")
-        with pytest.raises(ManifestError, match="known versions: cadence/v1alpha1"):
+        with pytest.raises(ManifestError, match="readable versions: cadence/v1alpha1"):
             load(write(tmp_path, text))
 
     def test_the_message_names_the_version_that_was_given(self, tmp_path):
         text = COMPLETE.replace("cadence/v1alpha1", "cadence/v2")
         with pytest.raises(ManifestError, match="cadence/v2"):
+            load(write(tmp_path, text))
+
+
+class TestAnOlderManifestStillLoads:
+    def test_a_v1alpha1_file_is_converted(self, tmp_path):
+        """The version field exists so that this function can exist."""
+        assert load(write(tmp_path, MINIMAL)).api_version == CURRENT
+
+    def test_the_new_spelling_loads_unchanged(self, tmp_path):
+        text = MINIMAL.replace("apiVersion:", "api_version:").replace(
+            "v1alpha1", "v1alpha2"
+        )
+        assert load(write(tmp_path, text)).api_version == CURRENT
+
+    def test_converting_does_not_change_what_the_manifest_says(self, tmp_path):
+        old = load(write(tmp_path, MINIMAL))
+        new_text = MINIMAL.replace("apiVersion:", "api_version:").replace(
+            "v1alpha1", "v1alpha2"
+        )
+        assert old.hash == load(write(tmp_path, new_text, ".cadence2")).hash
+
+    def test_the_old_key_with_the_new_version_is_a_contradiction(self, tmp_path):
+        """apiVersion is how v1alpha1 spelled it. Claiming v1alpha2 with it
+        is not an older file, it is a wrong one, and it says so."""
+        text = MINIMAL.replace("cadence/v1alpha1", "cadence/v1alpha2")
+        with pytest.raises(ManifestError) as caught:
+            load(write(tmp_path, text))
+        assert "api_version: Field required" in str(caught.value)
+        assert "apiVersion: Extra inputs are not permitted" in str(caught.value)
+
+
+class TestAManifestHasAnIdentity:
+    def test_the_same_configuration_hashes_the_same(self, tmp_path):
+        assert (
+            load(write(tmp_path, COMPLETE)).hash
+            == load(write(tmp_path, COMPLETE, ".cadence2")).hash
+        )
+
+    def test_reformatting_is_not_a_different_experiment(self, tmp_path):
+        spaced = COMPLETE.replace(
+            "metrics: {value: maximize}", "metrics:\n  value: maximize"
+        )
+        assert (
+            load(write(tmp_path, COMPLETE)).hash
+            == load(write(tmp_path, spaced, ".cadence2")).hash
+        )
+
+    def test_writing_out_a_default_is_not_a_different_experiment(self, tmp_path):
+        explicit = MINIMAL + "markers:\n  begin: CADENCE:BEGIN\n  end: CADENCE:END\n"
+        assert (
+            load(write(tmp_path, MINIMAL)).hash
+            == load(write(tmp_path, explicit, ".cadence2")).hash
+        )
+
+    def test_a_changed_budget_is_a_different_experiment(self, tmp_path):
+        assert (
+            load(write(tmp_path, COMPLETE)).hash
+            != load(
+                write(
+                    tmp_path, COMPLETE.replace("trials: 30", "trials: 31"), ".cadence2"
+                )
+            ).hash
+        )
+
+
+class TestDeclaringTheVerifierDeterministic:
+    def test_it_is_undeclared_by_default(self, tmp_path):
+        assert not load(write(tmp_path, MINIMAL)).verifier.is_declared_deterministic
+
+    def test_a_tolerance_declares_it(self, tmp_path):
+        text = MINIMAL + "verifier:\n  tolerance: 1e-9\n"
+        assert load(write(tmp_path, text)).verifier.is_declared_deterministic
+
+    def test_zero_is_a_tolerance_not_an_absence(self, tmp_path):
+        text = MINIMAL + "verifier:\n  tolerance: 0\n"
+        assert load(write(tmp_path, text)).verifier.is_declared_deterministic
+
+    def test_a_negative_tolerance_is_refused(self, tmp_path):
+        text = MINIMAL + "verifier:\n  tolerance: -1\n"
+        with pytest.raises(ManifestError, match=re.escape("verifier.tolerance")):
             load(write(tmp_path, text))
 
 
@@ -95,7 +176,7 @@ class TestTyposAreErrorsNotDefaults:
         assert "sandbox.memory_mb" in str(caught.value)
 
     def test_an_empty_file_says_what_is_missing(self, tmp_path):
-        with pytest.raises(ManifestError, match="apiVersion"):
+        with pytest.raises(ManifestError, match="api_version"):
             load(write(tmp_path, ""))
 
     def test_a_problem_says_where_it_is(self, tmp_path):
