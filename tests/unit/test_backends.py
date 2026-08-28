@@ -66,6 +66,39 @@ def spoke(text="hi", tokens_in=7, tokens_out=3, model="m"):
     )
 
 
+@pytest.fixture(params=["scripted", "reliable_over_http"])
+def backend(request):
+    """Both kinds of backend: one with the answers written down, one that
+    speaks to a provider."""
+    if request.param == "scripted":
+        return Scripted("an answer", "another answer")
+    return Ollama(http=Recorded(spoke("an answer"), spoke("another answer")))
+
+
+class TestAnyBackend:
+    """What every backend must do. A backend added to the fixture above
+    inherits all of it, and cannot satisfy less than the others."""
+
+    def test_it_satisfies_the_port(self, backend):
+        assert isinstance(backend, Backend)
+
+    def test_it_answers_with_a_completion(self, backend):
+        assert backend.call("a prompt").text == "an answer"
+
+    def test_it_reports_which_model_answered(self, backend):
+        assert backend.call("a prompt").model
+
+    def test_it_names_itself_the_same_way_every_time(self, backend):
+        assert backend.name == backend.name
+
+    def test_asking_twice_gives_two_answers(self, backend):
+        assert backend.call("one").text != backend.call("two").text
+
+    def test_the_cost_of_a_call_is_reported(self, backend):
+        cost = backend.call("a prompt").cost
+        assert set(cost) == {"tokens_in", "tokens_out", "latency_ms"}
+
+
 class TestProvidersAreData:
     def test_more_than_one_is_known(self):
         assert {"ollama", "gemini"} <= set(known())

@@ -1,3 +1,10 @@
+"""What only a real lease can do.
+
+The behaviour every lock shares is in tests/unit/test_locking.py, run against
+both implementations. What is left here needs a lock that can expire while its
+holder is still working, which a threading.Lock cannot.
+"""
+
 import os
 import time
 
@@ -11,7 +18,6 @@ if not URL:
 pytest.importorskip("redis", reason="run 'pip install -e .'")
 
 from cadence.control.locking import redis_locks  # noqa: E402
-from cadence.core.ports import Locks  # noqa: E402
 from cadence.errors import LockLost, LockUnavailable  # noqa: E402
 
 KEY = "runs/h1"
@@ -25,57 +31,17 @@ def locks():
     return service
 
 
-class TestARealLock:
-    def test_it_satisfies_the_port(self, locks):
-        assert isinstance(locks, Locks)
-
-    def test_the_body_runs_and_the_key_is_freed(self, locks):
+class TestTheKeyIsReallyTaken:
+    def test_the_key_exists_while_the_body_runs(self, locks):
         with locks.with_lock(KEY):
             assert locks.client.exists(HELD)
+
+    def test_it_is_gone_afterwards(self, locks):
+        with locks.with_lock(KEY):
+            pass
         assert not locks.client.exists(HELD)
 
-    def test_it_is_freed_even_when_the_body_raises(self, locks):
-        with pytest.raises(ValueError, match="failed"), locks.with_lock(KEY):
-            raise ValueError("the write failed")
-        assert not locks.client.exists(HELD)
-
-    def test_the_body_failing_is_what_the_caller_sees(self, locks):
-        """Not a release problem discovered on the way out. The lease expires
-        here too, and the ValueError is still what reaches the caller."""
-        with (  # noqa: PT012
-            pytest.raises(ValueError, match="failed"),
-            locks.with_lock(KEY, ttl=0.1),
-        ):
-            time.sleep(0.2)
-            raise ValueError("the write failed")
-
-    def test_two_keys_do_not_wait_on_each_other(self, locks):
-        with locks.with_lock("runs/h1"), locks.with_lock("runs/h2"):
-            assert True
-
-
-class TestWhenAnotherWorkerHasIt:
-    def test_a_second_holder_is_refused(self, locks):
-        other = redis_locks(URL, wait=0.1)
-        with (
-            locks.with_lock(KEY),
-            pytest.raises(LockUnavailable, match="another worker"),
-            other.with_lock(KEY),
-        ):
-            pass
-
-    def test_it_waits_no_longer_than_it_was_told_to(self, locks):
-        other = redis_locks(URL, wait=0.1)
-        started = time.monotonic()
-        with (
-            locks.with_lock(KEY),
-            pytest.raises(LockUnavailable),
-            other.with_lock(KEY),
-        ):
-            pass
-        assert time.monotonic() - started < 2.0
-
-    def test_a_crashed_holder_does_not_keep_the_key_forever(self, locks):
+    def test_a_crashed_holder_does_not_keep_it_forever(self, locks):
         """The lease is what makes a lock survivable. Without it, a worker
         killed mid-section holds a key until a person notices."""
         locks.client.set(HELD, "someone-else", px=100)
@@ -92,8 +58,8 @@ class TestWhenTheLeaseRunsOutFirst:
             time.sleep(0.3)
 
     def test_we_do_not_release_a_lock_somebody_else_now_holds(self, locks):
-        """The reason to use redis-py's Lock rather than SET and DEL: the
-        release is a compare-and-delete against our own token."""
+        """Why redis-py's Lock rather than SET and DEL: the release is a
+        compare-and-delete against our own token."""
         other = redis_locks(URL, wait=1.0)
         with (  # noqa: PT012
             pytest.raises(LockLost),
@@ -102,6 +68,16 @@ class TestWhenTheLeaseRunsOutFirst:
             time.sleep(0.2)
             with other.with_lock(KEY):
                 assert other.client.exists(HELD)
+
+    def test_the_body_failing_is_what_the_caller_sees(self, locks):
+        """Not a release problem discovered on the way out, even though the
+        lease expired here too."""
+        with (  # noqa: PT012
+            pytest.raises(ValueError, match="failed"),
+            locks.with_lock(KEY, ttl=0.1),
+        ):
+            time.sleep(0.2)
+            raise ValueError("the write failed")
 
 
 class TestWhenRedisIsNotThere:

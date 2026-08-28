@@ -52,20 +52,39 @@ def engines():
         one.dispose()
 
 
+def _in_a_transaction_that_is_rolled_back(engine):
+    """Rails' transactional fixtures, in SQLAlchemy.
+
+    The session is bound to a connection that is already inside a
+    transaction, and join_transaction_mode="create_savepoint" makes the
+    session's own commits into SAVEPOINTs. So code under test may commit
+    freely, and rolling back the outer transaction still reverts everything.
+
+    This is what lets an end-to-end spec run the real loop -- which commits --
+    without leaving rows behind, and it replaces deleting from each table by
+    hand, which does not scale past one.
+    """
+    connection = engine.connect()
+    outer = connection.begin()
+    session = orm.Session(
+        bind=connection,
+        join_transaction_mode="create_savepoint",
+        expire_on_commit=False,
+    )
+    yield session
+    session.close()
+    outer.rollback()
+    connection.close()
+
+
 @pytest.fixture
 def owner(engines):
-    with orm.Session(engines["owner"], expire_on_commit=False) as session:
-        yield session
-        session.rollback()
-    with engines["owner"].begin() as connection:
-        connection.execute(sa.delete(runs))
+    yield from _in_a_transaction_that_is_rolled_back(engines["owner"])
 
 
 @pytest.fixture
 def app(engines):
-    with orm.Session(engines["app"], expire_on_commit=False) as session:
-        yield session
-        session.rollback()
+    yield from _in_a_transaction_that_is_rolled_back(engines["app"])
 
 
 class TestARunSurvivesARestart:
