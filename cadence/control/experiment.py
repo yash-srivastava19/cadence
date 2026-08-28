@@ -141,7 +141,12 @@ class Experiment:
         )
         verdict = self.runner.try_(child.code)
         trial.measure(verdict=verdict)
-        trace.emit(TrialMeasured, verdict=verdict)
+        trace.emit(
+            TrialMeasured,
+            verdict=verdict,
+            task_hash=self.runner.task_hash,
+            seeds_hash=self.runner.seeds_hash,
+        )
         return TrialResult(code=code, verdict=verdict)
 
     def _propose(self, run: Run, trial: Trial, trace, directive: Directive):

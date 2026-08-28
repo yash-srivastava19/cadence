@@ -12,12 +12,14 @@ BETTER = "print('value: 9')"
 
 def a_runner(metrics=None, **kwargs):
     return TrialRunner(
-        program="prog.py",
-        command=("python", "prog.py"),
-        metrics=metrics or {"value": "maximize"},
-        sandbox=Subprocess(),
-        seeds=kwargs.pop("seeds", (0,)),
-        **kwargs,
+        **{
+            "program": "prog.py",
+            "command": ("python", "prog.py"),
+            "metrics": metrics or {"value": "maximize"},
+            "sandbox": Subprocess(),
+            "seeds": (0,),
+            **kwargs,
+        }
     )
 
 
@@ -117,3 +119,51 @@ class TestOutOfMemoryReachesTheVerdict:
         verdict = a_runner(memory_mb=64).try_("x = bytearray(500 * 1024 * 1024)")
         assert verdict.outcome is Outcome.OUT_OF_MEMORY
         assert "memory" in verdict.reason
+
+
+class TestWhatMakesAMeasurementUnique:
+    """The task hash is what a stored verdict is filed under, so anything it
+    leaves out is something a cache would silently ignore."""
+
+    def test_the_same_setup_hashes_the_same(self):
+        assert a_runner().task_hash == a_runner().task_hash
+
+    @pytest.mark.parametrize(
+        "different",
+        [
+            pytest.param({"program": "other.py"}, id="the file rewritten"),
+            pytest.param({"command": ("python", "other.py")}, id="what is run"),
+            pytest.param({"seconds": 60.0}, id="the deadline"),
+            pytest.param({"memory_mb": 512}, id="the memory limit"),
+        ],
+    )
+    def test_changing_it_is_a_different_task(self, different):
+        assert a_runner().task_hash != a_runner(**different).task_hash
+
+    def test_reading_a_different_metric_is_a_different_task(self):
+        assert a_runner().task_hash != a_runner(metrics={"other": "maximize"}).task_hash
+
+    def test_the_seeds_are_not_part_of_the_task(self):
+        """They are their own column in the key: the same task measured on
+        different seeds, not a different task."""
+        assert a_runner().task_hash == a_runner(seeds=(7, 8)).task_hash
+
+    def test_different_seeds_are_a_different_measurement(self):
+        assert a_runner().seeds_hash != a_runner(seeds=(7, 8)).seeds_hash
+
+    def test_the_workspace_contents_are_part_of_the_task(self, tmp_path):
+        """verify.py lands beside the candidate, so editing it changes what a
+        score means. Leaving it out is how a cache hands back a number the
+        old verifier produced."""
+        (tmp_path / "verify.py").write_text("print('value: 1')")
+        before = a_runner(workspace=str(tmp_path)).task_hash
+        (tmp_path / "verify.py").write_text("print('value: 2')")
+        assert before != a_runner(workspace=str(tmp_path)).task_hash
+
+    def test_the_program_itself_is_not(self, tmp_path):
+        """The candidate is written over it, so what it holds at rest says
+        nothing about what was measured."""
+        (tmp_path / "prog.py").write_text("print('value: 1')")
+        before = a_runner(workspace=str(tmp_path)).task_hash
+        (tmp_path / "prog.py").write_text("print('value: 2')")
+        assert before == a_runner(workspace=str(tmp_path)).task_hash

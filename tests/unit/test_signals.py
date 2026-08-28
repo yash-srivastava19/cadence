@@ -24,7 +24,13 @@ class TestTheCadenceChannel:
                 tokens_out=2,
                 latency_ms=3.0,
             ).emit()
-            TrialMeasured(run_id="h1", trial_id="t1", verdict=a_verdict()).emit()
+            TrialMeasured(
+                run_id="h1",
+                trial_id="t1",
+                verdict=a_verdict(),
+                task_hash="task0",
+                seeds_hash="seeds0",
+            ).emit()
         assert [type(fact).__name__ for fact in tape] == [
             "TrialStarted",
             "ModelCalled",
@@ -63,14 +69,32 @@ class TestEventsAreFacts:
 
 class TestWritingToStorage:
     def test_an_event_carrying_a_verdict_survives_json(self):
-        event = TrialMeasured(run_id="h1", trial_id="t1", verdict=a_verdict())
+        event = TrialMeasured(
+            run_id="h1",
+            trial_id="t1",
+            verdict=a_verdict(),
+            task_hash="task0",
+            seeds_hash="seeds0",
+        )
         assert TrialMeasured.model_validate_json(event.model_dump_json()) == event
 
     def test_a_verdict_keeps_its_kind_through_the_round_trip(self):
-        event = TrialMeasured(run_id="h1", trial_id="t1", verdict=a_verdict())
+        event = TrialMeasured(
+            run_id="h1",
+            trial_id="t1",
+            verdict=a_verdict(),
+            task_hash="task0",
+            seeds_hash="seeds0",
+        )
         parsed = TrialMeasured.model_validate_json(event.model_dump_json())
         assert parsed.verdict.is_scored
 
     def test_serializing_does_not_warn(self, recwarn):
-        TrialMeasured(run_id="h1", trial_id="t1", verdict=a_verdict()).model_dump()
+        TrialMeasured(
+            run_id="h1",
+            trial_id="t1",
+            verdict=a_verdict(),
+            task_hash="task0",
+            seeds_hash="seeds0",
+        ).model_dump()
         assert not [w for w in recwarn if issubclass(w.category, UserWarning)]

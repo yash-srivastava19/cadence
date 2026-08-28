@@ -32,8 +32,10 @@ from cadence.control.storage import (  # noqa: E402
     events,
     runs,
     trials,
+    verdicts,
 )
 from cadence.core.identity import fingerprint  # noqa: E402
+from cadence.core.verdict import Outcome  # noqa: E402
 from cadence.execution.runner import TrialRunner  # noqa: E402
 from cadence.execution.sandboxes.subprocess import Subprocess  # noqa: E402
 from cadence.lifecycle.states import RunState, TrialState  # noqa: E402
@@ -41,6 +43,8 @@ from cadence.observe.signals import cadence  # noqa: E402
 from tests.factories import BASELINE, a_manifest  # noqa: E402
 
 IMPROVES = "Here it is.\n```python\nprint('value: 45')\n```"
+IMPROVES_MORE = "Better.\n```python\nprint('value: 99')\n```"
+CRASHES = "Try this.\n```python\nraise ValueError('the evolved code is broken')\n```"
 NONSENSE = "I would change the loop, but here is prose instead."
 
 
@@ -271,3 +275,45 @@ class TestATrialThatWasGivenUpOn:
             row for row in rows(session, candidates, run_id="h1") if row["parent_id"]
         ]
         assert children == []
+
+
+class TestWhatEachCandidateScored:
+    def test_the_verdict_is_recorded(self, session, journalled):
+        journalled(IMPROVES)
+        assert len(rows(session, verdicts)) == 1
+
+    def test_it_carries_the_metrics(self, session, journalled):
+        journalled(IMPROVES)
+        assert rows(session, verdicts)[0]["metrics"] == {"value": 45.0}
+
+    def test_it_is_keyed_on_the_candidate_that_was_measured(self, session, journalled):
+        report = journalled(IMPROVES)
+        assert rows(session, verdicts)[0]["candidate_hash"] == report.best
+
+    def test_it_says_which_task_it_was_measured_against(self, session, journalled):
+        journalled(IMPROVES)
+        assert rows(session, verdicts)[0]["task_hash"]
+
+    def test_it_says_which_seeds_it_was_measured_on(self, session, journalled):
+        journalled(IMPROVES)
+        assert rows(session, verdicts)[0]["seeds_hash"]
+
+    def test_a_failure_is_recorded_with_its_reason_and_no_metrics(
+        self, session, journalled
+    ):
+        journalled(CRASHES)
+        row = rows(session, verdicts)[0]
+        assert (row["outcome"], row["metrics"]) == (Outcome.CRASHED, None)
+
+
+class TestTheSameMeasurementTwice:
+    def test_measuring_one_program_twice_writes_one_row(self, session, journalled):
+        """The key is the measurement, not the attempt. Two trials that
+        propose the same program against the same task on the same seeds have
+        measured the same thing."""
+        journalled(IMPROVES, IMPROVES, budget=2)
+        assert len(rows(session, verdicts)) == 1
+
+    def test_two_different_programs_are_two_measurements(self, session, journalled):
+        journalled(IMPROVES, IMPROVES_MORE, budget=2)
+        assert len(rows(session, verdicts)) == 2

@@ -13,6 +13,7 @@ from typing import Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 from statemachine import State, StateMachine
 
+from cadence.core.identity import fingerprint
 from cadence.core.types import NonBlank
 from cadence.lifecycle.entity import Entity
 from cadence.lifecycle.states import SandboxRunState
@@ -24,6 +25,7 @@ __all__ = [
     "SandboxRun",
     "SandboxRunStateMachine",
     "Subprocess",
+    "workspace_digest",
 ]
 
 KILLED_BY_TIMEOUT = "wall clock"
@@ -31,7 +33,38 @@ KILLED_BY_TIMEOUT = "wall clock"
 # runtime say so. Only the kernel's OOM killer sends SIGKILL.
 OOM_SIGNS = ("memoryerror", "std::bad_alloc", "cannot allocate memory", "out of memory")
 IGNORED = shutil.ignore_patterns(".git", "__pycache__", ".venv", "*.pyc")
+SKIPPED = (".git", "__pycache__", ".venv")
 GRACE_SECONDS = 0.5
+
+
+def workspace_digest(workspace: str | None, program: str) -> str:
+    """What the sandbox would copy, as one hash.
+
+    Every file that lands beside the candidate is an input to its score:
+    verify.py, the data it reads, the module it imports. Leave them out of a
+    task's identity and editing your verifier silently reuses the scores the
+    old one produced -- reported as success, which is the worst way for a
+    cache to be wrong.
+
+    The program itself is excluded: the candidate is written over it, so its
+    contents at rest say nothing about what was measured.
+    """
+    if workspace is None:
+        return fingerprint("")
+    root = Path(workspace)
+    listed = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix == ".pyc":
+            continue
+        relative = path.relative_to(root)
+        if any(part in SKIPPED for part in relative.parts):
+            continue
+        if str(relative) == program:
+            continue
+        listed.append(
+            f"{relative}:{fingerprint(path.read_bytes().decode(errors='replace'))}"
+        )
+    return fingerprint("\n".join(listed))
 
 
 class Job(BaseModel):

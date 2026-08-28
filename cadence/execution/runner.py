@@ -1,14 +1,26 @@
 from collections.abc import Mapping, Sequence
+from importlib.metadata import version
 from statistics import fmean
 
-from cadence.core.identity import fingerprint
+from cadence.core.identity import fingerprint, hash_of
 from cadence.core.types import Metrics
 from cadence.core.verdict import Failed, Failure, Outcome, Scored, Verdict
 from cadence.errors import MetricNotReported
-from cadence.execution.sandboxes.subprocess import Execution, Job, Sandbox
+from cadence.execution.sandboxes.subprocess import (
+    Execution,
+    Job,
+    Sandbox,
+    workspace_digest,
+)
 from cadence.parsing.metrics import read
 
-__all__ = ["TrialRunner"]
+__all__ = ["MEASUREMENT_EPOCH", "TrialRunner"]
+
+#: Bumped by hand whenever cadence changes what a score means -- how a metric
+#: is read, how a failure is classified, what the sandbox does. The package
+#: version cannot do this job on its own: it stays 0.1.0 across every commit
+#: that would change a result.
+MEASUREMENT_EPOCH = 1
 
 
 class TrialRunner:
@@ -35,6 +47,35 @@ class TrialRunner:
         self.seeds = tuple(seeds)
         self.seconds = seconds
         self.memory_mb = memory_mb
+
+    @property
+    def task_hash(self) -> str:
+        """The identity of the measurement, candidate and seeds aside.
+
+        Everything that decides what running a candidate does: where it is
+        written, what is run, which numbers are read, the limits it is run
+        under, and every other file that lands beside it. Not the model, the
+        budget or the search method -- those choose what to measure, never
+        what the measurement is.
+        """
+        return hash_of(
+            {
+                "epoch": MEASUREMENT_EPOCH,
+                "cadence": version("cadence"),
+                "program": self.program,
+                "command": list(self.command),
+                "metrics": sorted(self.metrics),
+                "seconds": self.seconds,
+                "memory_mb": self.memory_mb,
+                "workspace": workspace_digest(self.workspace, self.program),
+            }
+        )
+
+    @property
+    def seeds_hash(self) -> str:
+        """Which seeds a score was averaged over. Two of three is a different
+        measurement, not a partial one."""
+        return hash_of({"seeds": list(self.seeds)})
 
     def try_(self, code: str) -> Verdict:
         readings: list[Metrics] = []

@@ -108,6 +108,11 @@ class CandidateBuilt(Event):
 class TrialMeasured(Event):
     trial_id: NonBlank
     verdict: Verdict
+    # What it was measured against. On the fact rather than looked up later,
+    # so a verdict on the tape says what it is a verdict about -- and so the
+    # three of them together are the key the verdicts table is stored under.
+    task_hash: NonBlank
+    seeds_hash: NonBlank
 
 
 class TrialAbandoned(Event):
