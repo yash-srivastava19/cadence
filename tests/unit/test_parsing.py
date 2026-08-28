@@ -1,9 +1,10 @@
+import json
 import re
 
 import pytest
 
 from cadence.errors import MetricNotReported
-from cadence.parsing.metrics import direction, read
+from cadence.parsing.metrics import JsonReport, KeyValueLines, direction, read
 
 TRAINING_LOG = """\
 step 100  loss 4.21
@@ -11,6 +12,44 @@ step 200  loss 3.02
 done in 41s
 val_bpb: 1.2734
 """
+
+
+@pytest.fixture(params=["json", "lines"])
+def reader(request):
+    """Both ways a program is allowed to report its numbers."""
+    return JsonReport() if request.param == "json" else KeyValueLines()
+
+
+def as_reported(reader, metrics):
+    """The same metrics, written the way that reader expects to find them."""
+    if isinstance(reader, JsonReport):
+        return json.dumps(metrics)
+    return "\n".join(f"{name}: {value}" for name, value in metrics.items())
+
+
+class TestAnyReader:
+    """What every reader must do. A third way of reporting numbers is added
+    to the fixture above and inherits all of it."""
+
+    def test_it_finds_what_was_reported(self, reader):
+        assert reader.read(as_reported(reader, {"value": 1.5})) == {"value": 1.5}
+
+    def test_it_finds_several_at_once(self, reader):
+        written = as_reported(reader, {"value": 1.5, "weight": 2.0})
+        assert reader.read(written) == {"value": 1.5, "weight": 2.0}
+
+    def test_empty_output_reports_nothing(self, reader):
+        assert reader.read("") == {}
+
+    def test_output_with_no_numbers_in_it_reports_nothing(self, reader):
+        assert reader.read("training finished\nall done\n") == {}
+
+    def test_it_survives_being_surrounded_by_noise(self, reader):
+        written = f"starting up\n{as_reported(reader, {'value': 1.5})}\ndone\n"
+        assert reader.read(written) == {"value": 1.5}
+
+    def test_it_says_how_to_report_a_metric_that_is_missing(self, reader):
+        assert "value" in reader.shape("value")
 
 
 class TestReadingWhatAProgramPrinted:

@@ -5,14 +5,7 @@ from cadence.control.entities import Candidate, Run, Trial
 from cadence.core.identity import fingerprint
 from cadence.core.verdict import Scored
 from cadence.lifecycle.states import CandidateState, RunState, TrialState
-
-
-def a_candidate(code="def pack(): return []"):
-    return Candidate(code=code)
-
-
-def a_trial():
-    return Trial(id=Trial.id_for("h1", 0), seq=0, parent=a_candidate())
+from tests.factories import a_candidate, a_trial
 
 
 class TestFingerprint:

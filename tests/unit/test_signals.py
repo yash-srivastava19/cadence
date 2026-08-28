@@ -1,7 +1,6 @@
 import pytest
 from pydantic import ValidationError
 
-from cadence.core.verdict import Scored
 from cadence.observe.signals import (
     Event,
     ModelCalled,
@@ -10,10 +9,7 @@ from cadence.observe.signals import (
     TrialStarted,
     cadence,
 )
-
-
-def a_verdict():
-    return Scored(fingerprint="abc", metrics={"sharpe": 1.4})
+from tests.factories import a_verdict
 
 
 class TestTheCadenceChannel:
