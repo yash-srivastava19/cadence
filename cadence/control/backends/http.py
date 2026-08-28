@@ -5,7 +5,7 @@ import urllib.request
 from collections.abc import Mapping
 from typing import Any
 
-from cadence.exceptions import RetryableModelError, TerminalModelError
+from cadence.errors import RetryableModelError, TerminalModelError
 
 __all__ = ["RETRYABLE", "Answer", "Http"]
 

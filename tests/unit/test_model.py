@@ -3,8 +3,8 @@ from pydantic import ValidationError
 
 from cadence.control.backends.served import Scripted
 from cadence.control.model import Model, parse_patch, render
-from cadence.exceptions import PatchError, TerminalModelError
-from cadence.interfaces import Directive
+from cadence.core.interfaces import Directive
+from cadence.errors import PatchError, TerminalModelError
 
 PATCH = """\
 --- a/solve.py
@@ -100,7 +100,7 @@ class TestAskingForTheWholeProgram:
 
     def test_only_the_marked_region_is_replaced(self):
         from cadence.control.patcher import apply_patch
-        from cadence.interfaces import Directive
+        from cadence.core.interfaces import Directive
 
         marked = "before = 1\n# CADENCE:BEGIN\nx = 1\n# CADENCE:END\nafter = 2\n"
         directive = Directive(parent="p", code=marked, hint="try something")

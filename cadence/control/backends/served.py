@@ -5,9 +5,9 @@ from typing import Annotated, Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from cadence.control.backends.http import Http
 from cadence.control.backends.settings import Settings, known, settings_for
-from cadence.exceptions import RetryableModelError, TerminalModelError
-from cadence.http import Http
+from cadence.errors import RetryableModelError, TerminalModelError
 
 __all__ = [
     "Backend",

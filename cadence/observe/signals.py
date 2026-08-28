@@ -3,8 +3,8 @@ from typing import Annotated
 
 from pydantic import Field, StringConstraints
 
-from cadence.events import Channel, Fact
-from cadence.verdict import Verdict
+from cadence.core.verdict import Verdict
+from cadence.observe.channel import Channel, Fact
 
 __all__ = [
     "Event",

@@ -2,8 +2,8 @@ import pytest
 from statemachine import State, StateMachine
 from statemachine.exceptions import TransitionNotAllowed
 
-from cadence.stateful import Stateful
-from cadence.states import TrialState
+from cadence.lifecycle.stateful import Stateful
+from cadence.lifecycle.states import TrialState
 
 
 class TrialMachine(StateMachine):

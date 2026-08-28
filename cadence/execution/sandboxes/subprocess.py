@@ -13,8 +13,8 @@ from typing import Annotated, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from statemachine import State, StateMachine
 
-from cadence.stateful import Stateful
-from cadence.states import SandboxRunState
+from cadence.lifecycle.stateful import Stateful
+from cadence.lifecycle.states import SandboxRunState
 
 __all__ = [
     "Execution",

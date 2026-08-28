@@ -1,7 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from cadence.signals import (
+from cadence.core.verdict import Scored
+from cadence.observe.signals import (
     Event,
     ModelCalled,
     PatchRejected,
@@ -9,7 +10,6 @@ from cadence.signals import (
     TrialStarted,
     cadence,
 )
-from cadence.verdict import Scored
 
 
 def a_verdict():

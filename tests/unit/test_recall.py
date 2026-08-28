@@ -14,8 +14,8 @@ from cadence.control.recall import (
 )
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
-from cadence.signals import ModelCalled, cadence
-from cadence.states import RunState
+from cadence.lifecycle.states import RunState
+from cadence.observe.signals import ModelCalled, cadence
 
 BASELINE = "print('value: 0')"
 ANSWER = "```python\nprint('value: 9')\n```"
@@ -138,7 +138,7 @@ class TestResumingARunCostsNothing:
 
 
 def _a_directive():
-    from cadence.interfaces import Directive
+    from cadence.core.interfaces import Directive
 
     return Directive(parent="abc", code=BASELINE, hint="try something")
 

@@ -6,8 +6,8 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from cadence.control.region import BEGIN, END
-from cadence.exceptions import CadenceError
-from cadence.reading import GOALS
+from cadence.errors import CadenceError
+from cadence.parsing.metrics import GOALS
 
 __all__ = ["API_VERSIONS", "Manifest", "ManifestError", "Plugin", "load"]
 

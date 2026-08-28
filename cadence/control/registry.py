@@ -9,10 +9,10 @@ from cadence.control.manifest import Manifest, Plugin
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import Pareto, WeightedSum
-from cadence.exceptions import CadenceError
+from cadence.errors import CadenceError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
-from cadence.reading import direction
+from cadence.parsing.metrics import direction
 
 __all__ = ["BACKENDS", "METHODS", "OBJECTIVES", "Unknown", "build", "seed_program"]
 

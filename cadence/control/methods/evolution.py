@@ -2,9 +2,9 @@ import random
 from hashlib import sha256
 
 from cadence.control.entities import Candidate
-from cadence.exceptions import NoCandidates
-from cadence.interfaces import Attempt, Directive, History, Ledger, Objective
-from cadence.verdict import Verdict
+from cadence.core.interfaces import Attempt, Directive, History, Ledger, Objective
+from cadence.core.verdict import Verdict
+from cadence.errors import NoCandidates
 
 __all__ = ["HINTS", "Evolution", "Member", "rng_for"]
 

@@ -6,9 +6,9 @@ from typing import Any, NamedTuple
 from cadence.control.backends.served import Backend, Completion
 from cadence.control.recall import Calls, through
 from cadence.control.region import BEGIN, END, splice, split
-from cadence.exceptions import PatchError
-from cadence.interfaces import Directive
-from cadence.verdict import Proposal
+from cadence.core.interfaces import Directive
+from cadence.core.verdict import Proposal
+from cadence.errors import PatchError
 
 __all__ = ["TEMPLATES", "Model", "Suggestion", "parse_patch", "parse_program", "render"]
 

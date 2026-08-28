@@ -8,7 +8,7 @@ from cadence.execution.sandboxes.subprocess import (
     SandboxRun,
     Subprocess,
 )
-from cadence.states import SandboxRunState
+from cadence.lifecycle.states import SandboxRunState
 
 
 def a_job(code, command=("python", "prog.py"), seconds=10.0, memory_mb=256, **kwargs):

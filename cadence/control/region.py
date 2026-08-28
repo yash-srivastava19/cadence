@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from cadence.exceptions import SetupError
+from cadence.errors import SetupError
 
 __all__ = ["BEGIN", "END", "MarkerError", "Region", "splice", "split"]
 

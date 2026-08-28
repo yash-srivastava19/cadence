@@ -5,7 +5,7 @@ import typer
 from cadence.commands.report import die
 from cadence.control.manifest import load
 from cadence.control.registry import build
-from cadence.exceptions import CadenceError
+from cadence.errors import CadenceError
 
 
 def run(

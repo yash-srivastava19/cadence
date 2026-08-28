@@ -1,7 +1,7 @@
 import random
 
 from cadence.control.objectives.ranking import Pareto, WeightedSum
-from cadence.interfaces import Objective, Task
+from cadence.core.interfaces import Objective, Task
 
 CAPACITY = 20
 

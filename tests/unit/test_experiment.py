@@ -4,11 +4,11 @@ from cadence.control.experiment import Experiment, Report
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import WeightedSum
-from cadence.exceptions import TerminalModelError
+from cadence.errors import TerminalModelError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
-from cadence.signals import cadence
-from cadence.states import RunState
+from cadence.lifecycle.states import RunState
+from cadence.observe.signals import cadence
 
 BASELINE = "print('value: 0')"
 
@@ -82,7 +82,7 @@ class TestTheRunIsTraceable:
         assert {fact.run_id for fact in tape} == {"h1"}
 
     def test_the_model_call_reports_what_it_cost(self):
-        from cadence.signals import ModelCalled
+        from cadence.observe.signals import ModelCalled
 
         with cadence.recording() as tape:
             an_experiment(IMPROVES).run()
@@ -91,14 +91,14 @@ class TestTheRunIsTraceable:
         assert called.tokens_out > 0
 
     def test_the_measured_event_carries_the_verdict(self):
-        from cadence.signals import TrialMeasured
+        from cadence.observe.signals import TrialMeasured
 
         with cadence.recording() as tape:
             an_experiment(IMPROVES).run()
         assert tape.of(TrialMeasured)[0].verdict.is_scored
 
     def test_an_abandoned_trial_is_visible_on_the_tape(self):
-        from cadence.signals import TrialAbandoned
+        from cadence.observe.signals import TrialAbandoned
 
         with cadence.recording() as tape:
             an_experiment(*GIVES_UP).run()

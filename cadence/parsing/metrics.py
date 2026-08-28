@@ -2,7 +2,7 @@ import json
 import re
 from collections.abc import Iterable, Mapping
 
-from cadence.exceptions import CadenceError
+from cadence.errors import CadenceError
 
 __all__ = ["Goal", "MetricNotReported", "direction", "read"]
 

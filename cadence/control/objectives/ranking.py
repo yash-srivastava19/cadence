@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 
-from cadence.exceptions import SetupError
-from cadence.interfaces import Metrics
+from cadence.core.interfaces import Metrics
+from cadence.errors import SetupError
 
 __all__ = ["MissingMetric", "Pareto", "WeightedSum"]
 

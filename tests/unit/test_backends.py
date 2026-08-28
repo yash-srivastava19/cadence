@@ -1,5 +1,6 @@
 import pytest
 
+from cadence.control.backends.http import RETRYABLE, Answer, Http
 from cadence.control.backends.served import (
     Backend,
     Gemini,
@@ -10,8 +11,7 @@ from cadence.control.backends.served import (
 )
 from cadence.control.backends.settings import MissingKey, known, settings_for
 from cadence.control.registry import BACKENDS
-from cadence.exceptions import RetryableModelError, TerminalModelError
-from cadence.http import RETRYABLE, Answer, Http
+from cadence.errors import RetryableModelError, TerminalModelError
 
 
 class Recorded:
@@ -171,13 +171,13 @@ class TestTheDialect:
 class TestWhatIsWorthRetrying:
     @pytest.mark.parametrize("status", sorted(RETRYABLE))
     def test_these_are_retryable(self, status):
-        from cadence.http import _classify
+        from cadence.control.backends.http import _classify
 
         assert isinstance(_classify(status, ""), RetryableModelError)
 
     @pytest.mark.parametrize("status", [400, 401, 403, 404, 422])
     def test_these_are_terminal(self, status):
-        from cadence.http import _classify
+        from cadence.control.backends.http import _classify
 
         assert isinstance(_classify(status, ""), TerminalModelError)
 

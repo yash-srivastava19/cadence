@@ -6,7 +6,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from cadence.exceptions import CadenceError
+from cadence.errors import CadenceError
 
 __all__ = [
     "LOCAL",

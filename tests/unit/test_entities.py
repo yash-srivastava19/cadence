@@ -2,8 +2,8 @@ import pytest
 from statemachine.exceptions import TransitionNotAllowed
 
 from cadence.control.entities import Candidate, Run, Trial, fingerprint, trial_id
-from cadence.states import CandidateState, RunState, TrialState
-from cadence.verdict import Scored
+from cadence.core.verdict import Scored
+from cadence.lifecycle.states import CandidateState, RunState, TrialState
 
 
 def a_candidate(code="def pack(): return []"):

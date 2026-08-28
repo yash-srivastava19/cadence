@@ -3,7 +3,7 @@ from typing import Annotated, Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from cadence.verdict import Verdict
+from cadence.core.verdict import Verdict
 
 __all__ = [
     "Attempt",

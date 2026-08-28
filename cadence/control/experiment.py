@@ -6,11 +6,12 @@ from cadence.control.entities import Candidate, Run, Trial, trial_id
 from cadence.control.model import Model
 from cadence.control.patcher import apply_patch
 from cadence.control.recall import key_for
-from cadence.events import Emitter
-from cadence.exceptions import ModelError, NoCandidates, PatchError, SetupError
+from cadence.core.interfaces import Attempt, Directive, History, Ledger, Method
+from cadence.errors import ModelError, NoCandidates, PatchError, SetupError
 from cadence.execution.runner import TrialRunner
-from cadence.interfaces import Attempt, Directive, History, Ledger, Method
-from cadence.signals import (
+from cadence.lifecycle.states import RunState
+from cadence.observe.channel import Emitter
+from cadence.observe.signals import (
     ModelCalled,
     PatchRejected,
     ProposalReceived,
@@ -20,7 +21,6 @@ from cadence.signals import (
     TrialMeasured,
     TrialStarted,
 )
-from cadence.states import RunState
 
 __all__ = ["Experiment", "Report"]
 

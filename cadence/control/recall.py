@@ -5,7 +5,7 @@ from typing import Annotated, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from cadence.control.backends.served import Completion
-from cadence.exceptions import CadenceError
+from cadence.errors import CadenceError
 
 __all__ = ["Calls", "PromptChanged", "Recalled", "Remembered", "key_for", "through"]
 
