@@ -7,11 +7,33 @@ as invalid and becomes something to tell the model about.
 
 from cadence.errors.base import CadenceError
 
-__all__ = ["MetricNotReported", "NoCandidates", "PatchError"]
+__all__ = [
+    "EmptyReply",
+    "MetricNotReported",
+    "NoCandidates",
+    "PatchError",
+    "UnusableReply",
+]
 
 
-class PatchError(CadenceError):
+class UnusableReply(CadenceError):
+    """The model answered, and nothing can be built from what it said.
+
+    Worth asking again for: it costs a model call, not a trial, until the
+    retry budget is gone.
+    """
+
+
+class PatchError(UnusableReply):
     """The reply could not be turned into a diff, or the diff would not apply."""
+
+
+class EmptyReply(UnusableReply):
+    """The provider returned a well-formed reply carrying no completion.
+
+    A content filter, or a truncation. Distinct from a body cadence cannot
+    read at all, which is terminal: this one is usually about this prompt.
+    """
 
 
 class MetricNotReported(CadenceError):

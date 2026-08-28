@@ -12,8 +12,6 @@ retried three times, and bills you for the privilege.
 
 from typing import Any
 
-from pydantic import Field
-
 from cadence.core.types import NonBlank
 from cadence.core.values import Parsed, Value
 
@@ -47,12 +45,13 @@ class Usage(Parsed):
 
 
 class ChatResponse(Parsed):
-    # A reply with no choices is not a reply. Refusing it here is what stops a
-    # provider fault from being reported as a badly written program.
-    choices: tuple[Choice, ...] = Field(min_length=1)
+    # Required, but allowed to be empty. A body without the key at all is not
+    # a reply and is terminal; a reply carrying no choices is a content filter
+    # or a truncation, which is about this prompt and costs a trial.
+    choices: tuple[Choice, ...]
     model: str | None = None
     usage: Usage = Usage()
 
     @property
     def text(self) -> str:
-        return self.choices[0].message.content
+        return self.choices[0].message.content if self.choices else ""

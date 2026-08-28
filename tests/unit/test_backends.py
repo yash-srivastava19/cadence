@@ -5,7 +5,12 @@ from cadence.control.backends.http import RETRYABLE, Http, HttpResponse, error_f
 from cadence.control.backends.settings import settings_for
 from cadence.control.registry import BACKENDS
 from cadence.core.ports import Backend
-from cadence.errors import MissingKey, RetryableModelError, TerminalModelError
+from cadence.errors import (
+    EmptyReply,
+    MissingKey,
+    RetryableModelError,
+    TerminalModelError,
+)
 
 
 def Ollama(**options):
@@ -179,11 +184,11 @@ class TestTheDialect:
         completion = Ollama(http=Recorded(spoke(tokens_in=11, tokens_out=5))).call("p")
         assert (completion.tokens_in, completion.tokens_out) == (11, 5)
 
-    def test_a_reply_with_no_choices_blames_the_provider(self):
-        """Not the model. An empty completion would be retried three times as
-        an unparseable reply, and bill for all three."""
+    def test_a_reply_with_no_choices_costs_a_trial_not_the_run(self):
+        """A content filter or a truncation. Not an empty completion, which
+        would be blamed on the model and retried as unparseable prose."""
         answer = HttpResponse(body={"choices": []}, latency_ms=1.0)
-        with pytest.raises(TerminalModelError, match="ollama returned a body"):
+        with pytest.raises(EmptyReply, match="ollama returned a reply"):
             Ollama(http=Recorded(answer)).call("p")
 
     def test_a_body_that_is_not_a_reply_at_all_blames_the_provider(self):

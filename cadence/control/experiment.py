@@ -7,7 +7,13 @@ from cadence.control.recall import key_for
 from cadence.core.dto import Directive, Report, RunHistory, TrialBudget, TrialResult
 from cadence.core.ports import Method
 from cadence.core.verdict import Failed
-from cadence.errors import ModelError, NoCandidates, PatchError, SetupError
+from cadence.errors import (
+    ModelError,
+    NoCandidates,
+    PatchError,
+    SetupError,
+    UnusableReply,
+)
 from cadence.execution.runner import TrialRunner
 from cadence.observe.channel import Emitter
 from cadence.observe.signals import (
@@ -127,7 +133,7 @@ class Experiment:
                     directive,
                     key=key_for(self.run_id, run.trials, trial.attempts),
                 )
-            except PatchError as error:
+            except UnusableReply as error:
                 if trial.may_retry:
                     trial.retry()
                     trace.emit(PatchRejected, reason=str(error))

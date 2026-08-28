@@ -24,10 +24,17 @@ from cadence.errors.setup import (
     UnknownPlugin,
     UnknownProvider,
 )
-from cadence.errors.trial import MetricNotReported, NoCandidates, PatchError
+from cadence.errors.trial import (
+    EmptyReply,
+    MetricNotReported,
+    NoCandidates,
+    PatchError,
+    UnusableReply,
+)
 
 __all__ = [
     "CadenceError",
+    "EmptyReply",
     "ManifestError",
     "MarkerError",
     "MetricNotReported",
@@ -42,4 +49,5 @@ __all__ = [
     "TerminalModelError",
     "UnknownPlugin",
     "UnknownProvider",
+    "UnusableReply",
 ]

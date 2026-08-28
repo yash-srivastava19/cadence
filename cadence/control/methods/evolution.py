@@ -120,7 +120,12 @@ class Evolution:
                 )
             )
             while len(living) > self.size:
-                living.remove(self.weakest(living))
+                # By identity: Measured and Unmeasured are pydantic models, so
+                # list.remove would drop the first member comparing equal --
+                # which is the same object only until Candidate grows the value
+                # equality its fingerprint already implies.
+                evicted = self.weakest(living)
+                living = [member for member in living if member is not evicted]
         return living
 
     def pick(self, living: Sequence[Individual], rng: random.Random) -> Individual:

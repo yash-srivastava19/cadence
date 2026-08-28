@@ -15,7 +15,7 @@ from cadence.control.backends.settings import Settings, settings_for
 from cadence.control.backends.wire import ChatRequest, ChatResponse
 from cadence.core.dto import Completion
 from cadence.core.ports import Audit
-from cadence.errors import TerminalModelError
+from cadence.errors import EmptyReply, TerminalModelError
 
 __all__ = ["OpenAIDialect", "chat_backend"]
 
@@ -43,6 +43,8 @@ class OpenAIDialect:
             self.settings.headers(),
         )
         reply = self._read(answer.body)
+        if not reply.choices:
+            raise EmptyReply(f"{self.name} returned a reply with no choices")
         return Completion(
             text=reply.text,
             model=reply.model or self.settings.model,
