@@ -9,6 +9,7 @@ from cadence.lifecycle.states import RunState
 from cadence.observe.channel import Channel, Fact
 
 __all__ = [
+    "CandidateBuilt",
     "Event",
     "ModelCalled",
     "PatchRejected",
@@ -17,6 +18,7 @@ __all__ = [
     "RunStarted",
     "TrialAbandoned",
     "TrialMeasured",
+    "TrialRetried",
     "TrialStarted",
     "cadence",
 ]
@@ -33,6 +35,10 @@ class RunStarted(Event):
     # Which configuration produced this run. Every result is read against it,
     # and the tape carries the text so a stored run explains itself.
     manifest: RecordedManifest
+    # The programs the search starts from. On the tape because they are the
+    # ancestors of every candidate, and lineage that starts nowhere is not
+    # lineage.
+    seeds: tuple[NonBlank, ...] = ()
     budget: Mapping[str, float] = Field(default_factory=dict)
 
 
@@ -47,6 +53,9 @@ class RunFinished(Event):
 
 class TrialStarted(Event):
     trial_id: NonBlank
+    # Where this trial sits in its run. The same number the trials table is
+    # unique on, so the tape and the table agree without either counting.
+    seq: int = Field(ge=0)
     parent: str | None = None
 
 
@@ -64,9 +73,36 @@ class ProposalReceived(Event):
     files_changed: int = Field(ge=0)
 
 
-class PatchRejected(Event):
+class TrialRetried(Event):
+    """The reply could not be used, and the trial is asking again.
+
+    Separate from PatchRejected because they used to be the same fact meaning
+    two different things -- one costs a model call, the other ends the trial --
+    and a tape you cannot tell them apart on cannot say what happened.
+    """
+
     trial_id: NonBlank
     reason: NonBlank
+
+
+class PatchRejected(Event):
+    """The diff would not apply, even after recount. The trial is unusable."""
+
+    trial_id: NonBlank
+    reason: NonBlank
+
+
+class CandidateBuilt(Event):
+    """The patch applied, and this program is what came out.
+
+    Carries the source itself, once: the journal puts it in blobs, keyed by
+    content, and keeps only the fingerprint on the tape.
+    """
+
+    trial_id: NonBlank
+    fingerprint: NonBlank
+    code: NonBlank
+    parent: str | None = None
 
 
 class TrialMeasured(Event):

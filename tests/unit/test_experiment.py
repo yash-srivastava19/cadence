@@ -75,6 +75,7 @@ class TestTheRunIsTraceable:
             "TrialStarted",
             "ModelCalled",
             "ProposalReceived",
+            "CandidateBuilt",
             "TrialMeasured",
             "RunFinished",
         ]
@@ -187,6 +188,7 @@ class TestEveryTransitionIsOnTheTape:
 
     def test_a_scored_trial_reports_every_step_it_took(self):
         from cadence.observe.signals import (
+            CandidateBuilt,
             ModelCalled,
             ProposalReceived,
             RunFinished,
@@ -203,6 +205,7 @@ class TestEveryTransitionIsOnTheTape:
             TrialStarted,
             ModelCalled,
             ProposalReceived,
+            CandidateBuilt,
             TrialMeasured,
             RunFinished,
         ]

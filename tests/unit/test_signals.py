@@ -15,7 +15,7 @@ from tests.factories import a_verdict
 class TestTheCadenceChannel:
     def test_a_run_can_be_followed_end_to_end(self):
         with cadence.recording() as tape:
-            TrialStarted(run_id="h1", trial_id="t1").emit()
+            TrialStarted(run_id="h1", trial_id="t1", seq=0).emit()
             ModelCalled(
                 run_id="h1",
                 trial_id="t1",
@@ -34,7 +34,7 @@ class TestTheCadenceChannel:
     def test_a_subscriber_can_watch_one_kind(self):
         seen = []
         stop = cadence.subscribe(seen.append, to=PatchRejected)
-        TrialStarted(run_id="h1", trial_id="t1").emit()
+        TrialStarted(run_id="h1", trial_id="t1", seq=0).emit()
         PatchRejected(run_id="h1", trial_id="t1", reason="no hunks").emit()
         stop()
         assert len(seen) == 1

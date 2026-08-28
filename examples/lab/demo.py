@@ -13,9 +13,9 @@ from cadence.control.manifest import load
 from cadence.control.region import split
 from cadence.control.registry import build
 from cadence.observe.signals import (
-    PatchRejected,
     TrialAbandoned,
     TrialMeasured,
+    TrialRetried,
     cadence,
 )
 
@@ -41,7 +41,7 @@ def watch(fact):
         print(
             f"    {fact.verdict.outcome}  {fact.verdict.reason.splitlines()[-1][:50]}"
         )
-    elif isinstance(fact, PatchRejected):
+    elif isinstance(fact, TrialRetried):
         print(f"    retry    {fact.reason[:50]}")
     elif isinstance(fact, TrialAbandoned):
         print(f"    rejected {fact.reason[:50]}")

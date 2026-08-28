@@ -24,6 +24,7 @@ from cadence.errors import (
 from cadence.execution.runner import TrialRunner
 from cadence.observe.channel import Emitter
 from cadence.observe.signals import (
+    CandidateBuilt,
     ModelCalled,
     PatchRejected,
     ProposalReceived,
@@ -31,6 +32,7 @@ from cadence.observe.signals import (
     RunStarted,
     TrialAbandoned,
     TrialMeasured,
+    TrialRetried,
     TrialStarted,
 )
 
@@ -64,6 +66,7 @@ class Experiment:
             RunStarted,
             method=type(self.method).__name__,
             manifest=self.manifest,
+            seeds=self.seeds,
             budget={"trials": float(self.budget)},
         )
         try:
@@ -104,7 +107,7 @@ class Experiment:
             parent=Candidate(code=directive.code),
         )
         trace = self.trace.about(trial_id=trial.id)
-        trace.emit(TrialStarted, parent=directive.parent)
+        trace.emit(TrialStarted, seq=trial.seq, parent=directive.parent)
 
         trial.prompt()
         suggestion = self._propose(run, trial, trace, directive)
@@ -130,6 +133,12 @@ class Experiment:
 
         child = Candidate(code=code, parent=directive.parent)
         trial.apply_patch(candidate=child)
+        trace.emit(
+            CandidateBuilt,
+            fingerprint=child.fingerprint,
+            code=child.code,
+            parent=directive.parent,
+        )
         verdict = self.runner.try_(child.code)
         trial.measure(verdict=verdict)
         trace.emit(TrialMeasured, verdict=verdict)
@@ -147,7 +156,7 @@ class Experiment:
             except UnusableReply as error:
                 if trial.may_retry:
                     trial.retry()
-                    trace.emit(PatchRejected, reason=str(error))
+                    trace.emit(TrialRetried, reason=str(error))
                     continue
                 trial.abandon(reason=str(error))
                 trace.emit(TrialAbandoned, reason=str(error))
