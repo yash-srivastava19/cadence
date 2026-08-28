@@ -101,10 +101,15 @@ class MetricReader:
         self.readers = tuple(readers)
 
     def read(self, stdout: str) -> Metrics:
-        found: dict[str, float] = {}
+        # The first reader that reports anything at all wins outright. Not
+        # merged: the line reader matches a stray `progress: 0.5`, and merging
+        # would let a log line overwrite the JSON a program deliberately
+        # printed -- scoring candidates on noise, which is the one failure the
+        # search cannot see.
+        found: Mapping[str, float] = {}
         for reader in self.readers:
-            found.update(reader.read(stdout))
-            if all(name in found for name in self.wanted):
+            found = reader.read(stdout)
+            if found:
                 break
         missing = [name for name in self.wanted if name not in found]
         if missing:

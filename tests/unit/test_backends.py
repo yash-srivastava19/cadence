@@ -196,9 +196,34 @@ class TestTheDialect:
         with pytest.raises(TerminalModelError, match="could not read"):
             Ollama(http=Recorded(answer)).call("p")
 
-    def test_a_choice_with_no_content_is_still_a_reply(self):
-        answer = HttpResponse(body={"choices": [{}]}, latency_ms=1.0)
-        assert Ollama(http=Recorded(answer)).call("p").text == ""
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param({"choices": []}, id="no choices"),
+            pytest.param({"choices": [{}]}, id="a choice with no message"),
+            pytest.param({"choices": [{"message": None}]}, id="a null message"),
+            pytest.param(
+                {"choices": [{"message": {"content": None}}]}, id="null content"
+            ),
+        ],
+    )
+    def test_every_spelling_of_saying_nothing_costs_a_trial(self, body):
+        """A provider has four ways to say the same thing, and null content is
+        the common one -- it is what a refusal and a tool call both look
+        like. Treating any of them as a body we cannot read would end the run
+        on a reply that is perfectly well formed."""
+        answer = HttpResponse(body=body, latency_ms=1.0)
+        with pytest.raises(EmptyReply):
+            Ollama(http=Recorded(answer)).call("p")
+
+    def test_a_reply_with_no_usage_is_read_as_costing_nothing_known(self):
+        """Gateways send `"usage": null`. It is not a reason to lose the run."""
+        answer = HttpResponse(
+            body={"choices": [{"message": {"content": "hi"}}], "usage": None},
+            latency_ms=1.0,
+        )
+        completion = Ollama(http=Recorded(answer)).call("p")
+        assert (completion.text, completion.tokens_in) == ("hi", 0)
 
     def test_the_latency_comes_from_the_transport(self):
         assert Ollama(http=Recorded(spoke())).call("p").latency_ms == 12.0
@@ -265,6 +290,14 @@ class TestEveryCallIsAudited:
         with pytest.raises(TerminalModelError):
             Ollama(http=Recorded(TerminalModelError("401")), audit=seen).call("p")
         assert "TerminalModelError" in seen.entries[0]["error"]
+
+    def test_a_reply_that_said_nothing_is_still_a_call_someone_paid_for(self):
+        seen = Recorder()
+        answer = HttpResponse(body={"choices": []}, latency_ms=1.0)
+        with pytest.raises(EmptyReply):
+            Ollama(http=Recorded(answer), audit=seen).call("p")
+        assert len(seen.entries) == 1
+        assert "EmptyReply" in seen.entries[0]["error"]
 
     def test_every_attempt_is_recorded(self):
         seen = Recorder()

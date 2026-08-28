@@ -32,11 +32,14 @@ class ChatRequest(Value):
 
 
 class Message(Parsed):
-    content: str = ""
+    # Null rather than absent, and both happen: an OpenAI-dialect provider
+    # sends `"content": null` for a refusal, a filtered reply or a tool call.
+    # A default only covers the absent case, so these are optional as well.
+    content: str | None = None
 
 
 class Choice(Parsed):
-    message: Message = Message()
+    message: Message | None = None
 
 
 class Usage(Parsed):
@@ -50,8 +53,23 @@ class ChatResponse(Parsed):
     # or a truncation, which is about this prompt and costs a trial.
     choices: tuple[Choice, ...]
     model: str | None = None
-    usage: Usage = Usage()
+    usage: Usage | None = None
 
     @property
     def text(self) -> str:
-        return self.choices[0].message.content if self.choices else ""
+        if not self.choices or self.choices[0].message is None:
+            return ""
+        return self.choices[0].message.content or ""
+
+    @property
+    def spent(self) -> Usage:
+        return self.usage or Usage()
+
+    @property
+    def said_nothing(self) -> bool:
+        """A well-formed reply carrying no completion.
+
+        No choices, or a choice whose content is null -- the two spellings a
+        provider uses for the same thing. Both cost a trial, not the run.
+        """
+        return not self.text

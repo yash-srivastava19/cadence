@@ -81,3 +81,20 @@ class TestGoals:
     def test_anything_else_is_refused(self):
         with pytest.raises(ValueError, match="minimize or maximize"):
             direction("lower")
+
+
+class TestJsonIsTheContract:
+    def test_a_json_object_wins_over_lines_that_disagree(self):
+        """The line reader matches a stray `progress: 0.5`. Merging the two
+        would let a log line overwrite what the program deliberately printed,
+        and the search would optimize toward the noise."""
+        stdout = 'value: 0.5\n{"value": 9.0}'
+        assert read(stdout, ["value"]) == {"value": 9.0}
+
+    def test_lines_are_not_consulted_to_fill_a_gap_in_the_json(self):
+        stdout = 'value: 0.5\nother: 2.0\n{"value": 9.0}'
+        with pytest.raises(MetricNotReported, match="other"):
+            read(stdout, ["value", "other"])
+
+    def test_lines_are_read_when_there_is_no_json_at_all(self):
+        assert read("value: 0.5\n", ["value"]) == {"value": 0.5}

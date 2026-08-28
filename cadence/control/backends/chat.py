@@ -43,13 +43,13 @@ class OpenAIDialect:
             self.settings.headers(),
         )
         reply = self._read(answer.body)
-        if not reply.choices:
-            raise EmptyReply(f"{self.name} returned a reply with no choices")
+        if reply.said_nothing:
+            raise EmptyReply(f"{self.name} returned a reply with no completion in it")
         return Completion(
             text=reply.text,
             model=reply.model or self.settings.model,
-            tokens_in=reply.usage.prompt_tokens,
-            tokens_out=reply.usage.completion_tokens,
+            tokens_in=reply.spent.prompt_tokens,
+            tokens_out=reply.spent.completion_tokens,
             latency_ms=answer.latency_ms,
         )
 

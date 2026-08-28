@@ -4,7 +4,7 @@ import time
 
 from cadence.core.dto import Completion
 from cadence.core.ports import Audit, Backend
-from cadence.errors import RetryableModelError, TerminalModelError
+from cadence.errors import RetryableModelError, TerminalModelError, UnusableReply
 
 __all__ = ["Reliable", "Silent"]
 
@@ -44,7 +44,10 @@ class Reliable:
         for attempt in range(1, self.attempts + 1):
             try:
                 completion = self.backend.call(prompt)
-            except TerminalModelError as error:
+            except (TerminalModelError, UnusableReply) as error:
+                # An unusable reply is not retried here -- the trial asks
+                # again, which is a fresh call. It is audited here because
+                # this is the only place that knows a call was paid for.
                 self.audit.failed(self.name, attempt, error)
                 raise
             except RetryableModelError as error:

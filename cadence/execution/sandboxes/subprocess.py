@@ -88,7 +88,9 @@ class SandboxRunStateMachine(StateMachine):
 class SandboxRun(Entity, machine=SandboxRunStateMachine):
     """One process group, from spawn to whatever ended it."""
 
-    def __init__(self, pgid: int = 0, status: SandboxRunState | None = None) -> None:
+    def __init__(
+        self, pgid: int | None = None, status: SandboxRunState | None = None
+    ) -> None:
         self.pgid = pgid
         self.status = status or SandboxRunState.RUNNING
         self.bind()
@@ -177,6 +179,10 @@ class Subprocess:
     def _reap_group(
         self, run: SandboxRun, process: subprocess.Popen
     ) -> tuple[str, str]:
+        # Never a bare int default on pgid: os.killpg(0, ...) signals our own
+        # process group, which is cadence and everything it has spawned.
+        if run.pgid is None:
+            raise RuntimeError("the sandbox has no process group to reap")
         try:
             os.killpg(run.pgid, signal.SIGTERM)
         except ProcessLookupError:

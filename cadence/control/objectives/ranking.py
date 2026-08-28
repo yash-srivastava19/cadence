@@ -15,7 +15,8 @@ class Weighted:
     """Metrics scaled by a number per metric. What the number means is the
     subclass's business: a weight to sum, or a direction to compare along."""
 
-    def __init__(self, needs: str, **weights: float) -> None:
+    # Positional-only, so a manifest may name a metric "needs".
+    def __init__(self, needs: str, /, **weights: float) -> None:
         if not weights:
             raise ValueError(needs)
         self.weights = weights
