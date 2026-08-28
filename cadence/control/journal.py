@@ -11,9 +11,8 @@ published, not a step the loop has to remember.
     journal = Journal(session)
     stop = cadence.record(journal.record)
 
-What it writes today: the tape, the run that produced it, and the trials and
-candidates the run made. Verdicts still need an identity for the task and the
-seeds they were measured against.
+What it writes today: the tape, the run that produced it, the trials and
+candidates the run made, and what each of them scored.
 """
 
 from collections.abc import Mapping
@@ -24,10 +23,19 @@ from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.orm import Session
 
 from cadence.control.locking import LocalLocks
-from cadence.control.storage import blobs, candidates, events, manifests, runs, trials
+from cadence.control.storage import (
+    blobs,
+    candidates,
+    events,
+    manifests,
+    runs,
+    trials,
+    verdicts,
+)
 from cadence.core.dto import RecordedManifest
 from cadence.core.identity import fingerprint as digest_of
 from cadence.core.ports import Locks
+from cadence.core.verdict import Scored
 from cadence.lifecycle.states import CandidateState, RunState, TrialState
 from cadence.observe.channel import Fact
 from cadence.observe.signals import (
@@ -129,6 +137,8 @@ class Journal:
             )
         elif isinstance(fact, CandidateBuilt):
             self._built(fact, run_id)
+        elif isinstance(fact, TrialMeasured):
+            self._measured(fact)
         reached = self.REACHED.get(type(fact))
         trial_id = getattr(fact, "trial_id", None)
         if (
@@ -141,6 +151,33 @@ class Journal:
                 .where(trials.c.id == trial_id)
                 .values(status=reached, reason=getattr(fact, "reason", None))
             )
+
+    def _measured(self, fact: TrialMeasured) -> None:
+        """What this candidate scored, against this task, on these seeds.
+
+        The three together are the primary key, so the row is the record of a
+        measurement and, once a manifest declares the verifier deterministic,
+        the cache that says it need not be taken again. Written either way --
+        what a candidate scored is worth keeping whether or not it may be
+        reused, and re-measuring is the same measurement, so on conflict the
+        row stands.
+        """
+        verdict = fact.verdict
+        self.session.execute(
+            upsert(verdicts)
+            .values(
+                candidate_hash=verdict.fingerprint,
+                task_hash=fact.task_hash,
+                seeds_hash=fact.seeds_hash,
+                outcome=verdict.outcome,
+                metrics=dict(verdict.metrics) if isinstance(verdict, Scored) else None,
+                reason=None if isinstance(verdict, Scored) else verdict.reason,
+                occurred_at=fact.at,
+            )
+            .on_conflict_do_nothing(
+                index_elements=["candidate_hash", "task_hash", "seeds_hash"]
+            )
+        )
 
     def _built(self, fact: CandidateBuilt, run_id: str) -> None:
         self._blob(fact.code)
