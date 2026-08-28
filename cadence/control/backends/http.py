@@ -1,21 +1,50 @@
+"""Posting JSON, and deciding what a status code means.
+
+Knows nothing about models or prompts. The only judgement it makes is whether
+asking again could plausibly work.
+"""
+
 import json
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Callable, Mapping
+from functools import wraps
+from typing import Any, ParamSpec, TypeVar
 
-from cadence.errors import RetryableModelError, TerminalModelError
+from cadence.core.values import Value
+from cadence.errors import ModelError, RetryableModelError, TerminalModelError
 
-__all__ = ["RETRYABLE", "Answer", "Http"]
+__all__ = ["RETRYABLE", "Http", "HttpResponse", "error_for", "timed"]
 
 RETRYABLE = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 
+P = ParamSpec("P")
+T = TypeVar("T")
 
-class Answer(dict):
-    """A decoded JSON body, with how long the call took."""
 
-    latency_ms: float = 0.0
+def timed(call: Callable[P, T]) -> Callable[P, tuple[T, float]]:
+    """Return what the call returned, and how many milliseconds it took."""
+
+    @wraps(call)
+    def timing(*args: P.args, **kwargs: P.kwargs) -> tuple[T, float]:
+        started = time.monotonic()
+        return call(*args, **kwargs), (time.monotonic() - started) * 1000
+
+    return timing
+
+
+def error_for(status: int, detail: str) -> ModelError:
+    """A 429 is worth backing off for. A 401 is worth nothing at all."""
+    message = f"{status}: {detail}"
+    if status in RETRYABLE:
+        return RetryableModelError(message)
+    return TerminalModelError(message)
+
+
+class HttpResponse(Value):
+    body: Mapping[str, Any]
+    latency_ms: float
 
 
 class Http:
@@ -25,41 +54,31 @@ class Http:
     def post(
         self,
         url: str,
-        payload: Mapping[str, Any],
+        request: Mapping[str, Any],
         headers: Mapping[str, str] | None = None,
-    ) -> Answer:
-        started = time.monotonic()
-        answer = self._once(url, payload, headers or {})
-        answer.latency_ms = (time.monotonic() - started) * 1000
-        return answer
+    ) -> HttpResponse:
+        body, latency_ms = self._send(url, request, headers or {})
+        return HttpResponse(body=body, latency_ms=latency_ms)
 
-    def _once(
-        self, url: str, payload: Mapping[str, Any], headers: Mapping[str, str]
-    ) -> Answer:
-        request = urllib.request.Request(
+    @timed
+    def _send(
+        self, url: str, request: Mapping[str, Any], headers: Mapping[str, str]
+    ) -> Mapping[str, Any]:
+        posted = urllib.request.Request(
             url,
-            data=json.dumps(payload).encode(),
+            data=json.dumps(request).encode(),
             headers={"Content-Type": "application/json", **headers},
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                return Answer(json.loads(response.read() or b"{}"))
+            with urllib.request.urlopen(posted, timeout=self.timeout) as response:
+                return json.loads(response.read() or b"{}")
         except urllib.error.HTTPError as error:
-            raise _classify(error.code, _body(error)) from error
+            raise error_for(error.code, _detail(error)) from error
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             raise RetryableModelError(f"{url} did not answer: {error}") from error
 
 
-def _classify(status: int, detail: str) -> Exception:
-    message = f"{status}: {detail}"
-    return (
-        RetryableModelError(message)
-        if status in RETRYABLE
-        else TerminalModelError(message)
-    )
-
-
-def _body(error: "urllib.error.HTTPError") -> str:
+def _detail(error: urllib.error.HTTPError) -> str:
     try:
         return error.read().decode()[:400]
     except Exception:

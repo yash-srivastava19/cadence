@@ -3,7 +3,7 @@ import inspect
 import shlex
 from pathlib import Path
 
-from cadence.control.backends.served import Scripted, known, served
+from cadence.control.backends import Scripted, chat_backend, known
 from cadence.control.experiment import Experiment
 from cadence.control.manifest import Manifest, Plugin
 from cadence.control.methods.evolution import Evolution
@@ -16,16 +16,18 @@ from cadence.parsing.metrics import direction
 
 __all__ = ["BACKENDS", "METHODS", "OBJECTIVES", "build", "seed_program"]
 
-def _make(name: str):
+def _provider(name: str):
+    """One row in providers.yml, as a backend factory."""
+
     def build(**options):
-        return served(name, **options)
+        return chat_backend(name, **options)
 
     return build
 
 
 METHODS = {"evolution": Evolution}
 OBJECTIVES = {"weighted_sum": WeightedSum, "pareto": Pareto}
-BACKENDS = {"scripted": Scripted, **{name: _make(name) for name in known()}}
+BACKENDS = {"scripted": Scripted, **{name: _provider(name) for name in known()}}
 
 
 def resolve(kind: str, known: dict, plugin: Plugin, **extra):

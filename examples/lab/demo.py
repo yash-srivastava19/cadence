@@ -7,7 +7,7 @@ Same thing `cadence run` does, but with scripted answers instead of an API key.
 
 from pathlib import Path
 
-from cadence.control.backends.served import Scripted
+from cadence.control.backends import Scripted
 from cadence.control.entities import Trial
 from cadence.control.manifest import load
 from cadence.control.region import split

@@ -35,6 +35,12 @@ class Settings(BaseModel):
     def needs_a_key(self) -> bool:
         return bool(self.key_from)
 
+    def headers(self) -> dict[str, str]:
+        """What this provider needs on the wire to accept a request."""
+        if not self.needs_a_key:
+            return {}
+        return {"Authorization": f"Bearer {self.demand_key()}"}
+
     def demand_key(self) -> str:
         if self.key:
             return self.key

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from cadence.control.backends.served import Scripted
+from cadence.control.backends import Scripted
 from cadence.control.model import Model, parse_patch, render
 from cadence.core.dto import Directive
 from cadence.errors import PatchError, TerminalModelError

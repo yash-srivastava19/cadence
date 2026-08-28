@@ -1,4 +1,4 @@
-from cadence.control.backends.served import Scripted
+from cadence.control.backends import Scripted
 from cadence.control.entities import Trial
 from cadence.control.experiment import Experiment
 from cadence.control.methods.evolution import Evolution

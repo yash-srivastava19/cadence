@@ -13,7 +13,7 @@ from typing import Any, Protocol, runtime_checkable
 from cadence.core.dto import Attempt, Completion, Directive, History, Ledger, Recalled
 from cadence.core.types import Metrics
 
-__all__ = ["Backend", "Calls", "Method", "Objective", "Task"]
+__all__ = ["Audit", "Backend", "Calls", "Method", "Objective", "Task"]
 
 
 @runtime_checkable
@@ -24,6 +24,20 @@ class Backend(Protocol):
     def name(self) -> str: ...
 
     def call(self, prompt: str) -> Completion: ...
+
+
+@runtime_checkable
+class Audit(Protocol):
+    """Somewhere every model call is reported, successful or not.
+
+    Two methods rather than one taking an optional error: a call that
+    succeeded and a call that failed are different events, and a caller that
+    has to check a field to tell them apart will eventually forget.
+    """
+
+    def succeeded(self, backend: str, attempt: int) -> None: ...
+
+    def failed(self, backend: str, attempt: int, error: Exception) -> None: ...
 
 
 @runtime_checkable

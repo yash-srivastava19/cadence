@@ -1,6 +1,6 @@
 import pytest
 
-from cadence.control.backends.served import Scripted
+from cadence.control.backends import Scripted
 from cadence.control.experiment import Experiment
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
