@@ -4,7 +4,14 @@ from cadence.control.entities import Candidate, Run, Trial
 from cadence.control.model import Model
 from cadence.control.patcher import apply_patch
 from cadence.control.recall import key_for
-from cadence.core.dto import Directive, Report, RunHistory, TrialBudget, TrialResult
+from cadence.core.dto import (
+    Directive,
+    RecordedManifest,
+    Report,
+    RunHistory,
+    TrialBudget,
+    TrialResult,
+)
 from cadence.core.ports import Method
 from cadence.core.verdict import Failed
 from cadence.errors import (
@@ -34,7 +41,7 @@ class Experiment:
     def __init__(
         self,
         run_id: str,
-        manifest_hash: str,
+        manifest: RecordedManifest,
         method: Method,
         model: Model,
         runner: TrialRunner,
@@ -42,7 +49,7 @@ class Experiment:
         budget: int,
     ) -> None:
         self.run_id = run_id
-        self.manifest_hash = manifest_hash
+        self.manifest = manifest
         self.method = method
         self.model = model
         self.runner = runner
@@ -56,7 +63,7 @@ class Experiment:
         self.trace.emit(
             RunStarted,
             method=type(self.method).__name__,
-            manifest_hash=self.manifest_hash,
+            manifest=self.manifest,
             budget={"trials": float(self.budget)},
         )
         try:
@@ -149,7 +156,9 @@ class Experiment:
     def _finish(self, run: Run, history: RunHistory, scored: int) -> Report:
         best = self.method.best(history)
         run.finish(best=best.verdict.fingerprint if best else None)
-        self.trace.emit(RunFinished, trials=run.trials, best=run.best)
+        self.trace.emit(
+            RunFinished, status=run.status, trials=run.trials, best=run.best
+        )
         return Report(
             run_id=self.run_id,
             status=run.status,
@@ -162,7 +171,13 @@ class Experiment:
 
     def _fail(self, run: Run, reason: str) -> Report:
         run.fail(reason=reason)
-        self.trace.emit(RunFinished, trials=run.trials, best=None)
+        self.trace.emit(
+            RunFinished,
+            status=run.status,
+            trials=run.trials,
+            best=None,
+            reason=reason,
+        )
         return Report(
             run_id=self.run_id,
             status=run.status,

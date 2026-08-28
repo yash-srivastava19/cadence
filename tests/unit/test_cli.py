@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from cadence.commands import app
@@ -10,6 +11,18 @@ runner = CliRunner()
 # check requires a marked region: without one, the model's reply would
 # replace the whole file.
 MARKED = "# CADENCE:BEGIN\n%s\n# CADENCE:END\n"
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_database(monkeypatch):
+    """`cadence run` records itself when DATABASE_URL is set, so these tests
+    must not depend on whether the developer has one.
+
+    They otherwise pass alone and fail in a full run: src/llm.py calls
+    load_dotenv() at import, which puts .env into os.environ for every test
+    that comes after it. That goes when src/ does.
+    """
+    monkeypatch.delenv("DATABASE_URL", raising=False)
 
 
 class TestCheck:

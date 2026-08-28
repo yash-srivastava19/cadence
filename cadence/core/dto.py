@@ -29,6 +29,7 @@ __all__ = [
     "Directive",
     "Proposal",
     "Recalled",
+    "RecordedManifest",
     "Report",
     "RunHistory",
     "Suggestion",
@@ -53,6 +54,18 @@ class Completion(Value):
             "tokens_out": self.tokens_out,
             "latency_ms": self.latency_ms,
         }
+
+
+class RecordedManifest(Value):
+    """The configuration a run was started from, as it will be written down.
+
+    The text as well as the hash: a hash tells you two runs used the same
+    configuration, and only the text tells you what that configuration said.
+    """
+
+    hash: NonBlank
+    source: NonBlank
+    api_version: NonBlank
 
 
 class Directive(Value):

@@ -10,6 +10,7 @@ from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
 from cadence.lifecycle.states import RunState
 from cadence.observe.signals import cadence
+from tests.factories import a_manifest
 
 BASELINE = "print('value: 0')"
 
@@ -29,7 +30,7 @@ GIVES_UP = [NONSENSE] * (Trial.max_attempts + 1)
 def an_experiment(*responses, budget=1, metrics=None):
     return Experiment(
         run_id="h1",
-        manifest_hash="mh",
+        manifest=a_manifest(),
         method=Evolution(objective=WeightedSum(value=1.0)),
         model=Model(backend=Scripted(*responses)),
         runner=TrialRunner(
