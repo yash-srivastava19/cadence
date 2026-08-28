@@ -2,7 +2,7 @@
 
 Read top to bottom, this is one trial: a Directive says what to improve, a
 Completion comes back from the provider, a Proposal is what we made of it, a
-Verdict is what running it was worth, an Attempt is that pair kept for the
+Verdict is what running it was worth, an TrialResult is that pair kept for the
 search, and a Report is what the user is told at the end.
 
 They live together on purpose. When a shape changes, the thing that broke and
@@ -25,14 +25,14 @@ from cadence.core.verdict import Scored, Verdict
 from cadence.lifecycle.states import RunState
 
 __all__ = [
-    "Attempt",
     "Completion",
     "Directive",
-    "History",
-    "Ledger",
     "Proposal",
     "Recalled",
     "Report",
+    "RunHistory",
+    "TrialBudget",
+    "TrialResult",
 ]
 
 
@@ -93,7 +93,7 @@ class Recalled(Value):
     completion: Completion
 
 
-class Attempt(Value):
+class TrialResult(Value):
     """A candidate that has been measured. The unit the search reasons over."""
 
     code: NonBlank
@@ -103,29 +103,29 @@ class Attempt(Value):
     def metrics(self) -> Metrics | None:
         """What it scored, or None if it never got a score.
 
-        The narrowing lives here so that callers holding an Attempt do not
+        The narrowing lives here so that callers holding an TrialResult do not
         each have to remember that a Failed verdict has no metrics.
         """
         return self.verdict.metrics if isinstance(self.verdict, Scored) else None
 
 
-class History(Value):
+class RunHistory(Value):
     """Every attempt this run has made, and the programs it started from."""
 
     run_id: NonBlank
     seeds: tuple[NonBlank, ...] = Field(min_length=1)
-    attempts: tuple[Attempt, ...] = ()
+    results: tuple[TrialResult, ...] = ()
 
     @property
     def index(self) -> int:
-        return len(self.attempts)
+        return len(self.results)
 
     @property
-    def scored(self) -> tuple[Attempt, ...]:
-        return tuple(a for a in self.attempts if a.verdict.is_scored)
+    def scored(self) -> tuple[TrialResult, ...]:
+        return tuple(r for r in self.results if r.verdict.is_scored)
 
 
-class Ledger(Value):
+class TrialBudget(Value):
     """What the run has spent, and what it is allowed to. Trials, not dollars."""
 
     spent: int = Field(ge=0)

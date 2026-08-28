@@ -4,7 +4,7 @@ from cadence.control.entities import Candidate, Run, Trial
 from cadence.control.model import Model
 from cadence.control.patcher import apply_patch
 from cadence.control.recall import key_for
-from cadence.core.dto import Attempt, Directive, History, Ledger, Report
+from cadence.core.dto import Directive, Report, RunHistory, TrialBudget, TrialResult
 from cadence.core.ports import Method
 from cadence.core.verdict import Failed
 from cadence.errors import ModelError, NoCandidates, PatchError, SetupError
@@ -60,12 +60,12 @@ class Experiment:
             return self._fail(run, f"{type(error).__name__}: {error}")
 
     def _search(self, run: Run) -> Report:
-        attempts: list[Attempt] = []
+        results: list[TrialResult] = []
         scored = 0
         while True:
-            history = self._history(attempts)
+            history = self._history(results)
             directive = self.method.next_directive(
-                history, Ledger(spent=run.trials, budget=self.budget)
+                history, TrialBudget(spent=run.trials, budget=self.budget)
             )
             if directive is None:
                 return self._finish(run, history, scored)
@@ -73,15 +73,15 @@ class Experiment:
             run.counted()
             if reply is None:
                 continue
-            attempts.append(reply)
+            results.append(reply)
             if isinstance(reply.verdict, Failed) and reply.verdict.escalates:
                 return self._fail(run, reply.verdict.reason)
             scored += reply.verdict.is_scored
 
-    def _history(self, attempts: list[Attempt]) -> History:
-        return History(run_id=self.run_id, seeds=self.seeds, attempts=tuple(attempts))
+    def _history(self, results: list[TrialResult]) -> RunHistory:
+        return RunHistory(run_id=self.run_id, seeds=self.seeds, results=tuple(results))
 
-    def _one(self, run: Run, directive: Directive) -> Attempt | None:
+    def _one(self, run: Run, directive: Directive) -> TrialResult | None:
         trial = Trial(
             id=Trial.id_for(self.run_id, run.trials, 0),
             parent=Candidate(code=directive.code),
@@ -116,7 +116,7 @@ class Experiment:
         verdict = self.runner.try_(child.code)
         trial.measure(verdict=verdict)
         trace.emit(TrialMeasured, verdict=verdict)
-        return Attempt(code=code, verdict=verdict)
+        return TrialResult(code=code, verdict=verdict)
 
     def _propose(self, run: Run, trial: Trial, trace, directive: Directive):
         # An unparseable reply is worth asking again for: it costs a model call,
@@ -136,7 +136,7 @@ class Experiment:
                 trace.emit(TrialAbandoned, reason=str(error))
                 return None
 
-    def _finish(self, run: Run, history: History, scored: int) -> Report:
+    def _finish(self, run: Run, history: RunHistory, scored: int) -> Report:
         best = self.method.best(history)
         run.finish(best=best.verdict.fingerprint if best else None)
         self.trace.emit(RunFinished, trials=run.trials, best=run.best)

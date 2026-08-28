@@ -10,7 +10,14 @@ and a new search strategy is one module.
 from collections.abc import Sequence
 from typing import Any, Protocol, runtime_checkable
 
-from cadence.core.dto import Attempt, Completion, Directive, History, Ledger, Recalled
+from cadence.core.dto import (
+    Completion,
+    Directive,
+    Recalled,
+    RunHistory,
+    TrialBudget,
+    TrialResult,
+)
 from cadence.core.types import Metrics
 
 __all__ = ["Audit", "Backend", "Calls", "Method", "Objective", "Task"]
@@ -64,9 +71,11 @@ class Objective(Protocol):
 class Method(Protocol):
     """How the next thing to try gets chosen. Owns the search, nothing else."""
 
-    def next_directive(self, history: History, ledger: Ledger) -> Directive | None: ...
+    def next_directive(
+        self, history: RunHistory, ledger: TrialBudget
+    ) -> Directive | None: ...
 
-    def best(self, history: History) -> Attempt | None: ...
+    def best(self, history: RunHistory) -> TrialResult | None: ...
 
 
 @runtime_checkable

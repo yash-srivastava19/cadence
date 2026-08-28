@@ -10,7 +10,7 @@ from cadence.control.methods.evolution import (
 )
 from cadence.control.model import hint_for
 from cadence.control.objectives.ranking import Pareto, WeightedSum
-from cadence.core.dto import Attempt, Directive, History, Ledger
+from cadence.core.dto import Directive, RunHistory, TrialBudget, TrialResult
 from cadence.core.ports import Method
 from cadence.core.verdict import Failed, Outcome, Scored
 from cadence.errors import NoCandidates
@@ -23,11 +23,11 @@ def a_verdict(metrics):
 
 
 def scored(code, value):
-    return Attempt(code=code, verdict=a_verdict({"value": float(value)}))
+    return TrialResult(code=code, verdict=a_verdict({"value": float(value)}))
 
 
 def crashed(code="x = 1"):
-    return Attempt(
+    return TrialResult(
         code=code,
         verdict=Failed(fingerprint="fp", outcome=Outcome.CRASHED, reason="boom"),
     )
@@ -45,12 +45,12 @@ def an_evolution(**kwargs):
     return Evolution(objective=WeightedSum(value=1.0), **kwargs)
 
 
-def past(*attempts, run_id="h1", seeds=(SEED,)):
-    return History(run_id=run_id, seeds=seeds, attempts=tuple(attempts))
+def past(*results, run_id="h1", seeds=(SEED,)):
+    return RunHistory(run_id=run_id, seeds=seeds, results=tuple(results))
 
 
 def ledger(spent=0, budget=10):
-    return Ledger(spent=spent, budget=budget)
+    return TrialBudget(spent=spent, budget=budget)
 
 
 def drive(method, budget, answers):
@@ -162,7 +162,7 @@ class TestTheObjectiveDecides:
 class TestRunningOut:
     def test_a_history_needs_at_least_one_seed(self):
         with pytest.raises(ValidationError, match="at least 1 item"):
-            History(run_id="h1", seeds=())
+            RunHistory(run_id="h1", seeds=())
 
     def test_a_tournament_needs_an_entrant(self):
         with pytest.raises(ValueError, match="at least one entrant"):

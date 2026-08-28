@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 from hashlib import sha256
 
 from cadence.control.entities import Candidate
-from cadence.core.dto import Attempt, Directive, History, Ledger
+from cadence.core.dto import Directive, RunHistory, TrialBudget, TrialResult
 from cadence.core.ports import Objective
 from cadence.core.values import Value
 from cadence.core.verdict import Scored
@@ -47,8 +47,8 @@ class Measured(Value):
     verdict: Scored
 
     @property
-    def attempt(self) -> Attempt:
-        return Attempt(code=self.candidate.code, verdict=self.verdict)
+    def result(self) -> TrialResult:
+        return TrialResult(code=self.candidate.code, verdict=self.verdict)
 
 
 Individual = Measured | Unmeasured
@@ -107,16 +107,16 @@ class Evolution:
     def weakest(self, members: Sequence[Individual]) -> Individual:
         return _extreme(members, self.worse)
 
-    def population(self, history: History) -> list[Individual]:
+    def population(self, history: RunHistory) -> list[Individual]:
         living: list[Individual] = [
             Unmeasured(candidate=Candidate(code=code)) for code in history.seeds
         ]
-        for attempt in history.attempts:
-            if not isinstance(attempt.verdict, Scored):
+        for result in history.results:
+            if not isinstance(result.verdict, Scored):
                 continue
             living.append(
                 Measured(
-                    candidate=Candidate(code=attempt.code), verdict=attempt.verdict
+                    candidate=Candidate(code=result.code), verdict=result.verdict
                 )
             )
             while len(living) > self.size:
@@ -127,14 +127,16 @@ class Evolution:
         entrants = [rng.choice(list(living)) for _ in range(self.tournament)]
         return self.strongest(entrants)
 
-    def best(self, history: History) -> Attempt | None:
+    def best(self, history: RunHistory) -> TrialResult | None:
         living = self.population(history)
         if not living:
             return None
         winner = self.strongest(living)
-        return winner.attempt if isinstance(winner, Measured) else None
+        return winner.result if isinstance(winner, Measured) else None
 
-    def next_directive(self, history: History, ledger: Ledger) -> Directive | None:
+    def next_directive(
+        self, history: RunHistory, ledger: TrialBudget
+    ) -> Directive | None:
         if ledger.exhausted:
             return None
         living = self.population(history)
