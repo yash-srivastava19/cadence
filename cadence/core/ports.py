@@ -8,6 +8,7 @@ and a new search strategy is one module.
 """
 
 from collections.abc import Sequence
+from contextlib import AbstractContextManager
 from typing import Any, Protocol, runtime_checkable
 
 from cadence.core.dto import (
@@ -20,7 +21,7 @@ from cadence.core.dto import (
 )
 from cadence.core.types import Metrics
 
-__all__ = ["Audit", "Backend", "Calls", "Method", "Objective", "Task"]
+__all__ = ["Audit", "Backend", "Calls", "Locks", "Method", "Objective", "Task"]
 
 
 @runtime_checkable
@@ -54,6 +55,21 @@ class Calls(Protocol):
     def get(self, key: str) -> Recalled | None: ...
 
     def put(self, key: str, recalled: Recalled) -> None: ...
+
+
+@runtime_checkable
+class Locks(Protocol):
+    """Somewhere to take a lock, so two workers do not do one piece of work.
+
+    A lock here reduces duplicated effort and contention. It is never the
+    thing that makes a double write impossible -- a lease can expire while
+    its holder is still working, so every path guarded by one of these needs
+    a unique constraint behind it that does not depend on timing.
+    """
+
+    def with_lock(
+        self, key: str, *, ttl: float | None = None, wait: float | None = None
+    ) -> AbstractContextManager[None]: ...
 
 
 @runtime_checkable
