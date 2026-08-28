@@ -1,11 +1,11 @@
 """Where a prompt goes.
 
-    scripted.py   canned answers, no network, no key
-    chat.py       any provider speaking the OpenAI dialect
-    reliable.py   retries and audits either of them
-    wire.py       the dialect itself
-    http.py       posting JSON
-    settings.py   providers.yml, and where keys come from
+- ``scripted`` -- canned answers, no network and no key
+- ``chat`` -- any provider speaking the OpenAI dialect
+- ``reliable`` -- retries and audits either of them
+- ``wire`` -- the dialect itself
+- ``http`` -- posting JSON
+- ``settings`` -- providers.yml, and where keys come from
 """
 
 from cadence.control.backends.chat import OpenAIDialect, chat_backend

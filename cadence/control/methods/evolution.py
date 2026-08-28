@@ -115,9 +115,7 @@ class Evolution:
             if not isinstance(result.verdict, Scored):
                 continue
             living.append(
-                Measured(
-                    candidate=Candidate(code=result.code), verdict=result.verdict
-                )
+                Measured(candidate=Candidate(code=result.code), verdict=result.verdict)
             )
             while len(living) > self.size:
                 # By identity: Measured and Unmeasured are pydantic models, so

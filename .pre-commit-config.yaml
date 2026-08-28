@@ -18,3 +18,24 @@ repos:
 
       - id: ruff-format
         types_or: [ python, pyi ]
+
+  # The two checks CI runs that are not hooks upstream. On push rather than on
+  # commit: they take seconds rather than milliseconds, and the point is to
+  # find out before the PR does, not before every commit does.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run mypy
+        language: system
+        types: [ python ]
+        pass_filenames: false
+        stages: [ pre-push ]
+
+      - id: lint-imports
+        name: the planes are layered
+        entry: uv run lint-imports
+        language: system
+        types: [ python ]
+        pass_filenames: false
+        stages: [ pre-push ]

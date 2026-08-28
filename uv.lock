@@ -156,6 +156,7 @@ test = [
 dev = [
     { name = "import-linter" },
     { name = "mypy" },
+    { name = "pre-commit" },
     { name = "types-pyyaml" },
 ]
 
@@ -202,6 +203,7 @@ provides-extras = ["test", "dev", "docs"]
 dev = [
     { name = "import-linter", specifier = ">=2.13" },
     { name = "mypy", specifier = ">=1.16.1" },
+    { name = "pre-commit", specifier = ">=4.2.0" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260815" },
 ]
 

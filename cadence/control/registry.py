@@ -16,6 +16,7 @@ from cadence.parsing.metrics import direction
 
 __all__ = ["BACKENDS", "METHODS", "OBJECTIVES", "build", "seed_program"]
 
+
 def _provider(name: str):
     """One row in providers.yml, as a backend factory."""
 

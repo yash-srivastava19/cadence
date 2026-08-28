@@ -224,5 +224,6 @@ skip_glob = ["*/migrations/*"]
 dev = [
     "import-linter>=2.13",
     "mypy>=1.16.1",
+    "pre-commit>=4.2.0",
     "types-pyyaml>=6.0.12.20260815",
 ]

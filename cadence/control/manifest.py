@@ -21,6 +21,7 @@ DEFAULT_MODEL = "scripted"
 DEFAULT_GUIDANCE = "IMPROVE.md"
 DEFAULT_RUN = "python {program}"
 
+
 class Strict(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
