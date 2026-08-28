@@ -15,7 +15,7 @@ know what a signal is.
 """
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, NamedTuple
 
 from pydantic import Field
 
@@ -31,6 +31,7 @@ __all__ = [
     "Recalled",
     "Report",
     "RunHistory",
+    "Suggestion",
     "TrialBudget",
     "TrialResult",
 ]
@@ -84,6 +85,19 @@ class Proposal(Value):
     @property
     def files_changed(self) -> int:
         return sum(1 for line in self.patch if line.startswith("+++"))
+
+
+class Suggestion(NamedTuple):
+    """What the model layer hands back: the proposal, and what it cost.
+
+    A tuple rather than a Value because every caller unpacks all three, and
+    because `replayed` is a fact about this call rather than about the
+    proposal -- the same proposal replayed is the same proposal.
+    """
+
+    proposal: Proposal
+    completion: Completion
+    replayed: bool = False
 
 
 class Recalled(Value):

@@ -1,11 +1,11 @@
 import difflib
 import re
 from collections.abc import Mapping
-from typing import Any, NamedTuple
+from typing import Any
 
 from cadence.control.recall import through
 from cadence.control.region import BEGIN, END, splice, split
-from cadence.core.dto import Completion, Directive, Proposal
+from cadence.core.dto import Directive, Proposal, Suggestion
 from cadence.core.ports import Backend, Calls
 from cadence.errors import PatchError
 
@@ -13,7 +13,6 @@ __all__ = [
     "HINTS",
     "TEMPLATES",
     "Model",
-    "Suggestion",
     "hint_for",
     "parse_patch",
     "parse_program",
@@ -131,12 +130,6 @@ def as_patch(before: str, after: str) -> tuple[str, ...]:
 
 def _lines(text: str) -> list[str]:
     return (text if text.endswith("\n") else text + "\n").splitlines(True)
-
-
-class Suggestion(NamedTuple):
-    proposal: Proposal
-    completion: Completion
-    replayed: bool = False
 
 
 class Model:
