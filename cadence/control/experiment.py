@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from cadence.control.entities import Candidate, Run, Trial, trial_id
+from cadence.control.entities import Candidate, Run, Trial
 from cadence.control.model import Model
 from cadence.control.patcher import apply_patch
 from cadence.control.recall import key_for
@@ -82,7 +82,7 @@ class Experiment:
 
     def _one(self, run: Run, directive: Directive) -> Attempt | None:
         trial = Trial(
-            id=trial_id(self.run_id, run.trials, 0),
+            id=Trial.id_for(self.run_id, run.trials, 0),
             parent=Candidate(code=directive.code),
         )
         trace = self.trace.about(trial_id=trial.id)

@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from statemachine import State, StateMachine
 
 from cadence.core.types import NonBlank
-from cadence.lifecycle.stateful import Stateful
+from cadence.lifecycle.entity import Entity
 from cadence.lifecycle.states import SandboxRunState
 
 __all__ = [
@@ -22,7 +22,7 @@ __all__ = [
     "Job",
     "Sandbox",
     "SandboxRun",
-    "SandboxRunMachine",
+    "SandboxRunStateMachine",
     "Subprocess",
 ]
 
@@ -74,7 +74,7 @@ class Execution(BaseModel):
         return any(sign in blamed for sign in OOM_SIGNS)
 
 
-class SandboxRunMachine(StateMachine):
+class SandboxRunStateMachine(StateMachine):
     running = State(value=SandboxRunState.RUNNING, initial=True)
     reaped = State(value=SandboxRunState.REAPED, final=True)
     killed = State(value=SandboxRunState.KILLED, final=True)
@@ -85,11 +85,30 @@ class SandboxRunMachine(StateMachine):
     kill = running.to(killed) | orphaned.to(killed)
 
 
-class SandboxRun(Stateful, machine=SandboxRunMachine):
-    def __init__(self, pgid: int | None = None, status=None) -> None:
+class SandboxRun(Entity, machine=SandboxRunStateMachine):
+    """One process group, from spawn to whatever ended it."""
+
+    def __init__(
+        self, pgid: int | None = None, status: SandboxRunState | None = None
+    ) -> None:
         self.pgid = pgid
-        self.status = status
+        self.status = status or SandboxRunState.RUNNING
         self.bind()
+
+    @property
+    def may_kill(self) -> bool:
+        return self._permits("kill")
+
+    def reap(self) -> None:
+        """It exited on its own and we collected it."""
+        self._fire("reap")
+
+    def orphan(self) -> None:
+        """It outlived the wait. Something is still running out there."""
+        self._fire("orphan")
+
+    def kill(self) -> None:
+        self._fire("kill")
 
 
 @runtime_checkable
