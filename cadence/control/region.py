@@ -1,15 +1,11 @@
 from typing import NamedTuple
 
-from cadence.exceptions import SetupError
+from cadence.errors import MarkerError
 
-__all__ = ["BEGIN", "END", "MarkerError", "Region", "splice", "split"]
+__all__ = ["BEGIN", "END", "Region", "splice", "split"]
 
 BEGIN = "CADENCE:BEGIN"
 END = "CADENCE:END"
-
-
-class MarkerError(SetupError):
-    pass
 
 
 class Region(NamedTuple):

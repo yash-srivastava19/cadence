@@ -6,27 +6,12 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from cadence.exceptions import CadenceError
+from cadence.errors import MissingKey, UnknownProvider
 
-__all__ = [
-    "LOCAL",
-    "MissingKey",
-    "Settings",
-    "UnknownProvider",
-    "known",
-    "settings_for",
-]
+__all__ = ["LOCAL", "Settings", "known", "settings_for"]
 
 FILE = Path(__file__).with_name("providers.yml")
 LOCAL = "providers.local.yml"
-
-
-class UnknownProvider(CadenceError):
-    pass
-
-
-class MissingKey(CadenceError):
-    pass
 
 
 class Settings(BaseModel):
@@ -49,6 +34,12 @@ class Settings(BaseModel):
     @property
     def needs_a_key(self) -> bool:
         return bool(self.key_from)
+
+    def headers(self) -> dict[str, str]:
+        """What this provider needs on the wire to accept a request."""
+        if not self.needs_a_key:
+            return {}
+        return {"Authorization": f"Bearer {self.demand_key()}"}
 
     def demand_key(self) -> str:
         if self.key:

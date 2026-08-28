@@ -3,39 +3,37 @@ import inspect
 import shlex
 from pathlib import Path
 
-from cadence.control.backends.served import Scripted, known, served
+from cadence.control.backends import Scripted, chat_backend, known
 from cadence.control.experiment import Experiment
 from cadence.control.manifest import Manifest, Plugin
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import Pareto, WeightedSum
-from cadence.exceptions import CadenceError
+from cadence.errors import UnknownPlugin
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
-from cadence.reading import direction
+from cadence.parsing.metrics import direction
 
-__all__ = ["BACKENDS", "METHODS", "OBJECTIVES", "Unknown", "build", "seed_program"]
-
-
-class Unknown(CadenceError):
-    pass
+__all__ = ["BACKENDS", "METHODS", "OBJECTIVES", "build", "seed_program"]
 
 
-def _make(name: str):
+def _provider(name: str):
+    """One row in providers.yml, as a backend factory."""
+
     def build(**options):
-        return served(name, **options)
+        return chat_backend(name, **options)
 
     return build
 
 
 METHODS = {"evolution": Evolution}
 OBJECTIVES = {"weighted_sum": WeightedSum, "pareto": Pareto}
-BACKENDS = {"scripted": Scripted, **{name: _make(name) for name in known()}}
+BACKENDS = {"scripted": Scripted, **{name: _provider(name) for name in known()}}
 
 
 def resolve(kind: str, known: dict, plugin: Plugin, **extra):
     if plugin.name not in known:
-        raise Unknown(
+        raise UnknownPlugin(
             f"no {kind} named {plugin.name!r};"
             f" known {kind}s: {', '.join(sorted(known))}"
         )
@@ -44,7 +42,7 @@ def resolve(kind: str, known: dict, plugin: Plugin, **extra):
     try:
         return factory(**extra, **plugin.options)
     except TypeError as error:
-        raise Unknown(f"{kind} {plugin.name!r}: {error}") from error
+        raise UnknownPlugin(f"{kind} {plugin.name!r}: {error}") from error
 
 
 def _reject_unknown_options(kind: str, plugin: Plugin, factory, extra: dict) -> None:
@@ -72,7 +70,7 @@ def _reject_unknown_options(kind: str, plugin: Plugin, factory, extra: dict) -> 
         close = difflib.get_close_matches(name, settable, n=1)
         suggestion = f" Did you mean {close[0]!r}?" if close else ""
         known_options = ", ".join(sorted(settable)) or "none"
-        raise Unknown(
+        raise UnknownPlugin(
             f"{kind} {plugin.name!r} has no option {name!r}.{suggestion}"
             f" Options: {known_options}"
         )
@@ -88,7 +86,7 @@ def objective_for(manifest: Manifest):
 def seed_program(manifest: Manifest, root: Path) -> str:
     path = root / manifest.program
     if not path.exists():
-        raise Unknown(f"{manifest.program} does not exist in {root}")
+        raise UnknownPlugin(f"{manifest.program} does not exist in {root}")
     return path.read_text()
 
 

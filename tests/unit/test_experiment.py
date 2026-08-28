@@ -1,14 +1,15 @@
-from cadence.control.backends.served import Scripted
+from cadence.control.backends import Scripted
 from cadence.control.entities import Trial
-from cadence.control.experiment import Experiment, Report
+from cadence.control.experiment import Experiment
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import WeightedSum
-from cadence.exceptions import TerminalModelError
+from cadence.core.dto import Report
+from cadence.errors import EmptyReply, TerminalModelError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
-from cadence.signals import cadence
-from cadence.states import RunState
+from cadence.lifecycle.states import RunState
+from cadence.observe.signals import cadence
 
 BASELINE = "print('value: 0')"
 
@@ -82,7 +83,7 @@ class TestTheRunIsTraceable:
         assert {fact.run_id for fact in tape} == {"h1"}
 
     def test_the_model_call_reports_what_it_cost(self):
-        from cadence.signals import ModelCalled
+        from cadence.observe.signals import ModelCalled
 
         with cadence.recording() as tape:
             an_experiment(IMPROVES).run()
@@ -91,14 +92,14 @@ class TestTheRunIsTraceable:
         assert called.tokens_out > 0
 
     def test_the_measured_event_carries_the_verdict(self):
-        from cadence.signals import TrialMeasured
+        from cadence.observe.signals import TrialMeasured
 
         with cadence.recording() as tape:
             an_experiment(IMPROVES).run()
         assert tape.of(TrialMeasured)[0].verdict.is_scored
 
     def test_an_abandoned_trial_is_visible_on_the_tape(self):
-        from cadence.signals import TrialAbandoned
+        from cadence.observe.signals import TrialAbandoned
 
         with cadence.recording() as tape:
             an_experiment(*GIVES_UP).run()
@@ -145,6 +146,14 @@ class TestFailingWell:
         assert experiment.run().status == RunState.FAILED
         assert len(experiment.model.backend.prompts) == 1
 
+    def test_a_reply_with_nothing_in_it_costs_a_trial_not_the_run(self):
+        """A content filter is about one prompt. Ending a 500-trial run on it
+        would be worse than the empty completion this replaced."""
+        experiment = an_experiment(EmptyReply("no choices"), IMPROVES)
+        report = experiment.run()
+        assert report.status == RunState.FINISHED
+        assert report.scored == 1
+
 
 class TestABrokenProjectStopsTheRun:
     TWO_MARKERS = "# CADENCE:BEGIN\nx = 1\n# CADENCE:BEGIN\ny = 2\n# CADENCE:END\n"
@@ -167,3 +176,45 @@ class TestABrokenProjectStopsTheRun:
         experiment = self._marked(self.TWO_MARKERS)
         experiment.run()
         assert len(experiment.model.backend.prompts) == 1
+
+
+class TestEveryTransitionIsOnTheTape:
+    """The entities do not emit; Experiment fires the transition and reports
+    the fact, in one function. That keeps a run_id out of Candidate, and it
+    makes this test the thing that stops the two halves drifting apart."""
+
+    def test_a_scored_trial_reports_every_step_it_took(self):
+        from cadence.observe.signals import (
+            ModelCalled,
+            ProposalReceived,
+            RunFinished,
+            RunStarted,
+            TrialMeasured,
+            TrialStarted,
+        )
+
+        with cadence.recording() as tape:
+            an_experiment(IMPROVES).run()
+        reported = [type(fact) for fact in tape]
+        assert reported == [
+            RunStarted,
+            TrialStarted,
+            ModelCalled,
+            ProposalReceived,
+            TrialMeasured,
+            RunFinished,
+        ]
+
+    def test_a_trial_that_reached_the_sandbox_carries_its_verdict(self):
+        from cadence.observe.signals import TrialMeasured
+
+        with cadence.recording() as tape:
+            an_experiment(IMPROVES).run()
+        assert tape.of(TrialMeasured)[0].verdict.is_scored
+
+    def test_a_failed_run_still_reports_that_it_finished(self):
+        from cadence.observe.signals import RunFinished
+
+        with cadence.recording() as tape:
+            an_experiment(TerminalModelError("401")).run()
+        assert tape.of(RunFinished)[0].best is None

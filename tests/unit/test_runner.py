@@ -1,10 +1,10 @@
 import pytest
 
 from cadence.control.patcher import apply_patch
-from cadence.exceptions import PatchError
+from cadence.core.verdict import Outcome
+from cadence.errors import PatchError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
-from cadence.verdict import Outcome
 
 BASELINE = "print('value: 0')"
 BETTER = "print('value: 9')"
@@ -52,7 +52,7 @@ class TestScoring:
         assert a_runner().try_(BETTER).metrics["value"] == 9.0
 
     def test_the_verdict_names_the_code_it_measured(self):
-        from cadence.verdict import fingerprint
+        from cadence.core.identity import fingerprint
 
         assert a_runner().try_(BETTER).fingerprint == fingerprint(BETTER)
 

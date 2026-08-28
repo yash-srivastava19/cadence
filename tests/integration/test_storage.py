@@ -34,7 +34,7 @@ from cadence.control.storage import (  # noqa: E402
     trials,
     verdicts,
 )
-from cadence.states import RunState  # noqa: E402
+from cadence.lifecycle.states import RunState  # noqa: E402
 
 # What the migration granted, and what a reviewer can read off `\dp` in psql.
 APPEND_ONLY = (blobs, manifests, templates, verdicts, events, model_calls)

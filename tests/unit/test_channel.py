@@ -3,7 +3,7 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from cadence.events import Channel, Fact
+from cadence.observe.channel import Channel, Fact
 
 lab = Channel("lab")
 
@@ -71,7 +71,7 @@ class TestOneSubscriberCannotBreakAnother:
 
     def test_a_failing_subscriber_is_logged(self, caplog):
         stop = lab.subscribe(_explode)
-        with caplog.at_level(logging.ERROR, logger="cadence.events"):
+        with caplog.at_level(logging.ERROR, logger="cadence.observe.channel"):
             Measured(reading=1.0).emit()
         stop()
         assert "boom" in caplog.text

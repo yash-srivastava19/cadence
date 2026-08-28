@@ -1,15 +1,16 @@
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from cadence.control.region import BEGIN, END
-from cadence.exceptions import CadenceError
-from cadence.reading import GOALS
+from cadence.core.types import NonBlank
+from cadence.errors import ManifestError
+from cadence.parsing.metrics import Goal
 
-__all__ = ["API_VERSIONS", "Manifest", "ManifestError", "Plugin", "load"]
+__all__ = ["API_VERSIONS", "Manifest", "Plugin", "load"]
 
 API_VERSIONS = ("cadence/v1alpha1",)
 FILENAME = ".cadence"
@@ -19,12 +20,6 @@ DEFAULT_MODEL = "scripted"
 
 DEFAULT_GUIDANCE = "IMPROVE.md"
 DEFAULT_RUN = "python {program}"
-
-NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-
-
-class ManifestError(CadenceError):
-    pass
 
 
 class Strict(BaseModel):
@@ -70,7 +65,7 @@ class Sandbox(Strict):
 class Manifest(Strict):
     api_version: NonBlank = Field(alias="apiVersion")
     program: NonBlank
-    metrics: Mapping[NonBlank, Literal[GOALS]] = Field(min_length=1)
+    metrics: Mapping[NonBlank, Goal] = Field(min_length=1)
     run: NonBlank = DEFAULT_RUN
     guidance: NonBlank = DEFAULT_GUIDANCE
     task: NonBlank | None = None

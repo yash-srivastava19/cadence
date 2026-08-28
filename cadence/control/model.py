@@ -1,16 +1,23 @@
 import difflib
 import re
 from collections.abc import Mapping
-from typing import Any, NamedTuple
+from typing import Any
 
-from cadence.control.backends.served import Backend, Completion
-from cadence.control.recall import Calls, through
+from cadence.control.recall import through
 from cadence.control.region import BEGIN, END, splice, split
-from cadence.exceptions import PatchError
-from cadence.interfaces import Directive
-from cadence.verdict import Proposal
+from cadence.core.dto import Directive, Proposal, Suggestion
+from cadence.core.ports import Backend, Calls
+from cadence.errors import PatchError
 
-__all__ = ["TEMPLATES", "Model", "Suggestion", "parse_patch", "parse_program", "render"]
+__all__ = [
+    "HINTS",
+    "TEMPLATES",
+    "Model",
+    "hint_for",
+    "parse_patch",
+    "parse_program",
+    "render",
+]
 
 GUIDANCE = """
 
@@ -57,6 +64,21 @@ Reply with the replacement for the marked section only, inside a ```python
 fenced block. Do not include the marker lines themselves, and do not change
 anything outside them.\
 """
+
+#: What to try next, rotated by trial index. Prompt content, so it lives with
+#: the templates: a search method should not have to carry English around to
+#: be swapped out, and tuning these should not mean editing an algorithm.
+HINTS = (
+    "make it faster without changing what it returns",
+    "handle the case the current code ignores",
+    "replace the inner loop with something cheaper",
+    "try a different strategy entirely",
+)
+
+
+def hint_for(index: int) -> str:
+    return HINTS[index % len(HINTS)]
+
 
 TEMPLATES: Mapping[str, str] = {
     "improve": IMPROVE,
@@ -110,12 +132,6 @@ def _lines(text: str) -> list[str]:
     return (text if text.endswith("\n") else text + "\n").splitlines(True)
 
 
-class Suggestion(NamedTuple):
-    proposal: Proposal
-    completion: Completion
-    replayed: bool = False
-
-
 class Model:
     def __init__(
         self,
@@ -139,7 +155,7 @@ class Model:
         return {
             "template": self.template,
             "code": directive.code,
-            "hint": directive.hint,
+            "hint": hint_for(directive.index),
             "guidance": _guidance_block(self.guidance),
         }
 

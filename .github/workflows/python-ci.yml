@@ -25,6 +25,15 @@ jobs:
       - name: Run pre-commit
         run: pre-commit run --all-files
 
+      # Its own step so a type failure reads as a type failure. Configured in
+      # pyproject; it checks cadence/ only, and it is clean.
+      - name: Type-check
+        run: mypy
+
+      # The planes are a layering claim. This is what makes it a rule.
+      - name: Check the import layers
+        run: lint-imports
+
       # Its own step so a docs failure reads as a docs failure.
       - name: Check the documentation against the code
         run: pytest tests/test_docs.py -q

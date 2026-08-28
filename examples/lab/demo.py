@@ -7,12 +7,17 @@ Same thing `cadence run` does, but with scripted answers instead of an API key.
 
 from pathlib import Path
 
-from cadence.control.backends.served import Scripted
+from cadence.control.backends import Scripted
 from cadence.control.entities import Trial
 from cadence.control.manifest import load
 from cadence.control.region import split
 from cadence.control.registry import build
-from cadence.signals import PatchRejected, TrialAbandoned, TrialMeasured, cadence
+from cadence.observe.signals import (
+    PatchRejected,
+    TrialAbandoned,
+    TrialMeasured,
+    cadence,
+)
 
 GREEDY = """    order = sorted(
         range(len(items)), key=lambda i: -items[i][1] / items[i][0]

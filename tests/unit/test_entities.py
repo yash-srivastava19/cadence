@@ -1,9 +1,10 @@
 import pytest
 from statemachine.exceptions import TransitionNotAllowed
 
-from cadence.control.entities import Candidate, Run, Trial, fingerprint, trial_id
-from cadence.states import CandidateState, RunState, TrialState
-from cadence.verdict import Scored
+from cadence.control.entities import Candidate, Run, Trial
+from cadence.core.identity import fingerprint
+from cadence.core.verdict import Scored
+from cadence.lifecycle.states import CandidateState, RunState, TrialState
 
 
 def a_candidate(code="def pack(): return []"):
@@ -11,7 +12,7 @@ def a_candidate(code="def pack(): return []"):
 
 
 def a_trial():
-    return Trial(id=trial_id("h1", 0, 0), parent=a_candidate())
+    return Trial(id=Trial.id_for("h1", 0, 0), parent=a_candidate())
 
 
 class TestFingerprint:
@@ -33,10 +34,10 @@ class TestFingerprint:
 
 class TestTrialIdIsDerived:
     def test_the_same_position_gives_the_same_id(self):
-        assert trial_id("h1", 2, 5) == trial_id("h1", 2, 5)
+        assert Trial.id_for("h1", 2, 5) == Trial.id_for("h1", 2, 5)
 
     def test_it_names_its_run_and_position(self):
-        assert trial_id("h1", 2, 5) == "h1/2/5"
+        assert Trial.id_for("h1", 2, 5) == "h1/2/5"
 
     def test_a_trial_cannot_be_built_without_one(self):
         with pytest.raises(TypeError):
@@ -139,7 +140,7 @@ class TestATrial:
 
     def test_one_recovered_from_storage_carries_on(self):
         trial = Trial(
-            id=trial_id("h1", 0, 0),
+            id=Trial.id_for("h1", 0, 0),
             parent=a_candidate(),
             status=TrialState.MATERIALIZED,
         )

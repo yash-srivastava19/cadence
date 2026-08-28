@@ -1,17 +1,43 @@
 import pytest
 
-from cadence.control.backends.served import (
-    Backend,
-    Gemini,
-    Ollama,
-    Reliable,
-    Scripted,
-    served,
-)
-from cadence.control.backends.settings import MissingKey, known, settings_for
+from cadence.control.backends import Reliable, Scripted, chat_backend, known
+from cadence.control.backends.http import RETRYABLE, Http, HttpResponse, error_for
+from cadence.control.backends.settings import settings_for
 from cadence.control.registry import BACKENDS
-from cadence.exceptions import RetryableModelError, TerminalModelError
-from cadence.http import RETRYABLE, Answer, Http
+from cadence.core.ports import Backend
+from cadence.errors import (
+    EmptyReply,
+    MissingKey,
+    RetryableModelError,
+    TerminalModelError,
+)
+
+
+def Ollama(**options):
+    return chat_backend("ollama", **options)
+
+
+def Gemini(**options):
+    return chat_backend("gemini", **options)
+
+
+class Recorder:
+    """An audit that keeps what it was told."""
+
+    def __init__(self):
+        self.entries = []
+
+    def succeeded(self, backend, attempt):
+        self.entries.append({"backend": backend, "attempt": attempt, "error": None})
+
+    def failed(self, backend, attempt, error):
+        self.entries.append(
+            {
+                "backend": backend,
+                "attempt": attempt,
+                "error": f"{type(error).__name__}: {error}",
+            }
+        )
 
 
 class Recorded:
@@ -21,8 +47,8 @@ class Recorded:
         self.answers = list(answers)
         self.sent = []
 
-    def post(self, url, payload, headers=None):
-        self.sent.append((url, payload, headers or {}))
+    def post(self, url, request, headers=None):
+        self.sent.append((url, request, headers or {}))
         answer = self.answers.pop(0)
         if isinstance(answer, Exception):
             raise answer
@@ -30,15 +56,14 @@ class Recorded:
 
 
 def spoke(text="hi", tokens_in=7, tokens_out=3, model="m"):
-    answer = Answer(
-        {
+    return HttpResponse(
+        body={
             "model": model,
             "choices": [{"message": {"content": text}}],
             "usage": {"prompt_tokens": tokens_in, "completion_tokens": tokens_out},
-        }
+        },
+        latency_ms=12.0,
     )
-    answer.latency_ms = 12.0
-    return answer
 
 
 class TestProvidersAreData:
@@ -58,7 +83,7 @@ class TestProvidersAreData:
         assert settings_for("ollama").model
 
     def test_one_it_has_not_makes_you_name_your_own(self):
-        from cadence.control.backends.settings import UnknownProvider
+        from cadence.errors import UnknownProvider
 
         with pytest.raises(UnknownProvider, match="no default model"):
             settings_for("openai")
@@ -67,10 +92,10 @@ class TestProvidersAreData:
         assert settings_for("openai", model="gpt-4.1").model == "gpt-4.1"
 
     def test_an_unknown_one_lists_the_known_ones(self):
-        from cadence.control.backends.settings import UnknownProvider
+        from cadence.errors import UnknownProvider
 
         with pytest.raises(UnknownProvider, match="gemini"):
-            served("nope")
+            chat_backend("nope")
 
     def test_adding_one_needs_no_python(self):
         """Every provider differs only in settings, so the classes are identical."""
@@ -159,10 +184,46 @@ class TestTheDialect:
         completion = Ollama(http=Recorded(spoke(tokens_in=11, tokens_out=5))).call("p")
         assert (completion.tokens_in, completion.tokens_out) == (11, 5)
 
-    def test_an_empty_answer_is_empty_text_not_a_crash(self):
-        answer = Answer({"choices": []})
-        answer.latency_ms = 1.0
-        assert Ollama(http=Recorded(answer)).call("p").text == ""
+    def test_a_reply_with_no_choices_costs_a_trial_not_the_run(self):
+        """A content filter or a truncation. Not an empty completion, which
+        would be blamed on the model and retried as unparseable prose."""
+        answer = HttpResponse(body={"choices": []}, latency_ms=1.0)
+        with pytest.raises(EmptyReply, match="ollama returned a reply"):
+            Ollama(http=Recorded(answer)).call("p")
+
+    def test_a_body_that_is_not_a_reply_at_all_blames_the_provider(self):
+        answer = HttpResponse(body={"error": {"message": "quota"}}, latency_ms=1.0)
+        with pytest.raises(TerminalModelError, match="could not read"):
+            Ollama(http=Recorded(answer)).call("p")
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param({"choices": []}, id="no choices"),
+            pytest.param({"choices": [{}]}, id="a choice with no message"),
+            pytest.param({"choices": [{"message": None}]}, id="a null message"),
+            pytest.param(
+                {"choices": [{"message": {"content": None}}]}, id="null content"
+            ),
+        ],
+    )
+    def test_every_spelling_of_saying_nothing_costs_a_trial(self, body):
+        """A provider has four ways to say the same thing, and null content is
+        the common one -- it is what a refusal and a tool call both look
+        like. Treating any of them as a body we cannot read would end the run
+        on a reply that is perfectly well formed."""
+        answer = HttpResponse(body=body, latency_ms=1.0)
+        with pytest.raises(EmptyReply):
+            Ollama(http=Recorded(answer)).call("p")
+
+    def test_a_reply_with_no_usage_is_read_as_costing_nothing_known(self):
+        """Gateways send `"usage": null`. It is not a reason to lose the run."""
+        answer = HttpResponse(
+            body={"choices": [{"message": {"content": "hi"}}], "usage": None},
+            latency_ms=1.0,
+        )
+        completion = Ollama(http=Recorded(answer)).call("p")
+        assert (completion.text, completion.tokens_in) == ("hi", 0)
 
     def test_the_latency_comes_from_the_transport(self):
         assert Ollama(http=Recorded(spoke())).call("p").latency_ms == 12.0
@@ -171,15 +232,11 @@ class TestTheDialect:
 class TestWhatIsWorthRetrying:
     @pytest.mark.parametrize("status", sorted(RETRYABLE))
     def test_these_are_retryable(self, status):
-        from cadence.http import _classify
-
-        assert isinstance(_classify(status, ""), RetryableModelError)
+        assert isinstance(error_for(status, ""), RetryableModelError)
 
     @pytest.mark.parametrize("status", [400, 401, 403, 404, 422])
     def test_these_are_terminal(self, status):
-        from cadence.http import _classify
-
-        assert isinstance(_classify(status, ""), TerminalModelError)
+        assert isinstance(error_for(status, ""), TerminalModelError)
 
     def test_a_retryable_error_is_retried(self):
         http = Recorded(RetryableModelError("429"), spoke("hi"))
@@ -204,7 +261,7 @@ class TestWhatIsWorthRetrying:
 
 class TestAnythingCanBeMadeReliable:
     def test_a_backend_with_no_http_gets_the_same_treatment(self):
-        seen, tries = [], []
+        seen, tries = Recorder(), []
 
         class SdkBackend:
             name = "sdk"
@@ -215,30 +272,36 @@ class TestAnythingCanBeMadeReliable:
                     raise RetryableModelError("busy")
                 return Scripted("done").call(prompt)
 
-        backend = Reliable(SdkBackend(), attempts=3, backoff=0, audit=seen.append)
+        backend = Reliable(SdkBackend(), attempts=3, backoff=0, audit=seen)
         assert backend.call("p").text == "done"
         assert len(tries) == 2
-        assert [entry["attempt"] for entry in seen] == [1, 2]
+        assert [entry["attempt"] for entry in seen.entries] == [1, 2]
 
 
 class TestEveryCallIsAudited:
     def test_a_success_is_recorded(self):
-        seen = []
-        Ollama(http=Recorded(spoke()), audit=seen.append).call("p")
-        assert seen[0]["backend"] == "ollama"
-        assert seen[0]["error"] is None
+        seen = Recorder()
+        Ollama(http=Recorded(spoke()), audit=seen).call("p")
+        assert seen.entries[0]["backend"] == "ollama"
+        assert seen.entries[0]["error"] is None
 
     def test_a_failure_is_recorded_with_its_error(self):
-        seen = []
+        seen = Recorder()
         with pytest.raises(TerminalModelError):
-            Ollama(http=Recorded(TerminalModelError("401")), audit=seen.append).call(
-                "p"
-            )
-        assert "TerminalModelError" in seen[0]["error"]
+            Ollama(http=Recorded(TerminalModelError("401")), audit=seen).call("p")
+        assert "TerminalModelError" in seen.entries[0]["error"]
+
+    def test_a_reply_that_said_nothing_is_still_a_call_someone_paid_for(self):
+        seen = Recorder()
+        answer = HttpResponse(body={"choices": []}, latency_ms=1.0)
+        with pytest.raises(EmptyReply):
+            Ollama(http=Recorded(answer), audit=seen).call("p")
+        assert len(seen.entries) == 1
+        assert "EmptyReply" in seen.entries[0]["error"]
 
     def test_every_attempt_is_recorded(self):
-        seen = []
+        seen = Recorder()
         http = Recorded(*[RetryableModelError("429")] * 3)
         with pytest.raises(RetryableModelError):
-            Ollama(http=http, attempts=3, backoff=0, audit=seen.append).call("p")
-        assert [entry["attempt"] for entry in seen] == [1, 2, 3]
+            Ollama(http=http, attempts=3, backoff=0, audit=seen).call("p")
+        assert [entry["attempt"] for entry in seen.entries] == [1, 2, 3]

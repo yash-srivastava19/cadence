@@ -4,7 +4,7 @@ from collections.abc import Sequence
 import whatthepatch
 from whatthepatch.exceptions import WhatThePatchException
 
-from cadence.exceptions import PatchError
+from cadence.errors import PatchError
 
 __all__ = ["apply_patch", "recount"]
 

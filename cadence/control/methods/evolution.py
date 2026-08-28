@@ -1,38 +1,82 @@
+"""Tournament selection over a fixed-size population.
+
+The whole search, in three sentences: keep the best few programs seen so far,
+pick a parent by holding a small tournament between random members, and evict
+the weakest once there are too many. Which program wins a comparison is the
+Objective's business, never this file's.
+"""
+
 import random
+from collections.abc import Callable, Sequence
 from hashlib import sha256
 
 from cadence.control.entities import Candidate
-from cadence.exceptions import NoCandidates
-from cadence.interfaces import Attempt, Directive, History, Ledger, Objective
-from cadence.verdict import Verdict
+from cadence.core.dto import Directive, RunHistory, TrialBudget, TrialResult
+from cadence.core.ports import Objective
+from cadence.core.values import Value
+from cadence.core.verdict import Scored
+from cadence.errors import NoCandidates
 
-__all__ = ["HINTS", "Evolution", "Member", "rng_for"]
-
-HINTS = (
-    "make it faster without changing what it returns",
-    "handle the case the current code ignores",
-    "replace the inner loop with something cheaper",
-    "try a different strategy entirely",
-)
+__all__ = ["Evolution", "Measured", "Unmeasured"]
 
 
-def rng_for(run_id: str, index: int) -> random.Random:
+class Unmeasured(Value):
+    """A program in the population that has not been scored.
+
+    The seeds start here. It can be chosen as a parent and it can be evicted;
+    it can never win a comparison, because there is nothing to compare.
+    """
+
+    model_config = Value.model_config | {"arbitrary_types_allowed": True}
+
+    candidate: Candidate
+
+
+class Measured(Value):
+    """A program and what it scored.
+
+    Two classes rather than one with `verdict: Verdict | None`: the guard
+    `if not member.measured` used to stand in front of every use of
+    `.metrics`, and forgetting it was a runtime error the type checker could
+    not warn about. Now the type says which one you are holding.
+    """
+
+    model_config = Value.model_config | {"arbitrary_types_allowed": True}
+
+    candidate: Candidate
+    verdict: Scored
+
+    @property
+    def result(self) -> TrialResult:
+        return TrialResult(code=self.candidate.code, verdict=self.verdict)
+
+
+Individual = Measured | Unmeasured
+Better = Callable[[Individual, Individual], bool]
+
+
+def _rng_for(run_id: str, index: int) -> random.Random:
+    """Seeded from the run and the trial, so parent choice replays exactly.
+
+    Not from the clock and not from a shared global: a replayed run has to
+    hold the same tournaments it held the first time.
+    """
     digest = sha256(f"{run_id}/{index}".encode()).digest()
     return random.Random(int.from_bytes(digest[:8], "big"))
 
 
-class Member:
-    def __init__(self, candidate: Candidate, verdict: Verdict | None = None) -> None:
-        self.candidate = candidate
-        self.verdict = verdict
+def _extreme(members: Sequence[Individual], better: Better) -> Individual:
+    """The one nothing beats, by whichever comparison is handed in.
 
-    @property
-    def measured(self) -> bool:
-        return self.verdict is not None
-
-    @property
-    def attempt(self) -> Attempt:
-        return Attempt(code=self.candidate.code, verdict=self.verdict)
+    best, the tournament winner and the eviction victim were three copies of
+    this loop. They differ only in the comparison and in what is being
+    compared.
+    """
+    chosen = members[0]
+    for member in members[1:]:
+        if better(member, chosen):
+            chosen = member
+    return chosen
 
 
 class Evolution:
@@ -47,54 +91,63 @@ class Evolution:
         self.size = size
         self.tournament = tournament
 
-    def better(self, one: Member, two: Member) -> bool:
-        if not one.measured:
+    def better(self, one: Individual, two: Individual) -> bool:
+        if not isinstance(one, Measured):
             return False
-        if not two.measured:
+        if not isinstance(two, Measured):
             return True
         return self.objective.dominates(one.verdict.metrics, two.verdict.metrics)
 
-    def population(self, history: History) -> list[Member]:
-        living = [Member(Candidate(code=code)) for code in history.seeds]
-        for attempt in history.attempts:
-            if not attempt.verdict.is_scored:
+    def worse(self, one: Individual, two: Individual) -> bool:
+        return self.better(two, one)
+
+    def strongest(self, members: Sequence[Individual]) -> Individual:
+        return _extreme(members, self.better)
+
+    def weakest(self, members: Sequence[Individual]) -> Individual:
+        return _extreme(members, self.worse)
+
+    def population(self, history: RunHistory) -> list[Individual]:
+        living: list[Individual] = [
+            Unmeasured(candidate=Candidate(code=code)) for code in history.seeds
+        ]
+        for result in history.results:
+            if not isinstance(result.verdict, Scored):
                 continue
-            living.append(Member(Candidate(code=attempt.code), attempt.verdict))
+            living.append(
+                Measured(candidate=Candidate(code=result.code), verdict=result.verdict)
+            )
             while len(living) > self.size:
-                living.remove(self.weakest(living))
+                # By identity: Measured and Unmeasured are pydantic models, so
+                # list.remove would drop the first member comparing equal --
+                # which is the same object only until Candidate grows the value
+                # equality its fingerprint already implies.
+                evicted = self.weakest(living)
+                living = [member for member in living if member is not evicted]
         return living
 
-    def best(self, history: History) -> Attempt | None:
-        winner = None
-        for member in self.population(history):
-            if winner is None or self.better(member, winner):
-                winner = member
-        return winner.attempt if winner is not None and winner.measured else None
+    def pick(self, living: Sequence[Individual], rng: random.Random) -> Individual:
+        entrants = [rng.choice(list(living)) for _ in range(self.tournament)]
+        return self.strongest(entrants)
 
-    def pick(self, living: list[Member], rng: random.Random) -> Member:
-        entrants = [rng.choice(living) for _ in range(self.tournament)]
-        winner = entrants[0]
-        for entrant in entrants[1:]:
-            if self.better(entrant, winner):
-                winner = entrant
-        return winner
+    def best(self, history: RunHistory) -> TrialResult | None:
+        living = self.population(history)
+        if not living:
+            return None
+        winner = self.strongest(living)
+        return winner.result if isinstance(winner, Measured) else None
 
-    def weakest(self, living: list[Member]) -> Member:
-        loser = living[0]
-        for member in living[1:]:
-            if self.better(loser, member):
-                loser = member
-        return loser
-
-    def next_directive(self, history: History, ledger: Ledger) -> Directive | None:
+    def next_directive(
+        self, history: RunHistory, ledger: TrialBudget
+    ) -> Directive | None:
         if ledger.exhausted:
             return None
         living = self.population(history)
         if not living:
             raise NoCandidates("every candidate has been retired")
-        parent = self.pick(living, rng_for(history.run_id, history.index))
+        parent = self.pick(living, _rng_for(history.run_id, history.index))
         return Directive(
             parent=parent.candidate.fingerprint,
             code=parent.candidate.code,
-            hint=HINTS[history.index % len(HINTS)],
+            index=history.index,
         )

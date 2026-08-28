@@ -2,11 +2,11 @@ import pytest
 from statemachine import State, StateMachine
 from statemachine.exceptions import TransitionNotAllowed
 
-from cadence.stateful import Stateful
-from cadence.states import TrialState
+from cadence.lifecycle.entity import Entity
+from cadence.lifecycle.states import TrialState
 
 
-class TrialMachine(StateMachine):
+class TrialStateMachine(StateMachine):
     started = State(value=TrialState.STARTED, initial=True)
     prompted = State(value=TrialState.PROMPTED)
     generated = State(value=TrialState.GENERATED)
@@ -22,7 +22,9 @@ class TrialMachine(StateMachine):
     measure = materialized.to(measured)
 
 
-class Trial(Stateful, machine=TrialMachine):
+class Trial(Entity, machine=TrialStateMachine):
+    """A stand-in for the real one: every verb spelled out, nothing installed."""
+
     max_attempts = 2
 
     def __init__(self, status=None):
@@ -30,14 +32,32 @@ class Trial(Stateful, machine=TrialMachine):
         self.attempts = 0
         self.bind()
 
+    @property
+    def may_retry(self):
+        return self._permits("retry")
+
+    @property
+    def may_measure(self):
+        return self._permits("measure")
+
     def under_retry_budget(self):
         return self.attempts < self.max_attempts
 
-    def on_retry(self):
+    def prompt(self):
+        self._fire("prompt")
+
+    def retry(self):
+        self._fire("retry")
         self.attempts += 1
 
+    def apply_patch(self):
+        self._fire("apply_patch")
 
-def test_events_are_methods_on_the_entity():
+    def measure(self):
+        self._fire("measure")
+
+
+def test_a_verb_moves_the_status():
     trial = Trial()
     trial.prompt()
     assert trial.status == TrialState.PROMPTED
@@ -62,32 +82,28 @@ def test_an_illegal_transition_raises():
         Trial().measure()
 
 
-def test_each_state_gets_a_predicate():
+def test_a_permission_can_be_asked_without_doing():
     trial = Trial()
-    assert trial.is_started
-    assert not trial.is_measured
-    trial.prompt()
-    assert trial.is_prompted
-
-
-def test_each_event_gets_a_permission():
-    trial = Trial()
-    assert trial.may_prompt
     assert not trial.may_measure
+    assert trial.status == TrialState.STARTED
 
 
-def test_predicates_follow_a_status_loaded_from_storage():
-    trial = Trial(status=TrialState.GENERATED)
-    assert trial.is_generated
-    assert trial.may_apply_patch
-    assert not trial.may_prompt
+def test_permissions_follow_a_status_loaded_from_storage():
+    assert Trial(status=TrialState.MATERIALIZED).may_measure
 
 
-def test_callbacks_resolve_against_the_entity():
+def test_what_a_verb_does_happens_after_the_move_is_allowed():
     trial = Trial()
     trial.prompt()
     trial.retry()
     assert trial.attempts == 1
+
+
+def test_a_refused_verb_leaves_the_entity_alone():
+    trial = Trial()
+    with pytest.raises(TransitionNotAllowed):
+        trial.retry()
+    assert trial.attempts == 0
 
 
 def test_a_permission_honours_the_guard_on_its_transition():
@@ -98,21 +114,9 @@ def test_a_permission_honours_the_guard_on_its_transition():
     assert not trial.may_retry
 
 
-def test_a_name_the_entity_already_uses_is_refused():
-    with pytest.raises(TypeError, match="is_started"):
-
-        class Shadowed(Stateful, machine=TrialMachine):
-            is_started = True
-
-
 def test_permitted_events_lists_the_way_out():
     trial = Trial(status=TrialState.GENERATED)
     assert trial.permitted_events() == {"apply_patch", "reject"}
-
-
-def test_can_takes_an_event_name_that_is_not_known_until_runtime():
-    assert Trial().can("prompt")
-    assert not Trial().can("measure")
 
 
 def test_is_final_is_true_for_a_finished_entity_loaded_from_storage():
@@ -121,9 +125,9 @@ def test_is_final_is_true_for_a_finished_entity_loaded_from_storage():
 
 
 def test_using_the_machine_before_binding_says_so():
-    class Unbound(Stateful, machine=TrialMachine):
+    class Unbound(Entity, machine=TrialStateMachine):
         def __init__(self):
             self.status = None
 
     with pytest.raises(RuntimeError, match="bind"):
-        Unbound().can("prompt")
+        Unbound().permitted_events()

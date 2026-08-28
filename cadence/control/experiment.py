@@ -1,16 +1,22 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from cadence.control.entities import Candidate, Run, Trial, trial_id
+from cadence.control.entities import Candidate, Run, Trial
 from cadence.control.model import Model
 from cadence.control.patcher import apply_patch
 from cadence.control.recall import key_for
-from cadence.events import Emitter
-from cadence.exceptions import ModelError, NoCandidates, PatchError, SetupError
+from cadence.core.dto import Directive, Report, RunHistory, TrialBudget, TrialResult
+from cadence.core.ports import Method
+from cadence.core.verdict import Failed
+from cadence.errors import (
+    ModelError,
+    NoCandidates,
+    PatchError,
+    SetupError,
+    UnusableReply,
+)
 from cadence.execution.runner import TrialRunner
-from cadence.interfaces import Attempt, Directive, History, Ledger, Method
-from cadence.signals import (
+from cadence.observe.channel import Emitter
+from cadence.observe.signals import (
     ModelCalled,
     PatchRejected,
     ProposalReceived,
@@ -20,26 +26,8 @@ from cadence.signals import (
     TrialMeasured,
     TrialStarted,
 )
-from cadence.states import RunState
 
-__all__ = ["Experiment", "Report"]
-
-
-def _files(patch) -> int:
-    return sum(1 for line in patch if line.startswith("+++"))
-
-
-class Report(BaseModel):
-    model_config = ConfigDict(frozen=True, strict=True, extra="forbid")
-
-    run_id: str
-    status: RunState
-    trials: int = Field(ge=0)
-    scored: int = Field(ge=0)
-    best: str | None = None
-    program: str | None = None
-    metrics: Mapping[str, float] | None = None
-    reason: str | None = None
+__all__ = ["Experiment"]
 
 
 class Experiment:
@@ -78,12 +66,12 @@ class Experiment:
             return self._fail(run, f"{type(error).__name__}: {error}")
 
     def _search(self, run: Run) -> Report:
-        attempts: list[Attempt] = []
+        results: list[TrialResult] = []
         scored = 0
         while True:
-            history = self._history(attempts)
+            history = self._history(results)
             directive = self.method.next_directive(
-                history, Ledger(spent=run.trials, budget=self.budget)
+                history, TrialBudget(spent=run.trials, budget=self.budget)
             )
             if directive is None:
                 return self._finish(run, history, scored)
@@ -91,17 +79,17 @@ class Experiment:
             run.counted()
             if reply is None:
                 continue
-            attempts.append(reply)
-            if reply.verdict.escalates:
+            results.append(reply)
+            if isinstance(reply.verdict, Failed) and reply.verdict.escalates:
                 return self._fail(run, reply.verdict.reason)
             scored += reply.verdict.is_scored
 
-    def _history(self, attempts: list[Attempt]) -> History:
-        return History(run_id=self.run_id, seeds=self.seeds, attempts=tuple(attempts))
+    def _history(self, results: list[TrialResult]) -> RunHistory:
+        return RunHistory(run_id=self.run_id, seeds=self.seeds, results=tuple(results))
 
-    def _one(self, run: Run, directive: Directive) -> Attempt | None:
+    def _one(self, run: Run, directive: Directive) -> TrialResult | None:
         trial = Trial(
-            id=trial_id(self.run_id, run.trials, 0),
+            id=Trial.id_for(self.run_id, run.trials, 0),
             parent=Candidate(code=directive.code),
         )
         trace = self.trace.about(trial_id=trial.id)
@@ -120,7 +108,7 @@ class Experiment:
         )
 
         trial.generate(proposal=proposal)
-        trace.emit(ProposalReceived, files_changed=_files(proposal.patch))
+        trace.emit(ProposalReceived, files_changed=proposal.files_changed)
 
         try:
             code = apply_patch(directive.code, proposal.patch)
@@ -134,7 +122,7 @@ class Experiment:
         verdict = self.runner.try_(child.code)
         trial.measure(verdict=verdict)
         trace.emit(TrialMeasured, verdict=verdict)
-        return Attempt(code=code, verdict=verdict)
+        return TrialResult(code=code, verdict=verdict)
 
     def _propose(self, run: Run, trial: Trial, trace, directive: Directive):
         # An unparseable reply is worth asking again for: it costs a model call,
@@ -145,7 +133,7 @@ class Experiment:
                     directive,
                     key=key_for(self.run_id, run.trials, trial.attempts),
                 )
-            except PatchError as error:
+            except UnusableReply as error:
                 if trial.may_retry:
                     trial.retry()
                     trace.emit(PatchRejected, reason=str(error))
@@ -154,7 +142,7 @@ class Experiment:
                 trace.emit(TrialAbandoned, reason=str(error))
                 return None
 
-    def _finish(self, run: Run, history: History, scored: int) -> Report:
+    def _finish(self, run: Run, history: RunHistory, scored: int) -> Report:
         best = self.method.best(history)
         run.finish(best=best.verdict.fingerprint if best else None)
         self.trace.emit(RunFinished, trials=run.trials, best=run.best)
@@ -165,7 +153,7 @@ class Experiment:
             scored=scored,
             best=run.best,
             program=best.code if best else None,
-            metrics=dict(best.verdict.metrics) if best else None,
+            metrics=best.metrics if best else None,
         )
 
     def _fail(self, run: Run, reason: str) -> Report:

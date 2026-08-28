@@ -1,10 +1,12 @@
 from collections.abc import Mapping, Sequence
 from statistics import fmean
 
+from cadence.core.identity import fingerprint
+from cadence.core.types import Metrics
+from cadence.core.verdict import Failed, Failure, Outcome, Scored, Verdict
+from cadence.errors import MetricNotReported
 from cadence.execution.sandboxes.subprocess import Execution, Job, Sandbox
-from cadence.interfaces import Metrics
-from cadence.reading import MetricNotReported, read
-from cadence.verdict import Failed, Outcome, Scored, Verdict, fingerprint
+from cadence.parsing.metrics import read
 
 __all__ = ["TrialRunner"]
 
@@ -74,6 +76,7 @@ class TrialRunner:
 def _failure(fingerprint: str, execution: Execution) -> Failed | None:
     if execution.ok:
         return None
+    outcome: Failure
     if execution.timed_out:
         outcome, reason = Outcome.TIMED_OUT, "the program ran past its deadline"
     elif execution.out_of_memory:

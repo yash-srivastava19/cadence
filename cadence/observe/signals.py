@@ -1,10 +1,10 @@
 from collections.abc import Mapping
-from typing import Annotated
 
-from pydantic import Field, StringConstraints
+from pydantic import Field
 
-from cadence.events import Channel, Fact
-from cadence.verdict import Verdict
+from cadence.core.types import NonBlank
+from cadence.core.verdict import Verdict
+from cadence.observe.channel import Channel, Fact
 
 __all__ = [
     "Event",
@@ -18,8 +18,6 @@ __all__ = [
     "TrialStarted",
     "cadence",
 ]
-
-NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 cadence = Channel("cadence")
 

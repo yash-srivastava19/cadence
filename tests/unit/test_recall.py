@@ -1,6 +1,6 @@
 import pytest
 
-from cadence.control.backends.served import Scripted
+from cadence.control.backends import Scripted
 from cadence.control.experiment import Experiment
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
@@ -14,8 +14,8 @@ from cadence.control.recall import (
 )
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
-from cadence.signals import ModelCalled, cadence
-from cadence.states import RunState
+from cadence.lifecycle.states import RunState
+from cadence.observe.signals import ModelCalled, cadence
 
 BASELINE = "print('value: 0')"
 ANSWER = "```python\nprint('value: 9')\n```"
@@ -138,9 +138,9 @@ class TestResumingARunCostsNothing:
 
 
 def _a_directive():
-    from cadence.interfaces import Directive
+    from cadence.core.dto import Directive
 
-    return Directive(parent="abc", code=BASELINE, hint="try something")
+    return Directive(parent="abc", code=BASELINE)
 
 
 def _an_experiment(calls, backend, budget=2):

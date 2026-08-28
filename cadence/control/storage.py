@@ -7,8 +7,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, registry, sessionmaker
 
 from cadence.control.entities import Run
-from cadence.states import CandidateState, RunState, TrialState
-from cadence.verdict import Outcome
+from cadence.core.verdict import Outcome
+from cadence.lifecycle.states import CandidateState, RunState, TrialState
 
 __all__ = [
     "blobs",

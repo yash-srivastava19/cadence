@@ -14,9 +14,9 @@ from cadence.control.registry import (
     resolve,
     seed_program,
 )
-from cadence.exceptions import CadenceError
+from cadence.errors import CadenceError
 from cadence.execution.sandboxes.subprocess import Job, Subprocess
-from cadence.reading import MetricNotReported, read
+from cadence.parsing.metrics import MetricNotReported, read
 
 
 def check(root: Path = typer.Argument(Path("."))) -> None:

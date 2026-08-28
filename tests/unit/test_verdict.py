@@ -1,13 +1,14 @@
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from cadence.exceptions import (
+from cadence.core.dto import Proposal
+from cadence.core.verdict import FAILURES, Failed, Outcome, Scored, Verdict
+from cadence.errors import (
     CadenceError,
     ModelError,
     RetryableModelError,
     TerminalModelError,
 )
-from cadence.verdict import FAILURES, Failed, Outcome, Proposal, Scored, Verdict
 
 FP = "a1b2c3"
 FAILURE_IDS = [o.value for o in FAILURES]
