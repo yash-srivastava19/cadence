@@ -135,3 +135,57 @@ class TestFactsAreFacts:
 
 def _explode(fact):
     raise RuntimeError("boom")
+
+
+class TestTheOneListenerThatMustSucceed:
+    """A progress bar failing must not end a run. The event log failing must:
+    a run that carries on past a lost write produces an audit trail with holes
+    that nobody knows are there."""
+
+    def test_a_recorder_sees_every_fact(self):
+        channel = Channel("probe")
+        kept = []
+        channel.record(kept.append)
+        channel.publish(Measured(reading=1.0))
+        assert len(kept) == 1
+
+    def test_a_failing_recorder_stops_the_publisher(self):
+        channel = Channel("probe")
+
+        def cannot_write(fact):
+            raise RuntimeError("the database is down")
+
+        channel.record(cannot_write)
+        with pytest.raises(RuntimeError, match="database is down"):
+            channel.publish(Measured(reading=1.0))
+
+    def test_a_failing_recorder_means_no_subscriber_is_told(self):
+        """What has not been written down has not happened."""
+        channel = Channel("probe")
+        seen = []
+        channel.subscribe(seen.append)
+        channel.record(_explode)
+        with pytest.raises(RuntimeError):
+            channel.publish(Measured(reading=1.0))
+        assert seen == []
+
+    def test_a_failing_subscriber_still_does_not_stop_a_run(self):
+        channel = Channel("probe")
+        kept = []
+        channel.record(kept.append)
+        channel.subscribe(_explode)
+        channel.publish(Measured(reading=1.0))
+        assert len(kept) == 1
+
+    def test_a_second_recorder_is_refused(self):
+        channel = Channel("probe")
+        channel.record(lambda fact: None)
+        with pytest.raises(RuntimeError, match="already has a recorder"):
+            channel.record(lambda fact: None)
+
+    def test_a_recorder_can_step_down(self):
+        channel = Channel("probe")
+        stop = channel.record(_explode)
+        stop()
+        channel.publish(Measured(reading=1.0))
+        channel.record(lambda fact: None)

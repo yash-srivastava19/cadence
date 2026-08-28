@@ -8,6 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = ["Channel", "Emitter", "Fact", "Recorder"]
 
+
+def _keeps_nothing(fact: "Fact") -> None:
+    """The default recorder. A null object, so publish() never has to ask
+    whether it has one."""
+
+
 logger = logging.getLogger(__name__)
 
 Unsubscribe = Callable[[], None]
@@ -18,11 +24,49 @@ def _now() -> datetime:
 
 
 class Channel:
+    """Where facts about a run are announced.
+
+    Two kinds of listener, because they want opposite things when they fail:
+
+        subscribe   best effort. A broken progress bar must not end a run, so
+                    the exception is logged and the run carries on.
+        record      must succeed. If the event log cannot write the fact, the
+                    run must not continue as though it had -- an audit trail
+                    with holes in it is worse than none, because it is
+                    trusted.
+
+    The recorder is called directly rather than being connected as another
+    subscriber. Blinker stops dispatching at the first receiver that raises,
+    and the order it dispatches in is a dict-iteration accident rather than a
+    guarantee -- so a raising recorder would silence an arbitrary subset of
+    the other listeners.
+    """
+
     def __init__(self, name: str) -> None:
+        self.name = name
         self._signal = Signal(name)
+        self._recorder: Callable[[Fact], None] = _keeps_nothing
 
     def publish(self, fact: "Fact") -> None:
+        # Recorded first, and allowed to raise: what has not been written
+        # down has not happened, and nothing downstream should be told it has.
+        self._recorder(fact)
         self._signal.send(type(fact), fact=fact)
+
+    def record(self, handler: Callable[["Fact"], None]) -> Unsubscribe:
+        """Register the one listener whose failure stops the run.
+
+        One, not many: an event log is a single writer, and two of them would
+        raise an ordering question with no good answer.
+        """
+        if self._recorder is not _keeps_nothing:
+            raise RuntimeError(f"the {self.name} channel already has a recorder")
+        self._recorder = handler
+
+        def stop() -> None:
+            self._recorder = _keeps_nothing
+
+        return stop
 
     def subscribe(self, handler: Callable[[Any], None], to: Any = ANY) -> Unsubscribe:
         def receive(sender: Any, fact: Any) -> None:
