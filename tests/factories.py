@@ -20,6 +20,7 @@ from cadence.core.dto import (
     Directive,
     Proposal,
     Recalled,
+    RecordedManifest,
     RunHistory,
     TrialBudget,
     TrialResult,
@@ -34,6 +35,7 @@ __all__ = [
     "a_directive",
     "a_failure",
     "a_history",
+    "a_manifest",
     "a_measured",
     "a_model",
     "a_proposal",
@@ -136,3 +138,14 @@ def a_model(*responses: str, **options) -> Model:
     from cadence.control.backends import Scripted
 
     return Model(backend=Scripted(*responses), **options)
+
+
+def a_manifest(**fields) -> RecordedManifest:
+    return RecordedManifest(
+        **{
+            "hash": "manifest0123abcd",
+            "source": "api_version: cadence/v1alpha2\nprogram: prog.py\n",
+            "api_version": "cadence/v1alpha2",
+            **fields,
+        }
+    )

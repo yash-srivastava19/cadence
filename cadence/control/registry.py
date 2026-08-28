@@ -5,10 +5,11 @@ from pathlib import Path
 
 from cadence.control.backends import Scripted, chat_backend, known
 from cadence.control.experiment import Experiment
-from cadence.control.manifest import Manifest, Plugin
+from cadence.control.manifest import FILENAME, Manifest, Plugin
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import Pareto, WeightedSum
+from cadence.core.dto import RecordedManifest
 from cadence.errors import UnknownPlugin
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
@@ -76,6 +77,19 @@ def _reject_unknown_options(kind: str, plugin: Plugin, factory, extra: dict) -> 
         )
 
 
+def recorded(manifest: Manifest, root: Path) -> RecordedManifest:
+    """The manifest as it will be written down, text and all.
+
+    The file is read again rather than carried along by load(), so that
+    Manifest stays a parse of the document and nothing else.
+    """
+    return RecordedManifest(
+        hash=manifest.hash,
+        source=(root / FILENAME).read_text(),
+        api_version=manifest.api_version,
+    )
+
+
 def objective_for(manifest: Manifest):
     if manifest.objective is not None:
         return resolve("objective", OBJECTIVES, manifest.objective)
@@ -98,7 +112,7 @@ def guidance(manifest: Manifest, root: Path) -> str | None:
 def build(manifest: Manifest, root: Path, run_id: str, backend=None) -> Experiment:
     return Experiment(
         run_id=run_id,
-        manifest_hash=manifest.hash,
+        manifest=recorded(manifest, root),
         method=resolve(
             "method", METHODS, manifest.method, objective=objective_for(manifest)
         ),

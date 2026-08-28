@@ -2,8 +2,10 @@ from collections.abc import Mapping
 
 from pydantic import Field
 
+from cadence.core.dto import RecordedManifest
 from cadence.core.types import NonBlank
 from cadence.core.verdict import Verdict
+from cadence.lifecycle.states import RunState
 from cadence.observe.channel import Channel, Fact
 
 __all__ = [
@@ -28,14 +30,19 @@ class Event(Fact, channel=cadence):
 
 class RunStarted(Event):
     method: NonBlank
-    # Which configuration produced this run. Every result is read against it.
-    manifest_hash: NonBlank
+    # Which configuration produced this run. Every result is read against it,
+    # and the tape carries the text so a stored run explains itself.
+    manifest: RecordedManifest
     budget: Mapping[str, float] = Field(default_factory=dict)
 
 
 class RunFinished(Event):
+    # How it ended, not just that it did: a reader of the tape should not have
+    # to infer "failed" from the absence of a best.
+    status: RunState
     trials: int = Field(ge=0)
     best: str | None = None
+    reason: str | None = None
 
 
 class TrialStarted(Event):
