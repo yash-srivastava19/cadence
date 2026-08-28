@@ -45,6 +45,8 @@ dev = [
   "isort>=6.0.1",
   "flake8>=7.3.0",
   "mypy>=1.5.0",
+  "types-PyYAML>=6.0.12",
+  "import-linter>=2.0",
   "pre-commit>=4.2.0",
 ]
 
@@ -139,6 +141,38 @@ pythonVersion = "3.11"
 pythonPlatform = "All"
 executionEnvironments = [{ root = "tests", pythonVersion = "3.11" }]
 
+[tool.mypy]
+files = ["cadence"]
+python_version = "3.11"
+
+# whatthepatch ships no stubs and has no types-* package. Silencing it by name
+# rather than globally, so the next untyped dependency is a decision someone
+# makes on purpose.
+[[tool.mypy.overrides]]
+module = ["whatthepatch.*"]
+ignore_missing_imports = true
+
+# The three planes, and the vocabulary underneath them. A layer may import
+# what is below it and never what is above: this is the rule the package
+# layout has always claimed, and until now nothing checked it.
+[tool.importlinter]
+root_package = "cadence"
+
+[[tool.importlinter.contracts]]
+name = "The planes are layered"
+type = "layers"
+layers = [
+  "cadence.commands",
+  "cadence.delivery",
+  "cadence.control",
+  "cadence.execution",
+  "cadence.parsing",
+  "cadence.observe",
+  "cadence.core",
+  "cadence.lifecycle",
+  "cadence.errors",
+]
+
 # Ruff is the only formatter; see .pre-commit-config.yaml
 [tool.ruff]
 line-length = 88
@@ -185,3 +219,10 @@ multi_line_output = 3
 line_length = 88
 known_first_party = ["cadence", "src"]
 skip_glob = ["*/migrations/*"]
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.13",
+    "mypy>=1.16.1",
+    "types-pyyaml>=6.0.12.20260815",
+]
