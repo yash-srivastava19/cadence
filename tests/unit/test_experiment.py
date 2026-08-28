@@ -29,6 +29,7 @@ GIVES_UP = [NONSENSE] * (Trial.max_attempts + 1)
 def an_experiment(*responses, budget=1, metrics=None):
     return Experiment(
         run_id="h1",
+        manifest_hash="mh",
         method=Evolution(objective=WeightedSum(value=1.0)),
         model=Model(backend=Scripted(*responses)),
         runner=TrialRunner(

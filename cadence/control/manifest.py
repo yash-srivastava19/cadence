@@ -6,13 +6,14 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from cadence.control.region import BEGIN, END
+from cadence.control.versions import CURRENT, READABLE, convert
+from cadence.core.identity import hash_of
 from cadence.core.types import NonBlank
 from cadence.errors import ManifestError
 from cadence.parsing.metrics import Goal
 
-__all__ = ["API_VERSIONS", "Manifest", "Plugin", "load"]
+__all__ = ["Manifest", "Plugin", "load"]
 
-API_VERSIONS = ("cadence/v1alpha1",)
 FILENAME = ".cadence"
 
 DEFAULT_METHOD = "evolution"
@@ -52,6 +53,26 @@ class Markers(Strict):
         return self
 
 
+class Verifier(Strict):
+    """What cadence may assume about the command that scores a candidate.
+
+    A tolerance rather than a boolean, because "deterministic" as usually
+    stated -- run it twice, require identical output -- only holds for small
+    integer programs. Anything with float reduction order or threads fails it
+    without being meaningfully non-deterministic.
+
+    Absent means undeclared, and the verdict cache stays off: reusing a score
+    for code that scores differently each time is not a cache, it is a wrong
+    answer that never expires.
+    """
+
+    tolerance: float | None = Field(default=None, ge=0)
+
+    @property
+    def is_declared_deterministic(self) -> bool:
+        return self.tolerance is not None
+
+
 class Budget(Strict):
     trials: int = Field(default=20, gt=0)
 
@@ -63,7 +84,7 @@ class Sandbox(Strict):
 
 
 class Manifest(Strict):
-    api_version: NonBlank = Field(alias="apiVersion")
+    api_version: NonBlank
     program: NonBlank
     metrics: Mapping[NonBlank, Goal] = Field(min_length=1)
     run: NonBlank = DEFAULT_RUN
@@ -75,16 +96,29 @@ class Manifest(Strict):
     markers: Markers = Markers()
     budget: Budget = Budget()
     sandbox: Sandbox = Sandbox()
+    verifier: Verifier = Verifier()
 
     @model_validator(mode="after")
-    def _known_api_version(self) -> "Manifest":
-        if self.api_version not in API_VERSIONS:
-            known = ", ".join(API_VERSIONS)
+    def _current_api_version(self) -> "Manifest":
+        # convert() has already brought an older document up to date, so
+        # anything else here was written for a cadence from the future.
+        if self.api_version != CURRENT:
             raise ValueError(
-                f"apiVersion {self.api_version!r} is not supported by this"
-                f" version of cadence; known versions: {known}"
+                f"api_version {self.api_version!r} is not supported by this"
+                f" version of cadence; readable versions: {', '.join(READABLE)}"
             )
         return self
+
+    @property
+    def hash(self) -> str:
+        """The identity of this configuration.
+
+        Over the manifest as cadence understands it, defaults included, not
+        over the bytes of the file: reformatting the YAML or relying on a
+        default rather than writing it out does not make it a different
+        experiment.
+        """
+        return hash_of(self.model_dump(mode="json"))
 
     @property
     def command(self) -> str:
@@ -143,7 +177,7 @@ def load(path: str | Path = FILENAME) -> Manifest:
             f"{path} should contain a mapping, not {type(document).__name__}"
         )
     try:
-        return Manifest.model_validate(document)
+        return Manifest.model_validate(convert(document))
     except Exception as error:
         raise ManifestError(
             f"{path} is not a valid manifest:\n{_explain(error)}"

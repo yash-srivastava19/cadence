@@ -34,6 +34,7 @@ class Experiment:
     def __init__(
         self,
         run_id: str,
+        manifest_hash: str,
         method: Method,
         model: Model,
         runner: TrialRunner,
@@ -41,6 +42,7 @@ class Experiment:
         budget: int,
     ) -> None:
         self.run_id = run_id
+        self.manifest_hash = manifest_hash
         self.method = method
         self.model = model
         self.runner = runner
@@ -54,6 +56,7 @@ class Experiment:
         self.trace.emit(
             RunStarted,
             method=type(self.method).__name__,
+            manifest_hash=self.manifest_hash,
             budget={"trials": float(self.budget)},
         )
         try:
@@ -89,7 +92,8 @@ class Experiment:
 
     def _one(self, run: Run, directive: Directive) -> TrialResult | None:
         trial = Trial(
-            id=Trial.id_for(self.run_id, run.trials, 0),
+            id=Trial.id_for(self.run_id, run.trials),
+            seq=run.trials,
             parent=Candidate(code=directive.code),
         )
         trace = self.trace.about(trial_id=trial.id)

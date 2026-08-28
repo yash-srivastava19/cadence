@@ -98,6 +98,7 @@ def guidance(manifest: Manifest, root: Path) -> str | None:
 def build(manifest: Manifest, root: Path, run_id: str, backend=None) -> Experiment:
     return Experiment(
         run_id=run_id,
+        manifest_hash=manifest.hash,
         method=resolve(
             "method", METHODS, manifest.method, objective=objective_for(manifest)
         ),

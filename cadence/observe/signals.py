@@ -28,6 +28,8 @@ class Event(Fact, channel=cadence):
 
 class RunStarted(Event):
     method: NonBlank
+    # Which configuration produced this run. Every result is read against it.
+    manifest_hash: NonBlank
     budget: Mapping[str, float] = Field(default_factory=dict)
 
 

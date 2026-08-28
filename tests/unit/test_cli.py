@@ -29,7 +29,7 @@ class TestCheck:
 
     def test_a_missing_program_fails_before_anything_runs(self, tmp_path):
         (tmp_path / ".cadence").write_text(
-            "apiVersion: cadence/v1alpha1\nprogram: gone.py\nmetrics: {v: maximize}\n"
+            "api_version: cadence/v1alpha2\nprogram: gone.py\nmetrics: {v: maximize}\n"
         )
         result = runner.invoke(app, ["check", str(tmp_path)])
         assert result.exit_code == 1
@@ -37,7 +37,8 @@ class TestCheck:
 
     def test_a_program_that_never_reports_the_metric_fails(self, tmp_path):
         (tmp_path / ".cadence").write_text(
-            "apiVersion: cadence/v1alpha1\nprogram: p.py\nmetrics: {absent: maximize}\n"
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
+            "metrics: {absent: maximize}\n"
         )
         (tmp_path / "p.py").write_text(MARKED % "print('done')")
         result = runner.invoke(app, ["check", str(tmp_path)])
@@ -46,7 +47,7 @@ class TestCheck:
 
     def test_an_unknown_method_names_the_known_ones(self, tmp_path):
         (tmp_path / ".cadence").write_text(
-            "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
             "metrics: {v: maximize}\nmethod: {evolutin: {}}\n"
         )
         (tmp_path / "p.py").write_text(MARKED % "print('v: 1')")
@@ -59,7 +60,7 @@ class TestCheckAsksAboutTheProjectNotTheMachine:
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         (tmp_path / ".cadence").write_text(
-            "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
             "metrics: {v: maximize}\nmodel: {gemini: {}}\n"
         )
         (tmp_path / "p.py").write_text(MARKED % "print('v: 1')")
@@ -68,7 +69,7 @@ class TestCheckAsksAboutTheProjectNotTheMachine:
 
     def test_it_never_mentions_a_key(self, tmp_path):
         (tmp_path / ".cadence").write_text(
-            "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
             "metrics: {v: maximize}\nmodel: {gemini: {}}\n"
         )
         (tmp_path / "p.py").write_text(MARKED % "print('v: 1')")
@@ -81,7 +82,7 @@ class TestSchema:
 
         result = runner.invoke(app, ["schema"])
         assert json.loads(result.output)["required"] == [
-            "apiVersion",
+            "api_version",
             "program",
             "metrics",
         ]
@@ -98,7 +99,7 @@ class TestRunFailsWithAMessageNotATraceback:
 
     def _run(self, tmp_path, program):
         (tmp_path / ".cadence").write_text(
-            "apiVersion: cadence/v1alpha1\n"
+            "api_version: cadence/v1alpha2\n"
             "program: p.py\n"
             "metrics: {value: maximize}\n"
             "budget: {trials: 1}\n"
@@ -123,7 +124,7 @@ class TestRunFailsWithAMessageNotATraceback:
 class TestCheckSaysWhatItVerified:
     def _project(self, tmp_path, extra="", program="print('value: 1')"):
         (tmp_path / ".cadence").write_text(
-            "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
             "metrics: {value: maximize}\n" + extra
         )
         (tmp_path / "p.py").write_text(MARKED % program)
@@ -156,7 +157,7 @@ class TestCheckSaysWhatItVerified:
 class TestCheckCatchesWhatItUsedToWaveThrough:
     def test_an_unmarked_program_fails(self, tmp_path):
         (tmp_path / ".cadence").write_text(
-            "apiVersion: cadence/v1alpha1\nprogram: p.py\nmetrics: {v: maximize}\n"
+            "api_version: cadence/v1alpha2\nprogram: p.py\nmetrics: {v: maximize}\n"
         )
         (tmp_path / "p.py").write_text("print('v: 1')")
         result = runner.invoke(app, ["check", str(tmp_path)])
@@ -165,7 +166,7 @@ class TestCheckCatchesWhatItUsedToWaveThrough:
 
     def test_two_begin_markers_fail(self, tmp_path):
         (tmp_path / ".cadence").write_text(
-            "apiVersion: cadence/v1alpha1\nprogram: p.py\nmetrics: {v: maximize}\n"
+            "api_version: cadence/v1alpha2\nprogram: p.py\nmetrics: {v: maximize}\n"
         )
         (tmp_path / "p.py").write_text(
             "# CADENCE:BEGIN\nx = 1\n# CADENCE:BEGIN\ny = 2\n# CADENCE:END\n"
@@ -174,7 +175,7 @@ class TestCheckCatchesWhatItUsedToWaveThrough:
 
     def test_a_mistyped_method_option_fails_here_not_at_run_time(self, tmp_path):
         (tmp_path / ".cadence").write_text(
-            "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
             "metrics: {value: maximize}\nmethod: {evolution: {sizee: 12}}\n"
         )
         (tmp_path / "p.py").write_text(MARKED % "print('value: 1')")
@@ -184,7 +185,7 @@ class TestCheckCatchesWhatItUsedToWaveThrough:
 
     def test_it_suggests_the_option_that_was_meant(self, tmp_path):
         (tmp_path / ".cadence").write_text(
-            "apiVersion: cadence/v1alpha1\nprogram: p.py\n"
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
             "metrics: {value: maximize}\nmethod: {evolution: {sizee: 12}}\n"
         )
         (tmp_path / "p.py").write_text(MARKED % "print('value: 1')")
