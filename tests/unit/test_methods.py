@@ -1,7 +1,14 @@
 import pytest
 from pydantic import ValidationError
 
-from cadence.control.methods.evolution import Evolution, Member, rng_for
+from cadence.control.entities import Candidate
+from cadence.control.methods.evolution import (
+    Evolution,
+    Measured,
+    Unmeasured,
+    _rng_for,
+)
+from cadence.control.model import hint_for
 from cadence.control.objectives.ranking import Pareto, WeightedSum
 from cadence.core.dto import Attempt, Directive, History, Ledger
 from cadence.core.ports import Method
@@ -24,6 +31,14 @@ def crashed(code="x = 1"):
         code=code,
         verdict=Failed(fingerprint="fp", outcome=Outcome.CRASHED, reason="boom"),
     )
+
+
+def measured(metrics, code="x = 1"):
+    return Measured(candidate=Candidate(code=code), verdict=a_verdict(metrics))
+
+
+def unmeasured(code="x = 1"):
+    return Unmeasured(candidate=Candidate(code=code))
 
 
 def an_evolution(**kwargs):
@@ -68,9 +83,13 @@ class TestTheProtocol:
         directives, _ = drive(an_evolution(), 5, lambda d, n: scored(f"v{n}", n))
         assert len(directives) == 5
 
-    def test_hints_vary_between_trials(self):
+    def test_each_trial_is_numbered(self):
         directives, _ = drive(an_evolution(), 4, lambda d, n: scored(f"v{n}", n))
-        assert len({d.hint for d in directives}) == 4
+        assert [d.index for d in directives] == [0, 1, 2, 3]
+
+    def test_those_numbers_give_the_model_four_different_hints(self):
+        directives, _ = drive(an_evolution(), 4, lambda d, n: scored(f"v{n}", n))
+        assert len({hint_for(d.index) for d in directives}) == 4
 
 
 class TestItIsAPureFunctionOfHistory:
@@ -86,13 +105,13 @@ class TestItIsAPureFunctionOfHistory:
         assert resumed == directives[2]
 
     def test_the_same_run_and_trial_draw_the_same_numbers(self):
-        assert rng_for("h1", 3).random() == rng_for("h1", 3).random()
+        assert _rng_for("h1", 3).random() == _rng_for("h1", 3).random()
 
     def test_a_different_run_draws_different_numbers(self):
-        assert rng_for("a", 0).random() != rng_for("b", 0).random()
+        assert _rng_for("a", 0).random() != _rng_for("b", 0).random()
 
     def test_a_different_trial_draws_different_numbers(self):
-        assert rng_for("h1", 0).random() != rng_for("h1", 1).random()
+        assert _rng_for("h1", 0).random() != _rng_for("h1", 1).random()
 
     def test_the_method_keeps_no_state_between_calls(self):
         method = an_evolution()
@@ -128,20 +147,16 @@ class TestTheObjectiveDecides:
         assert an_evolution(size=2).best(past(*seen)).code == "v4"
 
     def test_pareto_keeps_a_trade_off_that_weighted_sum_would_drop(self):
-        cheap = Member(None, a_verdict({"value": 5.0, "weight": 1.0}))
-        rich = Member(None, a_verdict({"value": 10.0, "weight": 9.0}))
+        cheap = measured({"value": 5.0, "weight": 1.0})
+        rich = measured({"value": 10.0, "weight": 9.0})
         pareto = Evolution(objective=Pareto(value=1, weight=-1))
         assert not pareto.better(rich, cheap)
         assert not pareto.better(cheap, rich)
 
     def test_an_unmeasured_member_never_beats_a_measured_one(self):
         method = an_evolution()
-        assert method.better(
-            Member(None, a_verdict({"value": 1.0})), Member(None, None)
-        )
-        assert not method.better(
-            Member(None, None), Member(None, a_verdict({"value": 1.0}))
-        )
+        assert method.better(measured({"value": 1.0}), unmeasured())
+        assert not method.better(unmeasured(), measured({"value": 1.0}))
 
 
 class TestRunningOut:

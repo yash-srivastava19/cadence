@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from cadence.control.region import BEGIN, END
 from cadence.core.types import NonBlank
 from cadence.errors import ManifestError
-from cadence.parsing.metrics import GOALS
+from cadence.parsing.metrics import Goal
 
 __all__ = ["API_VERSIONS", "Manifest", "Plugin", "load"]
 
@@ -64,7 +64,7 @@ class Sandbox(Strict):
 class Manifest(Strict):
     api_version: NonBlank = Field(alias="apiVersion")
     program: NonBlank
-    metrics: Mapping[NonBlank, Literal[GOALS]] = Field(min_length=1)
+    metrics: Mapping[NonBlank, Goal] = Field(min_length=1)
     run: NonBlank = DEFAULT_RUN
     guidance: NonBlank = DEFAULT_GUIDANCE
     task: NonBlank | None = None

@@ -89,7 +89,7 @@ class SandboxRun(Entity, machine=SandboxRunStateMachine):
     """One process group, from spawn to whatever ended it."""
 
     def __init__(
-        self, pgid: int | None = None, status: SandboxRunState | None = None
+        self, pgid: int = 0, status: SandboxRunState | None = None
     ) -> None:
         self.pgid = pgid
         self.status = status or SandboxRunState.RUNNING

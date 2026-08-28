@@ -19,9 +19,9 @@ from typing import Any
 
 from pydantic import Field
 
-from cadence.core.types import Frozen, NonBlank
+from cadence.core.types import Frozen, Metrics, NonBlank
 from cadence.core.values import Value
-from cadence.core.verdict import Verdict
+from cadence.core.verdict import Scored, Verdict
 from cadence.lifecycle.states import RunState
 
 __all__ = [
@@ -55,11 +55,17 @@ class Completion(Value):
 
 
 class Directive(Value):
-    """What the search method asks the model for: this code, this way."""
+    """What the search method asks the model to improve.
+
+    It carries the trial index rather than a sentence to try, because what to
+    say to a model is the prompting layer's business: a search method decides
+    which parent, not which English. The index is here rather than counted by
+    the model so that a resumed run asks the same question it asked before.
+    """
 
     parent: NonBlank
     code: NonBlank
-    hint: NonBlank
+    index: int = Field(ge=0, default=0)
     inspirations: tuple[str, ...] = ()
 
 
@@ -92,6 +98,15 @@ class Attempt(Value):
 
     code: NonBlank
     verdict: Verdict
+
+    @property
+    def metrics(self) -> Metrics | None:
+        """What it scored, or None if it never got a score.
+
+        The narrowing lives here so that callers holding an Attempt do not
+        each have to remember that a Failed verdict has no metrics.
+        """
+        return self.verdict.metrics if isinstance(self.verdict, Scored) else None
 
 
 class History(Value):

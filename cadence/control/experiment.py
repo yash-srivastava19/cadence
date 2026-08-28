@@ -6,6 +6,7 @@ from cadence.control.patcher import apply_patch
 from cadence.control.recall import key_for
 from cadence.core.dto import Attempt, Directive, History, Ledger, Report
 from cadence.core.ports import Method
+from cadence.core.verdict import Failed
 from cadence.errors import ModelError, NoCandidates, PatchError, SetupError
 from cadence.execution.runner import TrialRunner
 from cadence.observe.channel import Emitter
@@ -73,7 +74,7 @@ class Experiment:
             if reply is None:
                 continue
             attempts.append(reply)
-            if reply.verdict.escalates:
+            if isinstance(reply.verdict, Failed) and reply.verdict.escalates:
                 return self._fail(run, reply.verdict.reason)
             scored += reply.verdict.is_scored
 
@@ -146,7 +147,7 @@ class Experiment:
             scored=scored,
             best=run.best,
             program=best.code if best else None,
-            metrics=dict(best.verdict.metrics) if best else None,
+            metrics=best.metrics if best else None,
         )
 
     def _fail(self, run: Run, reason: str) -> Report:

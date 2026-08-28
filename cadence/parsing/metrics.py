@@ -11,18 +11,20 @@ happily match a stray log line like `progress: 0.5`. Prefer JSON.
 import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Protocol
+from typing import Literal, Protocol, get_args
 
 from cadence.core.types import Metrics
 from cadence.errors import MetricNotReported
 
 __all__ = ["Goal", "JsonReport", "KeyValueLines", "MetricReader", "direction", "read"]
 
-Goal = str
+#: A real type rather than an alias for str, so a manifest saying
+#: `value: maximise` is refused where it is read rather than where it is used.
+Goal = Literal["minimize", "maximize"]
 
-MINIMIZE = "minimize"
-MAXIMIZE = "maximize"
-GOALS = (MINIMIZE, MAXIMIZE)
+MINIMIZE: Goal = "minimize"
+MAXIMIZE: Goal = "maximize"
+GOALS: tuple[Goal, ...] = get_args(Goal)
 
 NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
 REPORTED = re.compile(

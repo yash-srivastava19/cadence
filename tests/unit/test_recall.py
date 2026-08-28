@@ -140,7 +140,7 @@ class TestResumingARunCostsNothing:
 def _a_directive():
     from cadence.core.dto import Directive
 
-    return Directive(parent="abc", code=BASELINE, hint="try something")
+    return Directive(parent="abc", code=BASELINE)
 
 
 def _an_experiment(calls, backend, budget=2):
