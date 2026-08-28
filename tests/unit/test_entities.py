@@ -12,7 +12,7 @@ def a_candidate(code="def pack(): return []"):
 
 
 def a_trial():
-    return Trial(id=Trial.id_for("h1", 0, 0), parent=a_candidate())
+    return Trial(id=Trial.id_for("h1", 0), seq=0, parent=a_candidate())
 
 
 class TestFingerprint:
@@ -34,10 +34,10 @@ class TestFingerprint:
 
 class TestTrialIdIsDerived:
     def test_the_same_position_gives_the_same_id(self):
-        assert Trial.id_for("h1", 2, 5) == Trial.id_for("h1", 2, 5)
+        assert Trial.id_for("h1", 5) == Trial.id_for("h1", 5)
 
     def test_it_names_its_run_and_position(self):
-        assert Trial.id_for("h1", 2, 5) == "h1/2/5"
+        assert Trial.id_for("h1", 5) == "h1/5"
 
     def test_a_trial_cannot_be_built_without_one(self):
         with pytest.raises(TypeError):
@@ -74,6 +74,17 @@ class TestACandidate:
         parent = a_candidate("x = 1")
         child = Candidate(code="x = 2", parent=parent.fingerprint)
         assert child.parent == parent.fingerprint
+
+
+class TestATrialKnowsWhereItSitsInItsRun:
+    def test_its_id_is_built_from_its_seq(self):
+        assert Trial(id=Trial.id_for("h1", 4), seq=4, parent=a_candidate()).id == "h1/4"
+
+    def test_seq_is_the_number_the_trials_table_is_unique_on(self):
+        """One counter, not two: an id built from a generation and an index
+        while the table counts something else would eventually disagree."""
+        trial = Trial(id=Trial.id_for("h1", 4), seq=4, parent=a_candidate())
+        assert trial.id.endswith(str(trial.seq))
 
 
 class TestATrial:
@@ -140,7 +151,8 @@ class TestATrial:
 
     def test_one_recovered_from_storage_carries_on(self):
         trial = Trial(
-            id=Trial.id_for("h1", 0, 0),
+            id=Trial.id_for("h1", 0),
+            seq=0,
             parent=a_candidate(),
             status=TrialState.MATERIALIZED,
         )

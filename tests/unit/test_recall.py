@@ -146,6 +146,7 @@ def _a_directive():
 def _an_experiment(calls, backend, budget=2):
     return Experiment(
         run_id="resumable",
+        manifest_hash="mh",
         method=Evolution(objective=WeightedSum(value=1.0)),
         model=Model(backend=backend, calls=calls),
         runner=TrialRunner(

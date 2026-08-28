@@ -112,9 +112,14 @@ class Trial(Entity, machine=TrialStateMachine):
     max_attempts = 3
 
     def __init__(
-        self, id: str, parent: Candidate, status: TrialState | None = None
+        self,
+        id: str,
+        seq: int,
+        parent: Candidate,
+        status: TrialState | None = None,
     ) -> None:
         self.id = id
+        self.seq = seq
         self.parent = parent
         self.attempts = 0
         self.proposal: Proposal | None = None
@@ -125,13 +130,15 @@ class Trial(Entity, machine=TrialStateMachine):
         self.bind()
 
     @staticmethod
-    def id_for(run: str, generation: int, index: int) -> str:
+    def id_for(run: str, seq: int) -> str:
         """Derived, never generated.
 
         uuid4 would make every construction unique, so a retry after a crash
-        could not be recognised as the same trial.
+        could not be recognised as the same trial. seq is the trial's position
+        in its run, and it is the same number the trials table is unique on --
+        two ways of counting the same thing would eventually disagree.
         """
-        return f"{run}/{generation}/{index}"
+        return f"{run}/{seq}"
 
     @property
     def may_prompt(self) -> bool:
