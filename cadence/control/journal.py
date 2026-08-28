@@ -11,24 +11,37 @@ published, not a step the loop has to remember.
     journal = Journal(session)
     stop = cadence.record(journal.record)
 
-What it writes today: the tape, and the run that produced it. Candidates,
-trials and verdicts need facts that carry more than these do.
+What it writes today: the tape, the run that produced it, and the trials and
+candidates the run made. Verdicts still need an identity for the task and the
+seeds they were measured against.
 """
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, ClassVar
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.orm import Session
 
 from cadence.control.locking import LocalLocks
-from cadence.control.storage import events, manifests, runs
+from cadence.control.storage import blobs, candidates, events, manifests, runs, trials
 from cadence.core.dto import RecordedManifest
+from cadence.core.identity import fingerprint as digest_of
 from cadence.core.ports import Locks
-from cadence.lifecycle.states import RunState
+from cadence.lifecycle.states import CandidateState, RunState, TrialState
 from cadence.observe.channel import Fact
-from cadence.observe.signals import RunFinished, RunStarted
+from cadence.observe.signals import (
+    CandidateBuilt,
+    ModelCalled,
+    PatchRejected,
+    ProposalReceived,
+    RunFinished,
+    RunStarted,
+    TrialAbandoned,
+    TrialMeasured,
+    TrialRetried,
+    TrialStarted,
+)
 
 __all__ = ["Journal"]
 
@@ -47,6 +60,7 @@ class Journal:
             return
         with self.locks.with_lock(f"runs/{run_id}"):
             self._about_the_run(fact, run_id)
+            self._about_the_trial(fact, run_id)
             self._append(fact, run_id)
             self.session.commit()
 
@@ -62,6 +76,11 @@ class Journal:
                     started_at=fact.at,
                 )
             )
+            for seed in fact.seeds:
+                # The programs the run started from are candidates too, and
+                # they are what every later candidate's lineage points back to.
+                self._blob(seed)
+                self._candidate(run_id, digest_of(seed), seed, parent=None)
         elif isinstance(fact, RunFinished):
             self.session.execute(
                 sa.update(runs)
@@ -73,6 +92,87 @@ class Journal:
                     reason=fact.reason,
                 )
             )
+
+    REACHED: ClassVar[Mapping[type[Fact], TrialState]] = {
+        TrialStarted: TrialState.STARTED,
+        ModelCalled: TrialState.PROMPTED,
+        ProposalReceived: TrialState.GENERATED,
+        CandidateBuilt: TrialState.MATERIALIZED,
+        TrialMeasured: TrialState.MEASURED,
+        PatchRejected: TrialState.UNUSABLE,
+        TrialAbandoned: TrialState.ABANDONED,
+    }
+    """Which state a trial is in, once a given fact has been seen.
+
+    The facts and the machine's states line up one to one, so the tape alone
+    says where a trial got to and no fact has to carry a status.
+    """
+
+    def _about_the_trial(self, fact: Fact, run_id: str) -> None:
+        if isinstance(fact, TrialStarted):
+            self.session.execute(
+                sa.insert(trials).values(
+                    id=fact.trial_id,
+                    run_id=run_id,
+                    seq=fact.seq,
+                    status=TrialState.STARTED,
+                    attempts=0,
+                    parent_fingerprint=fact.parent,
+                    started_at=fact.at,
+                )
+            )
+        elif isinstance(fact, TrialRetried):
+            self.session.execute(
+                sa.update(trials)
+                .where(trials.c.id == fact.trial_id)
+                .values(attempts=trials.c.attempts + 1)
+            )
+        elif isinstance(fact, CandidateBuilt):
+            self._built(fact, run_id)
+        reached = self.REACHED.get(type(fact))
+        trial_id = getattr(fact, "trial_id", None)
+        if (
+            reached is not None
+            and trial_id is not None
+            and reached is not TrialState.STARTED
+        ):
+            self.session.execute(
+                sa.update(trials)
+                .where(trials.c.id == trial_id)
+                .values(status=reached, reason=getattr(fact, "reason", None))
+            )
+
+    def _built(self, fact: CandidateBuilt, run_id: str) -> None:
+        self._blob(fact.code)
+        self._candidate(run_id, fact.fingerprint, fact.code, parent=fact.parent)
+
+    def _blob(self, code: str) -> None:
+        """Content-addressed. The model re-proposes the same program
+        constantly, and a 500-trial run would otherwise store it 500 times."""
+        self.session.execute(
+            upsert(blobs)
+            .values(hash=digest_of(code), body=code)
+            .on_conflict_do_nothing(index_elements=["hash"])
+        )
+
+    def _candidate(
+        self, run_id: str, fingerprint: str, code: str, parent: str | None
+    ) -> None:
+        # Derived, never generated: the same program in the same run is the
+        # same candidate however many trials propose it, which is what
+        # UNIQUE (run_id, fingerprint) says and what a uuid would break.
+        self.session.execute(
+            upsert(candidates)
+            .values(
+                id=f"{run_id}/{fingerprint}",
+                run_id=run_id,
+                fingerprint=fingerprint,
+                code_hash=digest_of(code),
+                parent_id=f"{run_id}/{parent}" if parent else None,
+                status=CandidateState.ALIVE,
+            )
+            .on_conflict_do_nothing(index_elements=["id"])
+        )
 
     def _remember(self, manifest: RecordedManifest) -> None:
         """Content-addressed, so the hundredth run of one config writes no row.
@@ -118,4 +218,9 @@ class Journal:
         written = fact.model_dump(mode="json")
         written.pop("run_id", None)
         written.pop("at", None)
+        # The source lives in blobs, keyed by content. Keeping it on the tape
+        # as well would store every program twice and grow the one table that
+        # is never allowed to be pruned.
+        written.pop("code", None)
+        written.pop("seeds", None)
         return written

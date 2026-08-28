@@ -25,10 +25,18 @@ from cadence.control.journal import Journal  # noqa: E402
 from cadence.control.methods.evolution import Evolution  # noqa: E402
 from cadence.control.model import Model  # noqa: E402
 from cadence.control.objectives.ranking import WeightedSum  # noqa: E402
-from cadence.control.storage import engine, events, runs  # noqa: E402
+from cadence.control.storage import (  # noqa: E402
+    blobs,
+    candidates,
+    engine,
+    events,
+    runs,
+    trials,
+)
+from cadence.core.identity import fingerprint  # noqa: E402
 from cadence.execution.runner import TrialRunner  # noqa: E402
 from cadence.execution.sandboxes.subprocess import Subprocess  # noqa: E402
-from cadence.lifecycle.states import RunState  # noqa: E402
+from cadence.lifecycle.states import RunState, TrialState  # noqa: E402
 from cadence.observe.signals import cadence  # noqa: E402
 from tests.factories import BASELINE, a_manifest  # noqa: E402
 
@@ -127,20 +135,16 @@ class TestTheTapeIsTheWholeRun:
             "TrialStarted",
             "ModelCalled",
             "ProposalReceived",
+            "CandidateBuilt",
             "TrialMeasured",
             "RunFinished",
         ]
 
     def test_the_tape_is_numbered_from_zero(self, session, journalled):
         journalled(IMPROVES)
-        assert [row["seq"] for row in rows(session, events, run_id="h1")] == [
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-        ]
+        assert [row["seq"] for row in rows(session, events, run_id="h1")] == list(
+            range(7)
+        )
 
     def test_a_fact_carries_what_it_was_about(self, session, journalled):
         journalled(IMPROVES)
@@ -173,3 +177,97 @@ class TestARunThatFailed:
     def test_the_tape_still_ends_with_the_run_finishing(self, session, journalled):
         journalled(run_id="h2")
         assert rows(session, events, run_id="h2")[-1]["type"] == "RunFinished"
+
+
+class TestTheCandidatesAreThere:
+    def test_the_seed_and_the_child_are_both_candidates(self, session, journalled):
+        journalled(IMPROVES)
+        assert len(rows(session, candidates, run_id="h1")) == 2
+
+    def test_the_child_points_back_at_the_seed(self, session, journalled):
+        journalled(IMPROVES)
+        child = next(
+            row for row in rows(session, candidates, run_id="h1") if row["parent_id"]
+        )
+        assert child["parent_id"].endswith(fingerprint(BASELINE))
+
+    def test_the_source_is_stored_once_and_pointed_at(self, session, journalled):
+        report = journalled(IMPROVES)
+        best = next(
+            row
+            for row in rows(session, candidates, run_id="h1")
+            if row["fingerprint"] == report.best
+        )
+        body = session.execute(
+            sa.select(blobs.c.body).where(blobs.c.hash == best["code_hash"])
+        ).scalar()
+        assert body == report.program
+
+    def test_a_program_proposed_twice_is_stored_once(self, session, journalled):
+        """Content-addressed. A 500-trial run would otherwise store the same
+        program hundreds of times."""
+        journalled(IMPROVES, IMPROVES, budget=2)
+        bodies = session.execute(sa.select(blobs.c.body)).scalars().all()
+        assert len(bodies) == len(set(bodies))
+
+
+class TestTheTrialsAreThere:
+    def test_the_trial_is_recorded(self, session, journalled):
+        journalled(IMPROVES)
+        assert len(rows(session, trials, run_id="h1")) == 1
+
+    def test_it_ends_measured(self, session, journalled):
+        journalled(IMPROVES)
+        assert rows(session, trials, run_id="h1")[0]["status"] == TrialState.MEASURED
+
+    def test_its_seq_is_the_one_the_tape_used(self, session, journalled):
+        journalled(IMPROVES)
+        started = next(
+            row
+            for row in rows(session, events, run_id="h1")
+            if row["type"] == "TrialStarted"
+        )
+        assert rows(session, trials, run_id="h1")[0]["seq"] == started["payload"]["seq"]
+
+    def test_it_remembers_which_candidate_it_started_from(self, session, journalled):
+        journalled(IMPROVES)
+        assert rows(session, trials, run_id="h1")[0]["parent_fingerprint"] == (
+            fingerprint(BASELINE)
+        )
+
+
+class TestATrialThatWasAskedAgain:
+    def test_the_retries_are_counted(self, session, journalled):
+        journalled(NONSENSE, IMPROVES)
+        assert rows(session, trials, run_id="h1")[0]["attempts"] == 1
+
+    def test_a_retry_is_not_a_second_trial(self, session, journalled):
+        journalled(NONSENSE, IMPROVES)
+        assert len(rows(session, trials, run_id="h1")) == 1
+
+    def test_the_tape_says_it_was_retried_rather_than_rejected(
+        self, session, journalled
+    ):
+        """Two different things that used to be one fact: a retry costs a
+        model call, a rejection ends the trial."""
+        journalled(NONSENSE, IMPROVES)
+        assert "TrialRetried" in [
+            row["type"] for row in rows(session, events, run_id="h1")
+        ]
+
+
+class TestATrialThatWasGivenUpOn:
+    def test_it_ends_abandoned(self, session, journalled):
+        journalled(*[NONSENSE] * 4)
+        assert rows(session, trials, run_id="h1")[0]["status"] == TrialState.ABANDONED
+
+    def test_it_says_why(self, session, journalled):
+        journalled(*[NONSENSE] * 4)
+        assert "```python block" in rows(session, trials, run_id="h1")[0]["reason"]
+
+    def test_it_built_no_candidate(self, session, journalled):
+        journalled(*[NONSENSE] * 4)
+        children = [
+            row for row in rows(session, candidates, run_id="h1") if row["parent_id"]
+        ]
+        assert children == []
