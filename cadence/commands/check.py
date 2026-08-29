@@ -1,4 +1,5 @@
 import shlex
+from collections.abc import Mapping
 from pathlib import Path
 
 import typer
@@ -16,7 +17,7 @@ from cadence.control.registry import (
 )
 from cadence.errors import CadenceError
 from cadence.execution.sandboxes.subprocess import Job, Subprocess
-from cadence.parsing.metrics import MetricNotReported, read
+from cadence.parsing.metrics import MetricNotReported, read, verifier_broke
 
 
 def check(root: Path = typer.Argument(Path("."))) -> None:
@@ -26,7 +27,9 @@ def check(root: Path = typer.Argument(Path("."))) -> None:
         code = _region(manifest, root)
         _plan(manifest)
         execution = _baseline(manifest, root, code)
-        _metrics(manifest, execution.stdout)
+        readings = _metrics(manifest, execution.stdout)
+        _repeats(manifest, root, code, readings)
+        _affordable(manifest, execution)
         _guidance(manifest, root)
     except MetricNotReported as error:
         die(str(error))
@@ -91,8 +94,8 @@ def _goals(manifest: Manifest) -> str:
     return ", ".join(f"{name} to {goal}" for name, goal in manifest.metrics.items())
 
 
-def _baseline(manifest: Manifest, root: Path, code: str):
-    execution = Subprocess().run(
+def _score_once(manifest: Manifest, root: Path, code: str):
+    return Subprocess().run(
         Job(
             code=code,
             program=manifest.program,
@@ -103,6 +106,17 @@ def _baseline(manifest: Manifest, root: Path, code: str):
             memory_mb=manifest.sandbox.memory_mb,
         )
     )
+
+
+def _baseline(manifest: Manifest, root: Path, code: str):
+    execution = _score_once(manifest, root, code)
+    broke = verifier_broke(execution.stdout)
+    if broke is not None:
+        die(
+            f"`{manifest.command}` reported a fault of its own: {broke}",
+            "A scoring command already broken before a run starts would score"
+            " every candidate the same way, and the run would report success.",
+        )
     if not execution.ok:
         die(
             f"`{manifest.command}` failed on your unmodified program:\n\n"
@@ -117,7 +131,7 @@ def _baseline(manifest: Manifest, root: Path, code: str):
     return execution
 
 
-def _metrics(manifest: Manifest, stdout: str) -> None:
+def _metrics(manifest: Manifest, stdout: str) -> Mapping[str, float]:
     readings = read(stdout, manifest.metrics)
     for name, value in readings.items():
         found("metric", f"{name} = {value:g}, and {manifest.metrics[name]} is better")
@@ -127,6 +141,82 @@ def _metrics(manifest: Manifest, stdout: str) -> None:
         f"{seeds} seed{'s' if seeds != 1 else ''} per trial,"
         f" {manifest.sandbox.seconds:g}s and {manifest.sandbox.memory_mb}MB each",
     )
+    return readings
+
+
+def _repeats(manifest: Manifest, root: Path, code: str, first: Mapping[str, float]):
+    """Score the unmodified program a second time and compare.
+
+    A scoring rule that answers differently each time makes the search chase
+    noise: a candidate is admitted for being lucky, and the run reports a
+    winner nobody can reproduce. It is the cheapest of the silent failures to
+    catch -- one more run of a program that has already run once.
+
+    A tolerance rather than exact equality, because exact only holds for small
+    integer programs. Anything with float reduction order or threads differs
+    in the last places without being meaningfully non-deterministic, and the
+    manifest is where a project says how much of that it has.
+    """
+    again = _score_once(manifest, root, code)
+    if not again.ok:
+        die(
+            f"`{manifest.command}` passed once and failed the second time.",
+            "Cadence runs it once per seed per trial. One that fails"
+            " intermittently cannot rank anything.",
+        )
+    second = read(again.stdout, manifest.metrics)
+    tolerance = manifest.verifier.tolerance
+    drifted = {
+        name: (first[name], second[name])
+        for name in first
+        if abs(first[name] - second[name]) > (tolerance or 0.0)
+    }
+    if not drifted:
+        if tolerance is None:
+            absent(
+                "repeatable",
+                "scored the same twice, and nothing declares it -- set"
+                " verifier.tolerance to let cadence reuse a score",
+            )
+        else:
+            found("repeatable", f"scored the same twice, within {tolerance:g}")
+        return
+    named = ", ".join(
+        f"{name} {was:g} then {now:g}" for name, (was, now) in drifted.items()
+    )
+    if tolerance is None:
+        absent("repeatable", f"scored differently the second time: {named}")
+        note(
+            "\nThe search will chase that noise: a candidate is admitted for"
+            "\nbeing lucky, and the run reports a winner you cannot reproduce."
+        )
+        return
+    die(
+        f"the same program scored differently twice: {named}",
+        f"verifier.tolerance says {tolerance:g} and this is outside it."
+        " Either the scoring rule is not repeatable or the tolerance is wrong.",
+    )
+
+
+def _affordable(manifest: Manifest, execution) -> None:
+    """What the run will spend scoring, at this speed.
+
+    One run is quick and five hundred are not. Projecting it costs nothing and
+    is the difference between finding out now and finding out in six hours.
+    """
+    seeds = len(manifest.sandbox.seeds)
+    total = execution.duration_ms * seeds * manifest.budget.trials / 1000
+    spent = f"{total / 60:.0f} minutes" if total >= 90 else f"{total:.0f}s"
+    found(
+        "cost",
+        f"{manifest.budget.trials} trials x {seeds} seeds x"
+        f" {execution.duration_ms:.0f}ms is about {spent} of scoring",
+    )
+    if total >= 3600:
+        note(
+            f"\nThat is {total / 3600:.1f} hours before a model call is counted."
+            "\nFewer seeds, fewer trials or a faster command would all help."
+        )
 
 
 def _guidance(manifest: Manifest, root: Path) -> None:
