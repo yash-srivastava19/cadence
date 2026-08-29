@@ -1,8 +1,9 @@
 import pytest
+from pydantic import ValidationError
 
 from cadence.control.backends import Reliable, Scripted, chat_backend, known
 from cadence.control.backends.http import RETRYABLE, Http, HttpResponse, error_for
-from cadence.control.backends.settings import settings_for
+from cadence.control.backends.settings import Price, settings_for
 from cadence.control.registry import BACKENDS
 from cadence.core.ports import Backend
 from cadence.errors import (
@@ -96,7 +97,65 @@ class TestAnyBackend:
 
     def test_the_cost_of_a_call_is_reported(self, backend):
         cost = backend.call("a prompt").cost
-        assert set(cost) == {"tokens_in", "tokens_out", "latency_ms"}
+        assert set(cost) == {"tokens_in", "tokens_out", "latency_ms", "cost_usd"}
+
+
+class TestWhatACallCostInMoney:
+    """Tokens are not comparable between two models, so a run against a cheap
+    one and a run against an expensive one cannot be told apart by them.
+    Money is the only unit that survives the comparison -- and cadence ships
+    almost none of it, because a price is a fact about someone else's
+    catalogue on the day it was written."""
+
+    def test_a_local_model_is_free_rather_than_unpriced(self):
+        """The one price that cannot go stale: nothing bills for a model
+        running on your own machine."""
+        assert Ollama(http=Recorded(spoke())).call("hi").cost_usd == 0.0
+
+    def test_a_provider_nobody_priced_reports_no_cost(self):
+        """None, not zero. The call cost something; cadence was not told
+        what, and inventing a zero would be a lie with a decimal point."""
+        assert Gemini(key="x", http=Recorded(spoke())).call("hi").cost_usd is None
+
+    def test_a_declared_price_is_applied_to_the_tokens(self):
+        priced = Gemini(
+            key="x",
+            prices={"m": {"in": 2.0, "out": 10.0}},
+            http=Recorded(spoke(tokens_in=1_000_000, tokens_out=1_000_000)),
+        )
+        assert priced.call("hi").cost_usd == 12.0
+
+    def test_it_prices_the_model_that_answered_not_the_one_asked_for(self):
+        """A provider that served something else billed for what it served."""
+        priced = Gemini(
+            key="x",
+            model="asked-for",
+            prices={"served": {"in": 1.0, "out": 1.0}},
+            http=Recorded(spoke(model="served", tokens_in=1_000_000, tokens_out=0)),
+        )
+        assert priced.call("hi").cost_usd == 1.0
+
+    def test_a_price_for_one_model_does_not_price_another(self):
+        priced = Gemini(
+            key="x",
+            prices={"other": {"in": 1.0, "out": 1.0}},
+            http=Recorded(spoke(model="m")),
+        )
+        assert priced.call("hi").cost_usd is None
+
+    def test_a_price_is_quoted_per_million_tokens(self):
+        """Because that is how every provider publishes one, so a number
+        copied off a pricing page is copied unchanged."""
+        price = Price(**{"in": 3.0, "out": 0.0})
+        assert price.of(500_000, 0) == 1.5
+
+    def test_a_wildcard_prices_whatever_was_named(self):
+        settings = settings_for("ollama")
+        assert settings.price_of("a model nobody has heard of") is not None
+
+    def test_a_negative_price_is_refused(self):
+        with pytest.raises(ValidationError):
+            Price(**{"in": -1.0, "out": 0.0})
 
 
 class TestProvidersAreData:

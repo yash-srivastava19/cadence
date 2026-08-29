@@ -49,13 +49,18 @@ class Completion(Value):
     tokens_in: int = Field(ge=0)
     tokens_out: int = Field(ge=0)
     latency_ms: float = Field(ge=0, allow_inf_nan=False)
+    #: What it cost, when a price for this model was declared. None means
+    #: nobody said, which is different from free -- and only the backend that
+    #: made the call is in a position to know which.
+    cost_usd: float | None = Field(default=None, ge=0)
 
     @property
-    def cost(self) -> dict[str, float]:
+    def cost(self) -> dict[str, float | None]:
         return {
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,
             "latency_ms": self.latency_ms,
+            "cost_usd": self.cost_usd,
         }
 
 
@@ -122,9 +127,11 @@ class Request(Value):
 class Suggestion(NamedTuple):
     """What the model layer hands back: the proposal, and what it cost.
 
-    A tuple rather than a Value because every caller unpacks all three, and
-    because `replayed` is a fact about this call rather than about the
-    proposal -- the same proposal replayed is the same proposal.
+    A tuple rather than a Value because `Model.send` and `Model.propose`
+    unpack all of it, and because `replayed` is a fact about this call rather
+    than about the proposal -- the same proposal replayed is the same
+    proposal. Experiment takes only the proposal: it reports the call where
+    the answer arrives, which is before there is a Suggestion to report from.
     """
 
     proposal: Proposal
@@ -201,29 +208,62 @@ class TrialBudget(Value):
 
 
 class Spend(Value):
-    """What a run cost. Tokens, because they are what cadence can count.
+    """What a run cost: the work in tokens, and the bill in dollars.
 
-    Not dollars: turning tokens into money needs a price per provider per
-    model, which changes without telling anyone, and a stale price is a
-    worse answer than none.
+    Dollars only when a price was declared. Cadence ships no prices for paid
+    providers -- one is a fact about someone else's catalogue that goes stale
+    without telling anyone -- so the number comes from the user's own
+    providers.local.yml or it does not come at all. A price the user wrote is
+    a price they can see the age of; a price cadence shipped is one they
+    cannot, which is why `usd` is None far more often than it is zero.
+
+    The two count different things on purpose. `calls` and `tokens` are the
+    work the run asked for, replays included, because that is what it takes
+    to reproduce. `usd` is what this run was billed, replays excluded,
+    because an answer read back out of the database was not bought again.
     """
 
     calls: int = Field(default=0, ge=0)
     replayed: int = Field(default=0, ge=0)
     tokens_in: int = Field(default=0, ge=0)
     tokens_out: int = Field(default=0, ge=0)
+    usd: float | None = Field(default=None, ge=0)
 
     @property
     def tokens(self) -> int:
         return self.tokens_in + self.tokens_out
 
-    def and_also(self, tokens_in: int, tokens_out: int, replayed: bool) -> "Spend":
+    def and_also(
+        self,
+        tokens_in: int,
+        tokens_out: int,
+        replayed: bool,
+        usd: float | None = None,
+    ) -> "Spend":
         return Spend(
             calls=self.calls + 1,
             replayed=self.replayed + int(replayed),
             tokens_in=self.tokens_in + tokens_in,
             tokens_out=self.tokens_out + tokens_out,
+            # None rather than 0.0 for a replay: adding a zero would turn
+            # "nothing was bought" into a stated bill of $0.00, and a run
+            # that replayed everything did not buy nothing for free -- it
+            # did not buy.
+            usd=self._plus(None if replayed else usd),
         )
+
+    def _plus(self, usd: float | None) -> float | None:
+        """None and zero are different answers, so they add differently.
+
+        None until something priced arrives, rather than zero, because a run
+        against a provider nobody priced has not spent nothing -- it has spent
+        an amount cadence cannot name, and saying $0.00 would be a lie with a
+        decimal point on it. A run holds one backend, so in practice every
+        call is priced or none is.
+        """
+        if usd is None:
+            return self.usd
+        return usd + (self.usd or 0.0)
 
 
 class Report(Value):

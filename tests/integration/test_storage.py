@@ -25,10 +25,9 @@ from cadence.control.storage import (  # noqa: E402
     candidates,
     engine,
     events,
-    idempotency_keys,
     manifests,
+    metadata,
     model_calls,
-    quarantine,
     runs,
     templates,
     trials,
@@ -38,8 +37,7 @@ from cadence.lifecycle.states import RunState  # noqa: E402
 
 # What the migration granted, and what a reviewer can read off `\dp` in psql.
 APPEND_ONLY = (blobs, manifests, templates, verdicts, events, model_calls)
-ADVANCES = (runs, trials, candidates, budget, quarantine)
-SWEEPABLE = (idempotency_keys,)
+ADVANCES = (runs, trials, candidates, budget)
 
 
 # One engine per role for the whole module, disposed at the end. A fresh
@@ -206,10 +204,26 @@ class TestTheLedgerCannotBeRewritten:
         _as_app(table, sa.delete(table))
 
 
-class TestTheOneTableASweeperOwns:
-    @pytest.mark.parametrize("table", SWEEPABLE, ids=lambda t: t.name)
-    def test_expired_keys_can_be_deleted(self, table):
-        # Every other table refuses DELETE. This one must allow it, or an
-        # idempotency key with a TTL would live forever.
-        with engine(APP).begin() as connection:
-            connection.execute(sa.delete(table))
+class TestNothingMayErase:
+    """There is no sweepable table any more.
+
+    idempotency_keys was the only one the application could delete from, and
+    it held a claim that already lives on model_calls. With it gone the rule
+    has no exception: every table the application can reach refuses DELETE,
+    which is a stronger sentence than the one it replaces.
+    """
+
+    def test_no_table_grants_delete_to_the_application(self):
+        # cadence's own tables. alembic_version is not one of them: it is
+        # alembic's, written by the owner, and it inherits the database's
+        # default privileges rather than a migration's grant.
+        with engine(OWNER).connect() as connection:
+            granted = connection.execute(
+                sa.text(
+                    "select table_name from information_schema.role_table_grants"
+                    " where grantee = 'cadence_app' and privilege_type = 'DELETE'"
+                    " and table_name = any(:names)"
+                ),
+                {"names": sorted(metadata.tables)},
+            ).scalars()
+        assert list(granted) == []

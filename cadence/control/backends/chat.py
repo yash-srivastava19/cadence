@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from cadence.control.backends.http import Http
 from cadence.control.backends.reliable import Reliable
 from cadence.control.backends.settings import Settings, settings_for
-from cadence.control.backends.wire import ChatRequest, ChatResponse
+from cadence.control.backends.wire import ChatRequest, ChatResponse, Usage
 from cadence.core.dto import Completion
 from cadence.core.ports import Audit
 from cadence.errors import EmptyReply, TerminalModelError
@@ -45,13 +45,25 @@ class OpenAIDialect:
         reply = self._read(answer.body)
         if reply.said_nothing:
             raise EmptyReply(f"{self.name} returned a reply with no completion in it")
+        model = reply.model or self.settings.model
         return Completion(
             text=reply.text,
-            model=reply.model or self.settings.model,
+            model=model,
             tokens_in=reply.spent.prompt_tokens,
             tokens_out=reply.spent.completion_tokens,
             latency_ms=answer.latency_ms,
+            # Priced here because this is the only place that knows both the
+            # tokens and which provider quoted for them. The model the reply
+            # names, not the one we asked for: a provider that served
+            # something else billed for what it served.
+            cost_usd=self._priced(model, reply.spent),
         )
+
+    def _priced(self, model: str, spent: Usage) -> float | None:
+        price = self.settings.price_of(model)
+        if price is None:
+            return None
+        return price.of(spent.prompt_tokens, spent.completion_tokens)
 
     def _read(self, body: Any) -> ChatResponse:
         try:
