@@ -5,6 +5,7 @@ from cadence.core.verdict import Outcome
 from cadence.errors import PatchError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
+from tests.factories import as_failed, as_scored
 
 BASELINE = "print('value: 0')"
 BETTER = "print('value: 9')"
@@ -51,7 +52,7 @@ class TestScoring:
         assert a_runner().try_(BETTER).verdict.is_scored
 
     def test_the_metric_comes_from_what_the_program_printed(self):
-        assert a_runner().try_(BETTER).verdict.metrics["value"] == 9.0
+        assert as_scored(a_runner().try_(BETTER).verdict).metrics["value"] == 9.0
 
     def test_the_verdict_names_the_code_it_measured(self):
         from cadence.core.identity import fingerprint
@@ -65,12 +66,12 @@ class TestScoring:
             .try_(code)
             .verdict
         )
-        assert verdict.metrics == {"value": 2.0, "cost": 5.0}
+        assert as_scored(verdict).metrics == {"value": 2.0, "cost": 5.0}
 
     def test_readings_are_averaged_across_seeds(self):
         code = "import os\nprint('value:', int(os.environ['CADENCE_SEED']))"
         verdict = a_runner(seeds=(0, 2)).try_(code).verdict
-        assert verdict.metrics["value"] == 1.0
+        assert as_scored(verdict).metrics["value"] == 1.0
 
     def test_a_runner_needs_a_seed(self):
         with pytest.raises(ValueError, match="at least one seed"):
@@ -94,7 +95,7 @@ class TestFailuresAreDistinguished:
 
     def test_a_crash_keeps_the_reason(self):
         verdict = a_runner().try_("raise ValueError('x')").verdict
-        assert "ValueError" in verdict.reason
+        assert "ValueError" in as_failed(verdict).reason
 
     def test_a_timeout_is_a_timeout(self):
         spins = "while True:\n    pass"
@@ -107,7 +108,7 @@ class TestFailuresAreDistinguished:
 
     def test_it_says_which_metric_was_missing(self):
         verdict = a_runner().try_("print('all done')").verdict
-        assert "value" in verdict.reason
+        assert "value" in as_failed(verdict).reason
 
     def test_one_bad_seed_fails_the_whole_verdict(self):
         code = (
@@ -124,7 +125,7 @@ class TestOutOfMemoryReachesTheVerdict:
             a_runner(memory_mb=64).try_("x = bytearray(500 * 1024 * 1024)").verdict
         )
         assert verdict.outcome is Outcome.OUT_OF_MEMORY
-        assert "memory" in verdict.reason
+        assert "memory" in as_failed(verdict).reason
 
 
 class TestWhatMakesAMeasurementUnique:
@@ -200,7 +201,7 @@ class TestWhenTheScoringCommandIsTheBrokenOne:
             )
             .verdict
         )
-        assert "OPENAI_API_KEY unset" in verdict.reason
+        assert "OPENAI_API_KEY unset" in as_failed(verdict).reason
 
     def test_it_escalates_rather_than_scoring_at_the_floor(self):
         verdict = (

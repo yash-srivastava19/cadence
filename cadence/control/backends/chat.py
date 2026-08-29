@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from cadence.control.backends.http import Http
+from cadence.control.backends.http import Http, Posts
 from cadence.control.backends.reliable import Reliable
 from cadence.control.backends.settings import Settings, settings_for
 from cadence.control.backends.wire import ChatRequest, ChatResponse, Usage
@@ -23,7 +23,7 @@ __all__ = ["OpenAIDialect", "chat_backend"]
 class OpenAIDialect:
     """One provider. The transport is Http's problem, the format is wire's."""
 
-    def __init__(self, settings: Settings, http: Http | None = None) -> None:
+    def __init__(self, settings: Settings, http: Posts | None = None) -> None:
         self.settings = settings
         self.http = http or Http(timeout=settings.timeout)
 
@@ -79,7 +79,7 @@ class OpenAIDialect:
 
 def chat_backend(
     name: str,
-    http: Http | None = None,
+    http: Posts | None = None,
     audit: Audit | None = None,
     root: Path | None = None,
     **overrides: Any,

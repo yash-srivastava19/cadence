@@ -11,7 +11,11 @@ Override only what the test is about:
     a_verdict(outcome=CRASHED)  a failure, when the failure is the point
 """
 
+from typing import TypeVar
+
+from cadence.control.backends import Scripted
 from cadence.control.entities import Candidate, Run, Trial
+from cadence.control.experiment import Experiment
 from cadence.control.methods.evolution import Evolution, Measured, Unmeasured
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import WeightedSum
@@ -26,6 +30,53 @@ from cadence.core.dto import (
     TrialResult,
 )
 from cadence.core.verdict import Failed, Outcome, Scored
+
+T = TypeVar("T")
+
+
+def present(value: T | None) -> T:
+    """The value, insisting there is one.
+
+    Half the interesting things a run produces are optional -- the best
+    program, the reason it stopped, the next directive -- and a test that
+    reads one straight through is claiming it is there. Saying so out loud
+    fails on the line that made the claim, with a name, rather than three
+    lines later on an attribute of None. It also lets a type checker read the
+    test, which is what stops the editor and CI disagreeing about it.
+    """
+    assert value is not None
+    return value
+
+
+def as_scored(verdict: object) -> Scored:
+    """The verdict, insisting it scored.
+
+    `Verdict` is a sum type on purpose -- only one arm has metrics and only
+    the other has a reason -- so reading either one is a claim about which
+    arm you are holding. A test that is wrong about that should say so where
+    it made the claim.
+    """
+    assert isinstance(verdict, Scored), f"expected a score, got {verdict}"
+    return verdict
+
+
+def as_failed(verdict: object) -> Failed:
+    """The verdict, insisting it failed. The other half of as_scored."""
+    assert isinstance(verdict, Failed), f"expected a failure, got {verdict}"
+    return verdict
+
+
+def asked(experiment: Experiment) -> list[str]:
+    """Every prompt the experiment's backend was sent.
+
+    Reaching through `experiment.model.backend` gets a Backend, which is a
+    protocol and has no prompts: only the scripted one keeps them. The
+    isinstance is the test saying which kind it built.
+    """
+    backend = experiment.model.backend
+    assert isinstance(backend, Scripted), "only the scripted backend keeps prompts"
+    return backend.prompts
+
 
 __all__ = [
     "BASELINE",
@@ -46,6 +97,10 @@ __all__ = [
     "a_verdict",
     "an_evolution",
     "an_unmeasured",
+    "as_failed",
+    "as_scored",
+    "asked",
+    "present",
     "some_budget",
 ]
 

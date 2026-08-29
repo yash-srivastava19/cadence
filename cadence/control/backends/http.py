@@ -10,12 +10,12 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
 from functools import wraps
-from typing import Any, ParamSpec, TypeVar
+from typing import Any, ParamSpec, Protocol, TypeVar, runtime_checkable
 
 from cadence.core.values import Value
 from cadence.errors import ModelError, RetryableModelError, TerminalModelError
 
-__all__ = ["RETRYABLE", "Http", "HttpResponse", "error_for", "timed"]
+__all__ = ["RETRYABLE", "Http", "HttpResponse", "Posts", "error_for", "timed"]
 
 RETRYABLE = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 
@@ -45,6 +45,24 @@ def error_for(status: int, detail: str) -> ModelError:
 class HttpResponse(Value):
     body: Mapping[str, Any]
     latency_ms: float
+
+
+@runtime_checkable
+class Posts(Protocol):
+    """Somewhere to send a request and get a reply.
+
+    A protocol rather than the class, because every seam in cadence that gets
+    substituted is one: a test standing in for the network could satisfy Http
+    in practice and not in the type, which is the sort of gap that makes a
+    type checker useless exactly where it would help.
+    """
+
+    def post(
+        self,
+        url: str,
+        request: Mapping[str, Any],
+        headers: Mapping[str, str] | None = None,
+    ) -> HttpResponse: ...
 
 
 class Http:
