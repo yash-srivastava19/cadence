@@ -32,6 +32,7 @@ from cadence.control.storage import (  # noqa: E402
     events,
     model_calls,
     runs,
+    templates,
     trials,
     verdicts,
 )
@@ -327,6 +328,32 @@ class TestWhatTheCallCost:
             backend=self._priced(session, {"m": {"in": 4.0, "out": 0.0}})
         )
         assert float(rows(session, model_calls)[0]["cost_usd"]) == report.spend.usd
+
+
+class TestThePromptTemplateIsKept:
+    """The recipe names the template; the body is in code that changes. A run
+    replayed after an edit would rebuild a different prompt."""
+
+    def test_the_template_is_stored_by_content(self, session, journalled):
+        journalled(IMPROVES)
+        assert len(rows(session, templates)) == 1
+
+    def test_the_call_points_at_it(self, session, journalled):
+        journalled(IMPROVES)
+        stored = rows(session, templates)[0]
+        assert rows(session, model_calls)[0]["template_hash"] == stored["hash"]
+
+    def test_the_body_is_the_one_that_was_rendered(self, session, journalled):
+        from cadence.control.model import TEMPLATES
+
+        journalled(IMPROVES)
+        stored = rows(session, templates)[0]
+        assert stored["body"] == TEMPLATES[stored["name"]]
+
+    def test_two_calls_from_one_template_store_it_once(self, session, journalled):
+        journalled(NONSENSE, IMPROVES)
+        assert len(rows(session, model_calls)) == 2
+        assert len(rows(session, templates)) == 1
 
 
 class TestEveryCallWeMadeIsClosed:

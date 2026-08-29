@@ -12,6 +12,7 @@ from cadence.control.preflight import inspect
 from cadence.control.registry import build, seed_program
 from cadence.delivery import as_json, as_text
 from cadence.errors import CadenceError
+from cadence.lifecycle.states import RunState
 from cadence.observe.signals import cadence
 
 
@@ -85,5 +86,7 @@ def run(
         die(str(error))
         raise  # unreachable; die() exits. keeps `report` definitely bound.
     typer.echo(as_json(report) if as_json_output else f"\n{as_text(report)}")
-    if report.reason:
+    # The status, not the message: a run that stopped at its cap did what it
+    # was told and has a sentence about it.
+    if report.status is not RunState.FINISHED:
         raise typer.Exit(1)

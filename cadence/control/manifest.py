@@ -87,6 +87,10 @@ class Prompt(Strict):
 
 class Budget(Strict):
     trials: int = Field(default=20, gt=0)
+    #: What the run may spend with the provider. Only enforceable where a
+    #: price is declared, so a run against an unpriced provider ignores it
+    #: rather than pretending to hold to it.
+    usd: float | None = Field(default=None, gt=0)
 
 
 class Sandbox(Strict):

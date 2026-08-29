@@ -238,6 +238,7 @@ class Model:
             key=key or "unkeyed",
             prompt=prompt,
             digest=digest(prompt),
+            template_hash=digest(TEMPLATES[self.template]),
             recipe=recipe,
         )
 
@@ -249,12 +250,12 @@ class Model:
         count it here, before anything can go wrong with what came back.
         """
         if self.calls is None:
-            return self._ask(request.prompt), False
+            return self._ask(request), False
         return through(
             self.calls,
             request.key,
             request.prompt,
-            lambda: self._ask(request.prompt),
+            lambda: self._ask(request),
         )
 
     def read(self, request: Request, completion: Completion, code: str) -> Proposal:
@@ -286,5 +287,5 @@ class Model:
             raise PatchError("the program came back unchanged")
         return patch
 
-    def _ask(self, prompt: str):
-        return self.backend.call(prompt)
+    def _ask(self, request: Request):
+        return self.backend.call(request)

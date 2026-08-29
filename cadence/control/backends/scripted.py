@@ -6,7 +6,7 @@ no network: tests and examples get a real Backend without a provider.
 
 from collections import deque
 
-from cadence.core.dto import Completion
+from cadence.core.dto import Completion, Request
 from cadence.errors import TerminalModelError
 
 __all__ = ["Scripted"]
@@ -24,7 +24,8 @@ class Scripted:
     def remaining(self) -> int:
         return len(self._remaining)
 
-    def call(self, prompt: str) -> Completion:
+    def call(self, request: Request) -> Completion:
+        prompt = request.prompt
         self.prompts.append(prompt)
         if not self._remaining:
             raise TerminalModelError("the scripted backend ran out of responses")

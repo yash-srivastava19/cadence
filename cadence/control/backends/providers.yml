@@ -7,6 +7,11 @@
 #
 # Every provider speaks the OpenAI dialect, so adding one is a row.
 #
+# idempotency_header names what a provider dedupes on. Cadence sends the
+# call's key there, so a retry after a timeout -- when the provider may have
+# answered a request we never saw -- is not charged twice. Absent means the
+# provider has no such header, and a retry is a second call.
+#
 # Prices are yours to declare, keyed by model, in USD per million tokens:
 #
 #   prices:
@@ -48,7 +53,9 @@ providers:
   openai:
     base_url: https://api.openai.com/v1
     key_from: [OPENAI_API_KEY]
+    idempotency_header: Idempotency-Key
 
   anthropic:
     base_url: https://api.anthropic.com/v1
     key_from: [ANTHROPIC_API_KEY]
+    idempotency_header: Idempotency-Key

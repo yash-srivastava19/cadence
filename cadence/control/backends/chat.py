@@ -13,7 +13,7 @@ from cadence.control.backends.http import Http, Posts
 from cadence.control.backends.reliable import Reliable
 from cadence.control.backends.settings import Settings, settings_for
 from cadence.control.backends.wire import ChatRequest, ChatResponse, Usage
-from cadence.core.dto import Completion
+from cadence.core.dto import Completion, Request
 from cadence.core.ports import Audit
 from cadence.errors import EmptyReply, TerminalModelError
 
@@ -31,16 +31,16 @@ class OpenAIDialect:
     def name(self) -> str:
         return self.settings.name
 
-    def call(self, prompt: str) -> Completion:
-        request = ChatRequest(
+    def call(self, request: Request) -> Completion:
+        body = ChatRequest(
             model=self.settings.model,
-            prompt=prompt,
+            prompt=request.prompt,
             temperature=self.settings.temperature,
         )
         answer = self.http.post(
             f"{self.settings.url}/chat/completions",
-            request.as_json(),
-            self.settings.headers(),
+            body.as_json(),
+            self.settings.headers(request.key),
         )
         reply = self._read(answer.body)
         if reply.said_nothing:
