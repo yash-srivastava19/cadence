@@ -1,12 +1,15 @@
 import logging
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from blinker import ANY, Signal
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = ["Channel", "Emitter", "Fact", "Recorder"]
+
+
+F = TypeVar("F", bound="Fact")
 
 
 def _keeps_nothing(fact: "Fact") -> None:
@@ -131,5 +134,11 @@ class Recorder:
     def __len__(self) -> int:
         return len(self._facts)
 
-    def of(self, kind: type) -> list[Fact]:
+    def of(self, kind: type[F]) -> list[F]:
+        """The facts of one kind, still knowing which kind they are.
+
+        Generic because `list[Fact]` throws away the only thing the caller
+        asked for: every reader of a tape immediately wants a field that
+        belongs to the specific fact, and a plain Fact does not have one.
+        """
         return [fact for fact in self._facts if isinstance(fact, kind)]

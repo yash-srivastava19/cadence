@@ -23,6 +23,7 @@ only thing that will ever want to ask.
 from collections.abc import Sequence
 from pathlib import Path
 
+from cadence.control.backends.settings import settings_for
 from cadence.control.manifest import Manifest
 from cadence.control.region import split
 from cadence.control.registry import METHODS, OBJECTIVES, objective_for, resolve
@@ -31,6 +32,9 @@ from cadence.core.values import Value
 from cadence.errors import CadenceError
 
 __all__ = ["Finding", "Preflight", "inspect"]
+
+#: The default backend, which has no answers in it.
+SCRIPTED = "scripted"
 
 
 class Finding(Value):
@@ -64,6 +68,7 @@ def _looked_at(manifest: Manifest, root: Path, code: str) -> Sequence[Finding]:
         _the_manifest(manifest),
         _the_region(manifest, code),
         _the_method(manifest),
+        _the_model(manifest),
     ]
 
 
@@ -119,6 +124,39 @@ def _the_method(manifest: Manifest) -> Finding:
     return Finding(
         about="method", detail=f"{manifest.method.name} built with {options}"
     )
+
+
+def _the_model(manifest: Manifest) -> Finding:
+    """The provider exists, and whether there is a key for it.
+
+    A missing key does not fail the check -- it belongs to the machine, and
+    the same project has to pass on a CI box with no secrets. Saying nothing
+    is how "ready" came to mean "ready except for the thing that stops the
+    first call". Nothing is called; settings_for reads a file and the
+    environment.
+    """
+    name = manifest.model.name
+    if name == SCRIPTED:
+        return Finding(
+            about="model",
+            detail=(
+                "scripted, which has no answers in it."
+                " `cadence run` needs a provider named in .cadence"
+            ),
+        )
+    try:
+        settings = settings_for(name, **manifest.model.options)
+    except CadenceError as error:
+        return Finding(about="model", detail=str(error), ok=False)
+    if settings.needs_a_key and settings.key is None:
+        return Finding(
+            about="model",
+            detail=(
+                f"{name}, model {settings.model}"
+                f" -- no {' or '.join(settings.key_from)} in this environment"
+            ),
+        )
+    return Finding(about="model", detail=f"{name}, model {settings.model}")
 
 
 def named(objective) -> str:

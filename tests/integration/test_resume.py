@@ -28,7 +28,7 @@ from cadence.control.storage import model_calls, trials  # noqa: E402
 from cadence.execution.runner import TrialRunner  # noqa: E402
 from cadence.execution.sandboxes.subprocess import Subprocess  # noqa: E402
 from cadence.lifecycle.states import RunState  # noqa: E402
-from tests.factories import BASELINE, a_manifest  # noqa: E402
+from tests.factories import BASELINE, a_manifest, asked, present  # noqa: E402
 from tests.integration.test_journal import (  # noqa: E402
     CRASHES,
     IMPROVES,
@@ -112,15 +112,15 @@ class TestWhatTheDatabaseOffersBack:
         assert resume_from(interrupted, RUN) is not None
 
     def test_it_offers_back_what_was_already_scored(self, interrupted):
-        assert len(resume_from(interrupted, RUN).history.results) == 1
+        assert len(present(resume_from(interrupted, RUN)).history.results) == 1
 
     def test_it_counts_the_trials_that_are_over(self, interrupted):
-        assert resume_from(interrupted, RUN).trials == 1
+        assert present(resume_from(interrupted, RUN)).trials == 1
 
     def test_a_trial_still_in_flight_does_not_count_as_over(self, died_mid_trial):
         """So the next trial takes its seq and redoes it, rather than
         numbering past a row nothing will ever finish."""
-        assert resume_from(died_mid_trial, RUN).trials == 0
+        assert present(resume_from(died_mid_trial, RUN)).trials == 0
 
 
 class TestPickingItUpAgain:
@@ -168,7 +168,7 @@ class TestItDoesNotPayTwice:
         model_calls."""
         experiment = an_experiment(died_mid_trial, budget=1)
         report = experiment.run()
-        assert experiment.model.backend.prompts == []
+        assert asked(experiment) == []
         assert report.scored == 1
 
     def test_the_tape_says_the_call_was_replayed(self, died_mid_trial, journal):
@@ -196,7 +196,7 @@ class TestItDoesNotPayTwice:
 
         experiment = an_experiment(session, budget=1)
         report = experiment.run()
-        assert experiment.model.backend.prompts == []
+        assert asked(experiment) == []
         assert report.scored == 1
 
     def test_both_answers_come_back_marked_replayed(self, session, journal):
@@ -265,10 +265,10 @@ class TestAQuarantinedCandidateIsNotOfferedBack:
         from cadence.control.storage import candidates
 
         an_experiment(session, CRASHES, budget=1).run()
-        assert len(history_of(session, RUN).results) == 1
+        assert len(present(history_of(session, RUN)).results) == 1
         session.execute(
             sa.update(candidates)
             .where(candidates.c.parent_id.isnot(None))
             .values(status="quarantined")
         )
-        assert history_of(session, RUN).results == ()
+        assert present(history_of(session, RUN)).results == ()

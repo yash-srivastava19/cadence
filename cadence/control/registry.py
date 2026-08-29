@@ -136,6 +136,7 @@ def build(
             template=manifest.prompt.template,
             markers=(manifest.markers.begin, manifest.markers.end),
             guidance=guidance(manifest, root),
+            goals=manifest.metrics,
             calls=Recorded(session, run_id) if session is not None else None,
         ),
         runner=TrialRunner(

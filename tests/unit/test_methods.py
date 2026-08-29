@@ -14,6 +14,7 @@ from cadence.core.dto import Directive, RunHistory, TrialBudget, TrialResult
 from cadence.core.ports import Method
 from cadence.core.verdict import Failed, Outcome, Scored
 from cadence.errors import NoCandidates
+from tests.factories import as_scored, present
 
 SEED = "def solve(): return []"
 
@@ -71,7 +72,7 @@ class TestTheProtocol:
         assert isinstance(an_evolution().next_directive(past(), ledger()), Directive)
 
     def test_the_first_directive_points_at_a_seed(self):
-        assert an_evolution().next_directive(past(), ledger()).code == SEED
+        assert present(an_evolution().next_directive(past(), ledger())).code == SEED
 
     def test_a_spent_budget_ends_the_search(self):
         assert an_evolution().next_directive(past(), ledger(spent=10)) is None
@@ -116,7 +117,41 @@ class TestItIsAPureFunctionOfHistory:
     def test_the_method_keeps_no_state_between_calls(self):
         method = an_evolution()
         method.next_directive(past(scored("v1", 9)), ledger(1))
-        assert method.next_directive(past(), ledger()).code == SEED
+        assert present(method.next_directive(past(), ledger())).code == SEED
+
+
+class TestTheDirectiveSaysWhatTheParentScored:
+    """The method knows what every candidate scored and used to keep it to
+    itself, so the model was asked to improve a program without being told
+    how that program did. Numbers only: which way is better belongs to the
+    manifest, and saying it in English belongs to the prompt."""
+
+    def test_a_scored_parent_hands_over_its_metrics(self):
+        history = past(scored("x = 1", 9))
+        directive = present(an_evolution().next_directive(history, ledger(1)))
+        assert directive.standing == {"value": 9.0}
+
+    def test_a_seed_has_no_standing_rather_than_a_zero(self):
+        directive = present(an_evolution().next_directive(past(), ledger()))
+        assert directive.standing is None
+
+    def test_it_carries_every_metric_the_verdict_had(self):
+        result = TrialResult(
+            code="x = 1", verdict=a_verdict({"value": 9.0, "weight": 2.0})
+        )
+        directive = present(an_evolution().next_directive(past(result), ledger(1)))
+        assert directive.standing == {"value": 9.0, "weight": 2.0}
+
+    def test_it_is_the_chosen_parents_score_and_not_the_best_one(self):
+        """A tournament does not always pick the leader, and telling the
+        model the leader's score while handing it a different program would
+        be a lie about the code in front of it."""
+        history = past(scored("winner", 100), scored("loser", 1))
+        directive = present(
+            an_evolution(tournament=1).next_directive(history, ledger(2))
+        )
+        expected = {"winner": 100.0, "loser": 1.0}[directive.code]
+        assert directive.standing == {"value": expected}
 
 
 class TestAdmission:
@@ -134,8 +169,8 @@ class TestAdmission:
 
     def test_pruning_keeps_the_strongest(self):
         seen = tuple(scored(f"v{n}", n) for n in range(1, 7))
-        best = an_evolution(size=2).best(past(*seen))
-        assert best.verdict.metrics["value"] == 6.0
+        best = present(an_evolution(size=2).best(past(*seen)))
+        assert as_scored(best.verdict).metrics["value"] == 6.0
 
     def test_with_nothing_scored_there_is_no_best(self):
         assert an_evolution().best(past(crashed())) is None
@@ -144,7 +179,7 @@ class TestAdmission:
 class TestTheObjectiveDecides:
     def test_a_weighted_sum_prefers_the_higher_total(self):
         seen = tuple(scored(f"v{n}", n) for n in range(1, 5))
-        assert an_evolution(size=2).best(past(*seen)).code == "v4"
+        assert present(an_evolution(size=2).best(past(*seen))).code == "v4"
 
     def test_pareto_keeps_a_trade_off_that_weighted_sum_would_drop(self):
         cheap = measured({"value": 5.0, "weight": 1.0})

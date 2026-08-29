@@ -9,6 +9,7 @@ import pytest
 import sqlalchemy as sa
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from sqlalchemy.exc import OperationalError
 
 from cadence.control.storage import (
     EXPECTED_REVISION,
@@ -17,6 +18,7 @@ from cadence.control.storage import (
     translating,
 )
 from cadence.errors import CadenceError, SchemaOutOfDate, StorageError
+from cadence.observe.channel import Fact
 
 
 def a_database(revision=None):
@@ -116,7 +118,7 @@ class Refusing:
         self.rolled_back = False
 
     def execute(self, *args, **kwargs):
-        raise sa.exc.OperationalError("insert into runs", {}, Exception("no route"))
+        raise OperationalError("insert into runs", {}, Exception("no route"))
 
     def commit(self):
         raise AssertionError("should not have got as far as committing")
@@ -125,7 +127,7 @@ class Refusing:
         self.rolled_back = True
 
 
-class NotAboutARun:
+class NotAboutARun(Fact):
     """A fact with no run_id. The channel carries them; the journal ignores
     them, because there is nothing to write one against."""
 
@@ -152,29 +154,29 @@ class TestTheDriverDoesNotEscape:
 
     def test_a_driver_error_leaves_as_a_storage_error(self):
         with pytest.raises(StorageError), translating():
-            raise sa.exc.OperationalError("select 1", {}, Exception("no route"))
+            raise OperationalError("select 1", {}, Exception("no route"))
 
     def test_which_the_command_already_catches(self):
         assert issubclass(StorageError, CadenceError)
 
     def test_it_keeps_the_sentence_about_the_database(self):
         with pytest.raises(StorageError, match="no route"), translating():
-            raise sa.exc.OperationalError("select 1", {}, Exception("no route"))
+            raise OperationalError("select 1", {}, Exception("no route"))
 
     def test_it_drops_the_sql_that_produced_it(self):
         """psycopg stringifies to the statement and its parameters as well,
         which is a wall of text about our query when what the user needs is
         the one line about their database."""
         with pytest.raises(StorageError) as raised, translating():
-            raise sa.exc.OperationalError(
+            raise OperationalError(
                 "insert into runs values (1)", {}, Exception("no route")
             )
         assert "insert into runs" not in str(raised.value)
 
     def test_the_original_is_still_attached(self):
         with pytest.raises(StorageError) as raised, translating():
-            raise sa.exc.OperationalError("select 1", {}, Exception("no route"))
-        assert isinstance(raised.value.__cause__, sa.exc.OperationalError)
+            raise OperationalError("select 1", {}, Exception("no route"))
+        assert isinstance(raised.value.__cause__, OperationalError)
 
     def test_anything_else_passes_through_untouched(self):
         """Only the driver is translated. A bug in cadence is not a storage

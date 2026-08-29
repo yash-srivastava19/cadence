@@ -10,7 +10,7 @@ from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
 from cadence.lifecycle.states import RunState
 from cadence.observe.signals import cadence
-from tests.factories import a_manifest
+from tests.factories import a_manifest, asked, present
 
 BASELINE = "print('value: 0')"
 
@@ -56,10 +56,10 @@ class TestAFullOfflineRun:
         assert an_experiment(IMPROVES).run().best is not None
 
     def test_the_improvement_is_real(self):
-        assert an_experiment(IMPROVES).run().metrics["value"] == 9.0
+        assert present(an_experiment(IMPROVES).run().metrics)["value"] == 9.0
 
     def test_it_returns_the_program_it_ended_with(self):
-        assert "value: 9" in an_experiment(IMPROVES).run().program
+        assert "value: 9" in present(an_experiment(IMPROVES).run().program)
 
     def test_the_report_survives_json(self):
         report = an_experiment(IMPROVES).run()
@@ -120,7 +120,7 @@ class TestFailingWell:
         experiment = an_experiment(NONSENSE, IMPROVES)
         report = experiment.run()
         assert report.scored == 1
-        assert len(experiment.model.backend.prompts) == 2
+        assert len(asked(experiment)) == 2
 
     def test_a_retry_does_not_cost_a_trial(self):
         report = an_experiment(NONSENSE, IMPROVES).run()
@@ -129,7 +129,7 @@ class TestFailingWell:
     def test_retries_are_bounded_by_the_trial_budget(self):
         experiment = an_experiment(*GIVES_UP)
         experiment.run()
-        assert len(experiment.model.backend.prompts) == Trial.max_attempts + 1
+        assert len(asked(experiment)) == Trial.max_attempts + 1
 
     def test_a_program_that_crashes_is_measured_not_fatal(self):
         report = an_experiment(CRASHES).run()
@@ -148,7 +148,7 @@ class TestFailingWell:
     def test_a_terminal_model_error_is_not_retried_into_the_ground(self):
         experiment = an_experiment(TerminalModelError("401"))
         assert experiment.run().status == RunState.FAILED
-        assert len(experiment.model.backend.prompts) == 1
+        assert len(asked(experiment)) == 1
 
     def test_a_reply_with_nothing_in_it_costs_a_trial_not_the_run(self):
         """A content filter is about one prompt. Ending a 500-trial run on it
@@ -180,13 +180,13 @@ class TestAFailedRunKeepsWhatItEarned:
         assert self._ran_out().best is not None
 
     def test_it_returns_the_program_that_scored(self):
-        assert "value: 9" in self._ran_out().program
+        assert "value: 9" in present(self._ran_out().program)
 
     def test_it_carries_the_metrics(self):
-        assert self._ran_out().metrics["value"] == 9.0
+        assert present(self._ran_out().metrics)["value"] == 9.0
 
     def test_it_still_says_why_it_stopped(self):
-        assert "scripted backend ran out" in self._ran_out().reason
+        assert "scripted backend ran out" in present(self._ran_out().reason)
 
     def test_the_tape_names_the_same_best_the_report_does(self):
         """Otherwise the row in `runs` and the sentence on the terminal
@@ -199,6 +199,42 @@ class TestAFailedRunKeepsWhatItEarned:
 
     def test_a_run_that_earned_nothing_still_names_no_best(self):
         assert an_experiment(TerminalModelError("401")).run().best is None
+
+
+class TestTheLoopClosesTheFeedbackLoop:
+    """End to end: the score the runner measured has to come back round to
+    the next prompt, and what was wrong with a reply has to reach the ask
+    that follows it. Either half missing and the search is blind."""
+
+    def test_the_second_trial_is_told_what_the_first_scored(self):
+        experiment = an_experiment(IMPROVES, IMPROVES, budget=2)
+        experiment.run()
+        second = asked(experiment)[1]
+        assert "value = 9" in second
+
+    def test_the_first_trial_is_told_there_is_no_score_yet(self):
+        experiment = an_experiment(IMPROVES)
+        experiment.run()
+        assert "Nobody has scored" in asked(experiment)[0]
+
+    def test_a_retry_is_told_why_the_last_reply_was_useless(self):
+        experiment = an_experiment(NONSENSE, IMPROVES)
+        experiment.run()
+        retry = asked(experiment)[1]
+        assert "could not be used" in retry
+        assert "```python block" in retry
+
+    def test_the_first_ask_of_a_trial_carries_no_complaint(self):
+        experiment = an_experiment(IMPROVES)
+        experiment.run()
+        assert "could not be used" not in asked(experiment)[0]
+
+    def test_the_complaint_does_not_leak_into_the_next_trial(self):
+        """It is about one reply, not about the program. Carrying it forward
+        would have the model apologising for a mistake it did not make."""
+        experiment = an_experiment(NONSENSE, IMPROVES, IMPROVES, budget=2)
+        experiment.run()
+        assert "could not be used" not in asked(experiment)[2]
 
 
 class TestABrokenProjectStopsTheRun:
@@ -216,12 +252,12 @@ class TestABrokenProjectStopsTheRun:
 
     def test_it_says_which_marker_is_wrong(self):
         report = self._marked(self.TWO_MARKERS).run()
-        assert "CADENCE:BEGIN" in report.reason
+        assert "CADENCE:BEGIN" in present(report.reason)
 
     def test_it_is_not_retried_because_retrying_cannot_help(self):
         experiment = self._marked(self.TWO_MARKERS)
         experiment.run()
-        assert len(experiment.model.backend.prompts) == 1
+        assert len(asked(experiment)) == 1
 
 
 class TestEveryTransitionIsOnTheTape:
@@ -312,7 +348,7 @@ class TestABrokenVerifierStopsTheRun:
         assert an_experiment(self.BROKE).run().status == RunState.FAILED
 
     def test_it_says_the_scoring_command_was_at_fault(self):
-        assert "scoring command" in an_experiment(self.BROKE).run().reason
+        assert "scoring command" in present(an_experiment(self.BROKE).run().reason)
 
     def test_it_does_not_spend_the_rest_of_the_budget(self):
         """Every later candidate would score the same way, so the budget

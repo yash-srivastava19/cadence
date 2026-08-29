@@ -183,9 +183,15 @@ class Experiment:
     def _propose(self, run: Run, trial: Trial, trace, directive: Directive):
         # An unparseable reply is worth asking again for: it costs a model call,
         # not a trial. Only once the retry budget is gone is the trial lost.
+        problem: str | None = None
         while True:
             request = self.model.prepare(
-                directive, key=key_for(self.run_id, run.trials, trial.attempts)
+                directive,
+                key=key_for(self.run_id, run.trials, trial.attempts),
+                # What went wrong last time, so the second ask is a better
+                # question than the first rather than the same one. Three
+                # identical asks buy three chances at the same mistake.
+                problem=problem,
             )
             # Written down before the call is made. A restart that finds this
             # with no answer knows it may already have been paid for.
@@ -220,6 +226,7 @@ class Experiment:
                 if trial.may_retry:
                     trial.retry()
                     trace.emit(TrialRetried, reason=str(error))
+                    problem = str(error)
                     continue
                 trial.abandon(reason=str(error))
                 trace.emit(TrialAbandoned, reason=str(error))

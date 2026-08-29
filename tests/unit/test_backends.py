@@ -1,8 +1,17 @@
+import socket
+import time
+
 import pytest
 from pydantic import ValidationError
 
 from cadence.control.backends import Reliable, Scripted, chat_backend, known
-from cadence.control.backends.http import RETRYABLE, Http, HttpResponse, error_for
+from cadence.control.backends.http import (
+    RETRYABLE,
+    Http,
+    HttpResponse,
+    _by_turns,
+    error_for,
+)
 from cadence.control.backends.settings import Price, settings_for
 from cadence.control.registry import BACKENDS
 from cadence.core.ports import Backend
@@ -156,6 +165,56 @@ class TestWhatACallCostInMoney:
     def test_a_negative_price_is_refused(self):
         with pytest.raises(ValidationError):
             Price(**{"in": -1.0, "out": 0.0})
+
+
+class TestConnectingHasItsOwnBudget:
+    """A model can think for minutes, so the read timeout is long. Connecting
+    should not get to use it."""
+
+    #: TEST-NET-1. Nothing answers here.
+    NOWHERE = "http://192.0.2.1:9/v1/chat/completions"
+
+    def test_they_are_two_numbers(self):
+        http = Http(timeout=300.0, connect_timeout=2.0)
+        assert (http.timeout, http.connect_timeout) == (300.0, 2.0)
+
+    def test_a_host_that_never_answers_gives_up_quickly(self):
+        started = time.monotonic()
+        with pytest.raises(RetryableModelError):
+            Http(timeout=300.0, connect_timeout=1.0).post(self.NOWHERE, {"a": 1})
+        assert time.monotonic() - started < 30.0
+
+    def test_it_is_worth_retrying(self):
+        with pytest.raises(RetryableModelError):
+            Http(timeout=300.0, connect_timeout=1.0).post(self.NOWHERE, {"a": 1})
+
+
+class TestAddressesAreTriedInTurns:
+    """A resolver lists one family first. If that family is a black hole,
+    trying them in order spends every attempt on it."""
+
+    def _info(self, family, host):
+        return (family, socket.SOCK_STREAM, 6, "", (host, 443))
+
+    def test_the_second_address_is_from_the_other_family(self):
+        six = [self._info(socket.AF_INET6, f"::{n}") for n in range(1, 4)]
+        four = [self._info(socket.AF_INET, f"10.0.0.{n}") for n in range(1, 4)]
+        taken = _by_turns(six + four)
+        assert [info[0] for info in taken[:2]] == [socket.AF_INET6, socket.AF_INET]
+
+    def test_no_address_is_dropped(self):
+        six = [self._info(socket.AF_INET6, f"::{n}") for n in range(1, 4)]
+        four = [self._info(socket.AF_INET, "10.0.0.1")]
+        assert len(_by_turns(six + four)) == 4
+
+    def test_the_order_within_a_family_is_kept(self):
+        six = [self._info(socket.AF_INET6, f"::{n}") for n in range(1, 4)]
+        taken = [i for i in _by_turns(six) if i[0] == socket.AF_INET6]
+        assert [info[4][0] for info in taken] == ["::1", "::2", "::3"]
+
+    def test_one_family_alone_is_left_as_it_is(self):
+        four = [self._info(socket.AF_INET, f"10.0.0.{n}") for n in range(1, 4)]
+        assert _by_turns(four) == four
 
 
 class TestProvidersAreData:

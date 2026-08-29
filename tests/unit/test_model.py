@@ -189,6 +189,82 @@ class TestMarkersAreConfigurable:
         assert "+x = 9" in model.propose(directive).proposal.patch
 
 
+class TestTheModelIsToldWhereItStands:
+    """Without this the loop is selection without learning: a model handed a
+    program and "try a different strategy entirely", with no idea what the
+    program in front of it scored, what better would mean, or what its
+    siblings managed. It cannot climb a hill it cannot see."""
+
+    def _prompt(self, standing=None, goals=None, problem=None):
+        model = Model(backend=Scripted(ANSWER), template="improve", goals=goals)
+        directive = Directive(
+            parent="abc123", code="def solve(): return []", standing=standing
+        )
+        return model.prepare(directive, "k", problem=problem).prompt
+
+    def test_the_parents_score_is_in_the_prompt(self):
+        assert "ms = 0.698" in self._prompt(standing={"ms": 0.698})
+
+    def test_it_says_which_way_is_better(self):
+        """A number alone does not say what improving it means, and that is
+        the one thing the model cannot work out from the code."""
+        prompt = self._prompt(standing={"ms": 0.698}, goals={"ms": "minimize"})
+        assert "lower is better" in prompt
+
+    def test_maximizing_reads_the_other_way(self):
+        prompt = self._prompt(standing={"value": 45.0}, goals={"value": "maximize"})
+        assert "higher is better" in prompt
+
+    def test_every_metric_is_reported(self):
+        prompt = self._prompt(
+            standing={"value": 45.0, "weight": 19.0},
+            goals={"value": "maximize", "weight": "minimize"},
+        )
+        assert "value = 45" in prompt
+        assert "weight = 19" in prompt
+
+    def test_a_metric_with_no_declared_direction_still_appears(self):
+        """The manifest and the verdict can disagree -- a verifier may print
+        more than it was asked for. Printing the number without a direction
+        beats dropping it."""
+        assert "extra = 3" in self._prompt(standing={"extra": 3.0}, goals={})
+
+    def test_an_unscored_seed_says_so_rather_than_claiming_a_zero(self):
+        prompt = self._prompt(standing=None)
+        assert "Nobody has scored" in prompt
+        assert "= 0" not in prompt
+
+    def test_two_parents_with_different_scores_ask_different_questions(self):
+        assert self._prompt(standing={"ms": 1.0}) != self._prompt(standing={"ms": 2.0})
+
+
+class TestARejectedReplyIsExplained:
+    """Three identical asks buy three chances at the same mistake. The retry
+    is only worth its call if it is a better question than the first."""
+
+    def _prompt(self, problem=None):
+        model = Model(backend=Scripted(ANSWER), template="improve")
+        return model.prepare(a_directive(), "k", problem=problem).prompt
+
+    def test_the_reason_reaches_the_model(self):
+        assert "no closed ```python block" in self._prompt(
+            problem="the response has no closed ```python block"
+        )
+
+    def test_a_first_attempt_carries_no_complaint(self):
+        prompt = self._prompt()
+        assert "could not be used" not in prompt
+        assert "\n\n\n" not in prompt
+
+    def test_it_is_part_of_the_recipe_so_replay_reproduces_it(self):
+        model = Model(backend=Scripted(ANSWER), template="improve")
+        request = model.prepare(a_directive(), "k", problem="the block was empty")
+        assert render(request.recipe) == request.prompt
+
+    def test_the_retry_is_not_the_same_question(self):
+        assert self._prompt(problem="the block was empty") != self._prompt()
+
+
 class TestGuidanceReachesTheModel:
     def test_it_appears_in_the_prompt(self):
         model = Model(

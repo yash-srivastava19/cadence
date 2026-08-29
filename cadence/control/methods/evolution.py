@@ -150,4 +150,8 @@ class Evolution:
             parent=parent.candidate.fingerprint,
             code=parent.candidate.code,
             index=history.index,
+            # What this parent scored, so the prompting layer can tell the
+            # model where it is standing. A seed has no score, and None says
+            # so rather than pretending to a zero.
+            standing=(parent.verdict.metrics if isinstance(parent, Measured) else None),
         )
