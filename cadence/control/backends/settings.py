@@ -8,10 +8,37 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from cadence.errors import MissingKey, UnknownProvider
 
-__all__ = ["LOCAL", "Settings", "known", "settings_for"]
+__all__ = ["ANY_MODEL", "LOCAL", "Price", "Settings", "known", "settings_for"]
 
 FILE = Path(__file__).with_name("providers.yml")
 LOCAL = "providers.local.yml"
+
+#: A price that applies whatever model was named. What a local runtime has:
+#: nothing it serves is billed, so naming each model would be a list to keep.
+ANY_MODEL = "*"
+
+#: Prices are quoted per million tokens because that is how every provider
+#: publishes them, so a user copying a number off a pricing page copies it
+#: unchanged. Dividing happens once, here, rather than in every row.
+PER = 1_000_000
+
+
+class Price(BaseModel):
+    """What a model costs, in USD per million tokens, as the user declared it.
+
+    Cadence ships one of these and only one -- zero, for a local runtime.
+    Every other price is a fact about someone else's catalogue that was true
+    on the day it was written, so it lives in the user's own
+    providers.local.yml where they can see how old it is.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    input: float = Field(ge=0, alias="in")
+    output: float = Field(ge=0, alias="out")
+
+    def of(self, tokens_in: int, tokens_out: int) -> float:
+        return (tokens_in * self.input + tokens_out * self.output) / PER
 
 
 class Settings(BaseModel):
@@ -26,6 +53,7 @@ class Settings(BaseModel):
     attempts: int = Field(ge=1)
     backoff: float = Field(ge=0)
     key: str | None = None
+    prices: Mapping[str, Price] = {}
 
     @property
     def url(self) -> str:
@@ -34,6 +62,15 @@ class Settings(BaseModel):
     @property
     def needs_a_key(self) -> bool:
         return bool(self.key_from)
+
+    def price_of(self, model: str) -> Price | None:
+        """What this provider charges for that model, if anyone has said.
+
+        None is a real answer and not a failure: no price declared means a run
+        reports the tokens it spent and stays quiet about money, which is the
+        honest thing to do with a number nobody gave us.
+        """
+        return self.prices.get(model) or self.prices.get(ANY_MODEL)
 
     def headers(self) -> dict[str, str]:
         """What this provider needs on the wire to accept a request."""

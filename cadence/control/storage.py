@@ -1,30 +1,36 @@
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import sqlalchemy as sa
 from sqlalchemy import event
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, registry, sessionmaker
 
 from cadence.control.entities import Run
 from cadence.core.verdict import Outcome
+from cadence.errors import SchemaOutOfDate, StorageError
 from cadence.lifecycle.states import CandidateState, RunState, TrialState
 
 __all__ = [
+    "EXPECTED_REVISION",
     "blobs",
     "budget",
     "candidates",
+    "demand_current_schema",
     "dsn",
     "engine",
     "events",
-    "idempotency_keys",
     "manifests",
     "metadata",
     "model_calls",
-    "quarantine",
+    "revision_of",
     "runs",
     "sessions",
     "templates",
+    "translating",
     "trials",
     "verdicts",
 ]
@@ -205,32 +211,6 @@ budget = sa.Table(
     comment="Reserve before dispatch, settle after. Check-then-spend is two steps.",
 )
 
-quarantine = sa.Table(
-    "quarantine",
-    metadata,
-    _hash("fingerprint", primary_key=True),
-    sa.Column("run_id", sa.Text, sa.ForeignKey("runs.id"), nullable=False),
-    sa.Column("reason", sa.Text, nullable=False),
-    sa.Column("crashes", sa.Integer, nullable=False),
-    _when("at", nullable=False, server_default=sa.func.now()),
-    comment="Read at dispatch. A poison candidate surviving restart loops forever.",
-)
-
-idempotency_keys = sa.Table(
-    "idempotency_keys",
-    metadata,
-    sa.Column("key", sa.Text, primary_key=True),
-    sa.Column("scope", sa.Text, nullable=False),
-    _hash("request_hash", nullable=False),
-    sa.Column("status", sa.Text, nullable=False),
-    sa.Column("response_body", sa.Text),
-    sa.Column("response_code", sa.Integer),
-    _when("locked_at"),
-    _when("expires_at", nullable=False),
-    sa.CheckConstraint("status in ('in_flight', 'done')", name="idempotency_status"),
-    comment="The one table a sweeper deletes from, hence the DELETE grant.",
-)
-
 mapper_registry.map_imperatively(Run, runs)
 
 
@@ -248,5 +228,92 @@ def engine(url: str | None = None, **kwargs) -> Engine:
     return sa.create_engine(dsn(url), **kwargs)
 
 
+#: The migration this code writes against. A test reads alembic's head and
+#: asserts they match, so adding a migration without updating this constant
+#: fails in CI rather than at somebody's first run.
+EXPECTED_REVISION = "a1f7c93be204"
+
+
+def revision_of(connection: Connection) -> str | None:
+    """Which migration the database has been brought up to, if any.
+
+    None covers both "empty database" and "someone else's database": neither
+    has an alembic_version table, and neither is somewhere cadence should
+    start writing rows.
+    """
+    if not sa.inspect(connection).has_table("alembic_version"):
+        return None
+    return connection.execute(
+        sa.text("select version_num from alembic_version")
+    ).scalar()
+
+
+def demand_current_schema(bound: Engine) -> None:
+    """Refuse a database whose schema is not the one this code writes.
+
+    Checked once, at the door, because the alternative is what it replaces: a
+    psycopg traceback from the middle of the first trial, naming whichever
+    table happened to be written to first, which tells the user nothing about
+    what to do next.
+    """
+    with connecting(bound) as connection:
+        found = revision_of(connection)
+    if found == EXPECTED_REVISION:
+        return
+    if found is None:
+        raise SchemaOutOfDate(
+            "the database has no cadence schema in it."
+            " Run 'alembic upgrade head' against DATABASE_URL,"
+            " or unset DATABASE_URL to run without recording anything"
+        )
+    raise SchemaOutOfDate(
+        f"the database is at migration {found} and this cadence writes"
+        f" {EXPECTED_REVISION}. Run 'alembic upgrade head' against DATABASE_URL"
+    )
+
+
+@contextmanager
+def translating() -> Iterator[None]:
+    """Every way the database can fail, turned into a value in one place.
+
+    Rule 5: a failure crosses a plane boundary as a value, not as whatever the
+    driver happened to raise. Below this line psycopg exists; above it only
+    StorageError does, and the command has one thing to catch.
+
+    A context manager rather than a decorator because the two callers wrap
+    different things -- a connection here, a whole unit of work in the journal
+    -- and both need whatever they were holding released on the way out.
+    """
+    try:
+        yield
+    except SQLAlchemyError as error:
+        raise StorageError(_said(error)) from error
+
+
+@contextmanager
+def connecting(bound: Engine) -> Iterator[Connection]:
+    with translating(), bound.connect() as connection:
+        yield connection
+
+
+def _said(error: SQLAlchemyError) -> str:
+    """The driver's own words, without the SQL that produced them.
+
+    A psycopg error stringifies to the statement and its parameters as well,
+    which is a wall of text about our query when the user needs the sentence
+    about their database.
+    """
+    original = getattr(error, "orig", None)
+    return str(original or error).strip().splitlines()[0]
+
+
 def sessions(url: str | None = None, **kwargs) -> sessionmaker[Session]:
-    return sessionmaker(bind=engine(url, **kwargs), expire_on_commit=False)
+    """A session factory, once the database has been shown to be usable.
+
+    The check belongs here rather than in the command because this is the one
+    door: every entry point that records anything comes through it, which is
+    the same reason preflight lives in one place.
+    """
+    bound = engine(url, **kwargs)
+    demand_current_schema(bound)
+    return sessionmaker(bind=bound, expire_on_commit=False)

@@ -1,6 +1,7 @@
 """Everything cadence raises, grouped by what the caller should do about it.
 
     setup.py       the project is wrong        -> stop the run, tell the user
+    storage.py     the database is the problem -> stop the run, tell the user
     model.py       the provider is a problem   -> retry, or abandon the trial
     trial.py       this candidate is no good   -> score it and carry on
     concurrency.py someone else is doing this  -> wait, or leave it to them
@@ -26,6 +27,7 @@ from cadence.errors.setup import (
     UnknownPlugin,
     UnknownProvider,
 )
+from cadence.errors.storage import SchemaOutOfDate, StorageError
 from cadence.errors.trial import (
     EmptyReply,
     MetricNotReported,
@@ -50,7 +52,9 @@ __all__ = [
     "PatchError",
     "PromptChanged",
     "RetryableModelError",
+    "SchemaOutOfDate",
     "SetupError",
+    "StorageError",
     "TerminalModelError",
     "UnknownPlugin",
     "UnknownProvider",

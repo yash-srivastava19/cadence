@@ -109,6 +109,9 @@ class ModelCalled(Event):
     tokens_in: int = Field(ge=0)
     tokens_out: int = Field(ge=0)
     latency_ms: float = Field(ge=0, allow_inf_nan=False)
+    # None when no price was declared for this model, which is not zero: the
+    # call cost something nobody told cadence how to count.
+    cost_usd: float | None = Field(default=None, ge=0)
 
 
 class ProposalReceived(Event):

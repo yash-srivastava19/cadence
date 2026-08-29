@@ -20,7 +20,12 @@ ADVANCES = "arw"
 """Carries a status that moves forward. Never erased."""
 
 SWEEPABLE = "arwd"
-"""Rows expire on a TTL, so something has to delete them."""
+"""Rows expire on a TTL, so something has to delete them.
+
+No table carries this today: idempotency_keys was the only one and it is
+dropped in a1f7c93be204. Kept because the migration that granted it still
+imports it -- a migration is history, and history has to keep running.
+"""
 
 
 def grant(table: str, letters: str) -> None:

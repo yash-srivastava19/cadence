@@ -159,6 +159,48 @@ class TestFailingWell:
         assert report.scored == 1
 
 
+class TestAFailedRunKeepsWhatItEarned:
+    """A run that stops badly has still spent money and still learned things.
+
+    Reporting zero of them while the database holds the verdicts is two
+    accounts of one run, and the one the user reads is the wrong one.
+    """
+
+    def _ran_out(self, budget=2):
+        # One answer, two trials: the second ask finds the backend empty.
+        return an_experiment(IMPROVES, budget=budget).run()
+
+    def test_the_run_is_reported_as_failed(self):
+        assert self._ran_out().status == RunState.FAILED
+
+    def test_it_counts_the_trial_that_scored(self):
+        assert self._ran_out().scored == 1
+
+    def test_it_names_the_best_it_found(self):
+        assert self._ran_out().best is not None
+
+    def test_it_returns_the_program_that_scored(self):
+        assert "value: 9" in self._ran_out().program
+
+    def test_it_carries_the_metrics(self):
+        assert self._ran_out().metrics["value"] == 9.0
+
+    def test_it_still_says_why_it_stopped(self):
+        assert "scripted backend ran out" in self._ran_out().reason
+
+    def test_the_tape_names_the_same_best_the_report_does(self):
+        """Otherwise the row in `runs` and the sentence on the terminal
+        disagree about the same run."""
+        from cadence.observe.signals import RunFinished
+
+        with cadence.recording() as tape:
+            report = an_experiment(IMPROVES, budget=2).run()
+        assert tape.of(RunFinished)[0].best == report.best
+
+    def test_a_run_that_earned_nothing_still_names_no_best(self):
+        assert an_experiment(TerminalModelError("401")).run().best is None
+
+
 class TestABrokenProjectStopsTheRun:
     TWO_MARKERS = "# CADENCE:BEGIN\nx = 1\n# CADENCE:BEGIN\ny = 2\n# CADENCE:END\n"
 
@@ -212,6 +254,34 @@ class TestEveryTransitionIsOnTheTape:
             TrialMeasured,
             RunFinished,
         ]
+
+    def test_a_reply_that_does_not_parse_is_still_reported_as_a_call(self):
+        """The write-ahead row is closed by ModelCalled. Emitted only after
+        the reply parses, every retry leaves a request written down and never
+        answered -- a row that says "this may have been paid for" about a call
+        we know was paid for, with no crash involved."""
+        from cadence.observe.signals import ModelCalled, ModelRequested
+
+        with cadence.recording() as tape:
+            an_experiment(NONSENSE, IMPROVES).run()
+        assert len(tape.of(ModelCalled)) == len(tape.of(ModelRequested)) == 2
+
+    def test_every_request_is_answered_even_when_the_trial_is_given_up_on(self):
+        from cadence.observe.signals import ModelCalled, ModelRequested
+
+        with cadence.recording() as tape:
+            an_experiment(*GIVES_UP).run()
+        assert len(tape.of(ModelCalled)) == len(tape.of(ModelRequested))
+
+    def test_a_call_that_never_returned_is_not_reported_as_answered(self):
+        """The other half of the same pairing: a request that raised is a row
+        that should stay open, because nobody knows whether it was billed."""
+        from cadence.observe.signals import ModelCalled, ModelRequested
+
+        with cadence.recording() as tape:
+            an_experiment(TerminalModelError("401")).run()
+        assert len(tape.of(ModelRequested)) == 1
+        assert tape.of(ModelCalled) == []
 
     def test_a_trial_that_reached_the_sandbox_carries_its_verdict(self):
         from cadence.observe.signals import TrialMeasured

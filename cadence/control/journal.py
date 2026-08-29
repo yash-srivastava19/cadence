@@ -31,6 +31,7 @@ from cadence.control.storage import (
     manifests,
     model_calls,
     runs,
+    translating,
     trials,
     verdicts,
 )
@@ -70,11 +71,22 @@ class Journal:
         run_id = getattr(fact, "run_id", None)
         if run_id is None:  # not a fact about a run; nothing to write it against
             return
-        with self.locks.with_lock(f"runs/{run_id}"):
-            self._about_the_run(fact, run_id)
-            self._about_the_trial(fact, run_id)
-            self._append(fact, run_id)
-            self.session.commit()
+        # translating() because this runs as a subscriber: a driver error
+        # raised from inside a signal unwinds through whichever line of the
+        # loop published the fact, which is nowhere near a handler. It leaves
+        # as a StorageError, which only the command catches.
+        with self.locks.with_lock(f"runs/{run_id}"), translating():
+            try:
+                self._about_the_run(fact, run_id)
+                self._about_the_trial(fact, run_id)
+                self._append(fact, run_id)
+                self.session.commit()
+            except Exception:
+                # So the session is usable again if anything upstream decides
+                # this run can carry on. A failed transaction that is never
+                # rolled back poisons every write after it.
+                self.session.rollback()
+                raise
 
     def _about_the_run(self, fact: Fact, run_id: str) -> None:
         if isinstance(fact, RunStarted):
@@ -226,6 +238,7 @@ class Journal:
                 latency_ms=fact.latency_ms,
                 tokens_in=fact.tokens_in,
                 tokens_out=fact.tokens_out,
+                cost_usd=fact.cost_usd,
             )
         )
 

@@ -33,6 +33,7 @@ from tests.integration.test_journal import (  # noqa: E402
     CRASHES,
     IMPROVES,
     IMPROVES_MORE,
+    NONSENSE,
     owner_engine,
     session,
 )
@@ -182,6 +183,55 @@ class TestItDoesNotPayTwice:
             .all()
         )
         assert [payload["replayed"] for payload in called] == [False, True]
+
+    def test_a_retry_that_was_paid_for_is_replayed_too(self, session, journal):
+        """A trial that was asked again bought two answers, not one. Only the
+        first was ever closed, so a resumed run re-bought the retry -- the
+        second answer was in the database the whole time under its own key."""
+        an_experiment(session, NONSENSE, IMPROVES, budget=1).run()
+        session.execute(
+            sa.update(trials).where(trials.c.run_id == RUN).values(status="prompted")
+        )
+        _running(session)
+
+        experiment = an_experiment(session, budget=1)
+        report = experiment.run()
+        assert experiment.model.backend.prompts == []
+        assert report.scored == 1
+
+    def test_both_answers_come_back_marked_replayed(self, session, journal):
+        from cadence.control.storage import events
+
+        an_experiment(session, NONSENSE, IMPROVES, budget=1).run()
+        session.execute(
+            sa.update(trials).where(trials.c.run_id == RUN).values(status="prompted")
+        )
+        _running(session)
+        an_experiment(session, budget=1).run()
+
+        replayed = (
+            session.execute(
+                sa.select(events.c.payload).where(events.c.type == "ModelCalled")
+            )
+            .scalars()
+            .all()
+        )
+        assert [payload["replayed"] for payload in replayed] == [
+            False,
+            False,
+            True,
+            True,
+        ]
+
+    def test_a_resumed_run_is_not_billed_for_what_it_replayed(
+        self, died_mid_trial, journal
+    ):
+        """calls counts the asking, usd counts the buying. A run that bought
+        nothing has no bill, even though it made a call."""
+        report = an_experiment(died_mid_trial, budget=1).run()
+        assert report.spend.calls == 1
+        assert report.spend.replayed == 1
+        assert report.spend.usd is None
 
     def test_the_recorded_call_is_the_one_that_was_made(self, interrupted):
         stored = (

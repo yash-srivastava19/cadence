@@ -70,14 +70,18 @@ class Experiment:
     def run(self) -> Report:
         self.trace = Emitter(run_id=self.run_id)
         run = self._pick_up() if self.resumed else self._begin()
+        # Bound here rather than passed inline, because _search appends to it:
+        # a run that dies at trial 400 still has 399 results, and the handlers
+        # below are the only place left that can report them.
+        results = self._known()
         try:
-            return self._search(run, self._known())
+            return self._search(run, results)
         except NoCandidates as error:
-            return self._fail(run, str(error))
+            return self._fail(run, str(error), results)
         except ModelError as error:
-            return self._fail(run, f"{type(error).__name__}: {error}")
+            return self._fail(run, f"{type(error).__name__}: {error}", results)
         except SetupError as error:
-            return self._fail(run, f"{type(error).__name__}: {error}")
+            return self._fail(run, f"{type(error).__name__}: {error}", results)
 
     def _begin(self) -> Run:
         run = Run(id=self.run_id)
@@ -125,7 +129,7 @@ class Experiment:
                 continue
             results.append(reply)
             if isinstance(reply.verdict, Failed) and reply.verdict.escalates:
-                return self._fail(run, reply.verdict.reason)
+                return self._fail(run, reply.verdict.reason, results)
             scored += reply.verdict.is_scored
 
     def _history(self, results: list[TrialResult]) -> RunHistory:
@@ -144,16 +148,7 @@ class Experiment:
         suggestion = self._propose(run, trial, trace, directive)
         if suggestion is None:
             return None
-        proposal, completion, replayed, key = suggestion
-        trace.emit(
-            ModelCalled,
-            backend=self.model.backend.name,
-            key=key,
-            response=completion.text,
-            model=completion.model,
-            replayed=replayed,
-            **completion.cost,
-        )
+        proposal = suggestion.proposal
 
         trial.generate(proposal=proposal)
         trace.emit(ProposalReceived, files_changed=proposal.files_changed)
@@ -204,6 +199,21 @@ class Experiment:
             completion, replayed = None, False
             try:
                 completion, replayed = self.model.ask(request)
+                # Emitted here, before the reply is read, because this is the
+                # moment the answer arrived and the bill was incurred. Emitted
+                # after parsing instead, a reply that does not parse leaves the
+                # request written down and never answered -- a row that says
+                # "we may have paid for this" about a call we know we paid for,
+                # every retry, with no crash involved.
+                trace.emit(
+                    ModelCalled,
+                    backend=self.model.backend.name,
+                    key=request.key,
+                    response=completion.text,
+                    model=completion.model,
+                    replayed=replayed,
+                    **completion.cost,
+                )
                 proposal = self.model.read(request, completion, directive.code)
                 return Suggestion(proposal, completion, replayed, request.key)
             except UnusableReply as error:
@@ -223,6 +233,7 @@ class Experiment:
                     completion.tokens_in if completion else 0,
                     completion.tokens_out if completion else 0,
                     replayed,
+                    completion.cost_usd if completion else None,
                 )
 
     def _finish(self, run: Run, history: RunHistory, scored: int) -> Report:
@@ -242,20 +253,36 @@ class Experiment:
             metrics=best.metrics if best else None,
         )
 
-    def _fail(self, run: Run, reason: str) -> Report:
+    def _fail(self, run: Run, reason: str, results: list[TrialResult]) -> Report:
+        """A run that stopped badly still reports what it earned.
+
+        The trials that scored before the failure were paid for and written
+        down; reporting zero of them while the database holds them is two
+        accounts of one run. The status and the reason are what say the run
+        went wrong -- the results do not have to lie about it as well.
+        """
+        history = self._history(results)
+        best = self.method.best(history)
         run.fail(reason=reason)
+        # Assigned rather than transitioned: fail() carries a reason, not a
+        # best, and a RunFinished naming a best the entity does not hold
+        # would be a second account of the same fact.
+        run.best = best.verdict.fingerprint if best else None
         self.trace.emit(
             RunFinished,
             status=run.status,
             trials=run.trials,
-            best=None,
+            best=run.best,
             reason=reason,
         )
         return Report(
             run_id=self.run_id,
             status=run.status,
             trials=run.trials,
-            scored=0,
+            scored=sum(1 for result in results if result.verdict.is_scored),
             spend=self.spend,
+            best=run.best,
+            program=best.code if best else None,
+            metrics=best.metrics if best else None,
             reason=reason,
         )

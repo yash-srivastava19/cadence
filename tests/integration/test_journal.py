@@ -83,14 +83,14 @@ def journalled(session):
     journal = Journal(session)
     stop = cadence.record(journal.record)
 
-    def run(*responses, run_id="h1", budget=1):
+    def run(*responses, run_id="h1", budget=1, backend=None):
         from cadence.control.backends import Scripted
 
         experiment = Experiment(
             run_id=run_id,
             manifest=a_manifest(),
             method=Evolution(objective=WeightedSum(value=1.0)),
-            model=Model(backend=Scripted(*responses)),
+            model=Model(backend=backend or Scripted(*responses)),
             runner=TrialRunner(
                 program="prog.py",
                 command=("python", "prog.py"),
@@ -134,6 +134,33 @@ class TestAFinishedRunWroteItselfDown:
     def test_it_remembers_which_manifest_produced_it(self, session, journalled):
         journalled(IMPROVES)
         assert rows(session, runs, id="h1")[0]["manifest_hash"] == a_manifest().hash
+
+
+class TestAFailedRunIsStillWrittenDown:
+    """A run that stopped badly is the one somebody comes back to read. If
+    the row says it found nothing while verdicts holds a score, the database
+    and the report are two accounts of the same run."""
+
+    def _ran_out(self, journalled):
+        # One answer, two trials: the second ask finds the backend empty.
+        return journalled(IMPROVES, budget=2)
+
+    def test_the_row_says_it_failed(self, session, journalled):
+        self._ran_out(journalled)
+        assert rows(session, runs, id="h1")[0]["status"] == RunState.FAILED
+
+    def test_the_row_names_the_best_it_found(self, session, journalled):
+        report = self._ran_out(journalled)
+        assert rows(session, runs, id="h1")[0]["best"] == report.best
+        assert report.best is not None
+
+    def test_the_verdict_it_earned_is_still_there(self, session, journalled):
+        self._ran_out(journalled)
+        assert len(rows(session, verdicts)) == 1
+
+    def test_the_row_says_why_it_stopped(self, session, journalled):
+        self._ran_out(journalled)
+        assert "ran out of responses" in rows(session, runs, id="h1")[0]["reason"]
 
 
 class TestTheTapeIsTheWholeRun:
@@ -264,6 +291,80 @@ class TestATrialThatWasAskedAgain:
         assert "TrialRetried" in [
             row["type"] for row in rows(session, events, run_id="h1")
         ]
+
+
+class TestWhatTheCallCost:
+    """The row is where a run's bill lives, so score-per-dollar has somewhere
+    to be computed from later. Recorded through a real provider backend --
+    the price is applied where the tokens are counted, and nothing between
+    there and the database is allowed to drop it."""
+
+    def _priced(self, session, prices):
+        from cadence.control.backends import chat_backend
+        from tests.unit.test_backends import Recorded, spoke
+
+        return chat_backend(
+            "gemini",
+            key="x",
+            prices=prices,
+            http=Recorded(
+                spoke(IMPROVES, tokens_in=1_000_000, tokens_out=0, model="m")
+            ),
+        )
+
+    def test_a_priced_call_is_written_down_in_dollars(self, session, journalled):
+        journalled(backend=self._priced(session, {"m": {"in": 4.0, "out": 0.0}}))
+        assert float(rows(session, model_calls)[0]["cost_usd"]) == 4.0
+
+    def test_an_unpriced_call_records_no_amount(self, session, journalled):
+        """Null, not zero. The column has to be able to say "nobody told us",
+        or every unpriced run looks free."""
+        journalled(backend=self._priced(session, {}))
+        assert rows(session, model_calls)[0]["cost_usd"] is None
+
+    def test_the_report_and_the_row_agree(self, session, journalled):
+        report = journalled(
+            backend=self._priced(session, {"m": {"in": 4.0, "out": 0.0}})
+        )
+        assert float(rows(session, model_calls)[0]["cost_usd"]) == report.spend.usd
+
+
+class TestEveryCallWeMadeIsClosed:
+    """A model_calls row is written in_flight before the call and closed by
+    the answer. One left open means "we may have paid for this and never saw
+    the reply", which is a thing only a crash should be able to produce.
+
+    Closing it after parsing instead left every retry open: the call was made
+    and billed, the reply merely did not parse, and the database recorded it
+    as a call that may never have happened.
+    """
+
+    def _statuses(self, session, run_id="h1"):
+        return [row["status"] for row in rows(session, model_calls, run_id=run_id)]
+
+    def test_a_reply_that_did_not_parse_is_still_a_call_that_happened(
+        self, session, journalled
+    ):
+        journalled(NONSENSE, IMPROVES)
+        assert self._statuses(session) == ["done", "done"]
+
+    def test_a_trial_given_up_on_leaves_nothing_open(self, session, journalled):
+        journalled(*[NONSENSE] * 4)
+        assert set(self._statuses(session)) == {"done"}
+
+    def test_the_unusable_reply_is_kept_with_the_call(self, session, journalled):
+        """So a resumed run replays it rather than buying the same prose
+        again, and so a person can see what the model actually said."""
+        journalled(NONSENSE, IMPROVES)
+        assert rows(session, model_calls, run_id="h1")[0]["response"] == NONSENSE
+
+    def test_a_call_that_never_answered_stays_open(self, session, journalled):
+        """The other half of the pairing. A terminal error before any reply
+        is exactly the case the in_flight row exists to record."""
+        from cadence.errors import TerminalModelError
+
+        journalled(TerminalModelError("401"))
+        assert self._statuses(session) == ["in_flight"]
 
 
 class TestATrialThatWasGivenUpOn:
