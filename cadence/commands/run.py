@@ -8,7 +8,8 @@ import typer
 
 from cadence.commands.report import die, note
 from cadence.control.manifest import load
-from cadence.control.registry import build
+from cadence.control.preflight import inspect
+from cadence.control.registry import build, seed_program
 from cadence.errors import CadenceError
 from cadence.observe.signals import cadence
 
@@ -34,6 +35,23 @@ def _remembering() -> Iterator[Any]:
             yield session
         finally:
             stop()
+
+
+def _refuse_a_project_check_would_refuse(manifest, root: Path) -> None:
+    """The same checks, from both doors.
+
+    Without this, `cadence check` refuses an unmarked program and `cadence
+    run` accepts it and rewrites the whole file on every trial -- two entry
+    points with two definitions of a valid project, and the expensive one is
+    the lenient one.
+
+    Only the free half. Rehearsing the scoring command is check's job: run
+    would be spending a subprocess to re-learn what check already said, and
+    for a verifier that takes forty seconds that is a real bill.
+    """
+    preflight = inspect(manifest, root, seed_program(manifest, root))
+    for finding in preflight.wrong:
+        die(finding.detail, finding.fix)
 
 
 def _what_it_spent(spend) -> str:
@@ -67,8 +85,10 @@ def run(
 ) -> None:
     """Improve the program named by .cadence."""
     try:
+        manifest = load(root)
+        _refuse_a_project_check_would_refuse(manifest, root)
         with _remembering() as session:
-            experiment = build(load(root), root, run_id, session=session)
+            experiment = build(manifest, root, run_id, session=session)
             if session is not None:
                 note(_what_it_remembers(experiment, run_id))
             report = experiment.run()

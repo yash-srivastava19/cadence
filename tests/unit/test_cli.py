@@ -272,3 +272,36 @@ class TestCheckRefusesABrokenScoringCommand:
         result = runner.invoke(app, ["check", str(a_project(tmp_path, broken))])
         assert result.exit_code == 1
         assert "fault of its own" in result.output
+
+
+class TestBothDoorsAgreeOnWhatAValidProjectIs:
+    """check refused an unmarked program and run accepted it, rewriting the
+    whole file on every trial. Two entry points, two definitions, and the
+    expensive one was the lenient one."""
+
+    UNMARKED = "def pack():\n    return []\nprint('value: 0')\n"
+
+    def test_check_refuses_it(self, tmp_path):
+        result = runner.invoke(app, ["check", str(a_project(tmp_path, self.UNMARKED))])
+        assert result.exit_code == 1
+
+    def test_run_refuses_it_too(self, tmp_path):
+        result = runner.invoke(app, ["run", str(a_project(tmp_path, self.UNMARKED))])
+        assert result.exit_code == 1
+
+    def test_they_say_the_same_thing(self, tmp_path):
+        project = str(a_project(tmp_path, self.UNMARKED))
+        checked = runner.invoke(app, ["check", project]).output
+        ran = runner.invoke(app, ["run", project]).output
+        assert "replace the whole file" in checked
+        assert "replace the whole file" in ran
+
+    def test_run_does_not_rehearse_the_scoring_command(self, tmp_path):
+        """Only the free half. A verifier that takes forty seconds should not
+        be run twice to re-learn what check already said."""
+        project = a_project(tmp_path, MARKED % "print('value: 1')")
+        (project / "p.py").write_text(
+            (project / "p.py").read_text() + "\nopen('ran', 'a').write('x')\n"
+        )
+        runner.invoke(app, ["run", str(project)])
+        assert not (project / "ran").exists()

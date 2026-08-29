@@ -6,13 +6,11 @@ import typer
 
 from cadence.commands.report import absent, die, found, note
 from cadence.control.manifest import Manifest, load
-from cadence.control.region import MarkerError, split
+from cadence.control.preflight import Preflight, inspect
+from cadence.control.preflight import named as _named
 from cadence.control.registry import (
-    METHODS,
-    OBJECTIVES,
     guidance,
     objective_for,
-    resolve,
     seed_program,
 )
 from cadence.errors import CadenceError
@@ -23,9 +21,10 @@ from cadence.parsing.metrics import MetricNotReported, read, verifier_broke
 def check(root: Path = typer.Argument(Path("."))) -> None:
     """Check a project without spending a model call."""
     try:
-        manifest = _manifest(root)
-        code = _region(manifest, root)
-        _plan(manifest)
+        manifest = load(root)
+        code = seed_program(manifest, root)
+        _report(inspect(manifest, root, code))
+        _objective(manifest)
         execution = _baseline(manifest, root, code)
         readings = _metrics(manifest, execution.stdout)
         _repeats(manifest, root, code, readings)
@@ -38,56 +37,22 @@ def check(root: Path = typer.Argument(Path("."))) -> None:
     note(f"\nready. `cadence run` will spend up to {manifest.budget.trials} trials.")
 
 
-def _manifest(root: Path) -> Manifest:
-    manifest = load(root)
-    defaulted = len(Manifest.model_fields) - len(manifest.model_fields_set)
-    found("manifest", f"{manifest.api_version}, {defaulted} defaults applied")
-    return manifest
+def _report(preflight: Preflight) -> None:
+    """Print what was looked at, and stop on the first thing that is wrong.
+
+    inspect() decides what is true; this decides what to say about it and
+    whether to exit -- which is not a decision a function that reads a file
+    should be making.
+    """
+    for finding in preflight.findings:
+        found(finding.about, finding.detail)
+    for finding in preflight.wrong:
+        die(finding.detail, finding.fix)
 
 
-def _region(manifest: Manifest, root: Path) -> str:
-    code = seed_program(manifest, root)
-    markers = (manifest.markers.begin, manifest.markers.end)
-    try:
-        region = split(code, *markers)
-    except MarkerError as error:
-        die(
-            f"{manifest.program}: {error}",
-            f"Mark exactly one region with {markers[0]} and {markers[1]}.",
-        )
-    if region is None:
-        die(
-            f"{manifest.program} has no {markers[0]} marker, so the model's"
-            " reply would replace the whole file.",
-            f"Put {markers[0]} and {markers[1]} around the part to improve.",
-        )
-    start = region.head.count("\n") + 1
-    lines = region.body.count("\n")
-    found(
-        "region",
-        f"{manifest.program} lines {start}-{start + lines - 1}"
-        f" ({lines} line{'s' if lines != 1 else ''} the model may rewrite)",
-    )
-    return code
-
-
-def _plan(manifest: Manifest) -> None:
+def _objective(manifest: Manifest) -> None:
     objective = objective_for(manifest)
-    method = resolve("method", METHODS, manifest.method, objective=objective)
-    found("method", f"{manifest.method.name} built with {_options(method)}")
     found("objective", f"{_named(objective)} over {_goals(manifest)}")
-
-
-def _named(objective) -> str:
-    for name, kind in OBJECTIVES.items():
-        if isinstance(objective, kind):
-            return name
-    return type(objective).__name__  # pragma: no cover
-
-
-def _options(method) -> str:
-    shown = {k: v for k, v in vars(method).items() if isinstance(v, (int, float, str))}
-    return ", ".join(f"{k}={v}" for k, v in shown.items()) or "no options"
 
 
 def _goals(manifest: Manifest) -> str:
