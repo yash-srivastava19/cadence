@@ -119,6 +119,38 @@ class TestItIsAPureFunctionOfHistory:
         assert method.next_directive(past(), ledger()).code == SEED
 
 
+class TestTheDirectiveSaysWhatTheParentScored:
+    """The method knows what every candidate scored and used to keep it to
+    itself, so the model was asked to improve a program without being told
+    how that program did. Numbers only: which way is better belongs to the
+    manifest, and saying it in English belongs to the prompt."""
+
+    def test_a_scored_parent_hands_over_its_metrics(self):
+        history = past(scored("x = 1", 9))
+        directive = an_evolution().next_directive(history, ledger(1))
+        assert directive.standing == {"value": 9.0}
+
+    def test_a_seed_has_no_standing_rather_than_a_zero(self):
+        directive = an_evolution().next_directive(past(), ledger())
+        assert directive.standing is None
+
+    def test_it_carries_every_metric_the_verdict_had(self):
+        result = TrialResult(
+            code="x = 1", verdict=a_verdict({"value": 9.0, "weight": 2.0})
+        )
+        directive = an_evolution().next_directive(past(result), ledger(1))
+        assert directive.standing == {"value": 9.0, "weight": 2.0}
+
+    def test_it_is_the_chosen_parents_score_and_not_the_best_one(self):
+        """A tournament does not always pick the leader, and telling the
+        model the leader's score while handing it a different program would
+        be a lie about the code in front of it."""
+        history = past(scored("winner", 100), scored("loser", 1))
+        directive = an_evolution(tournament=1).next_directive(history, ledger(2))
+        expected = {"winner": 100.0, "loser": 1.0}[directive.code]
+        assert directive.standing == {"value": expected}
+
+
 class TestAdmission:
     def test_a_scored_child_joins_the_population(self):
         living = an_evolution().population(past(scored("better", 10)))

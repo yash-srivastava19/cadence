@@ -26,13 +26,32 @@ What matters here, from the person who wrote this:
 """  # joined directly onto {hint}, so an empty guidance leaves no gap
 
 
+STANDING = """\
+How the program above scored:
+{rows}
+
+"""
+
+UNMEASURED = """\
+Nobody has scored the program above yet. It is where the search starts.
+
+"""
+
+PROBLEM = """\
+Your last reply could not be used: {problem}
+Read that before answering -- the same mistake again costs another attempt
+and the trial is abandoned when they run out.
+
+"""
+
+
 IMPROVE = """\
 You are improving a program.
 
 The current program:
 {code}
 
-What to try:
+{standing}{problem}What to try:
 {hint}{guidance}
 
 Reply with a unified diff inside a ```diff fenced block, and nothing else.\
@@ -44,7 +63,7 @@ You are improving a program.
 The current program:
 {code}
 
-What to try:
+{standing}{problem}What to try:
 {hint}{guidance}
 
 Reply with the complete new program inside a ```python fenced block, and
@@ -57,7 +76,7 @@ have context, but you may only change what lies between the markers.
 
 {code}
 
-What to try:
+{standing}{problem}What to try:
 {hint}{guidance}
 
 Reply with the replacement for the marked section only, inside a ```python
@@ -95,6 +114,40 @@ def _guidance_block(guidance: str | None) -> str:
     if guidance is None or not guidance.strip():
         return ""
     return GUIDANCE.format(guidance=guidance.strip())
+
+
+#: How a metric direction reads to whoever has to improve it.
+BETTER = {"maximize": "higher is better", "minimize": "lower is better"}
+
+
+def _standing_block(
+    standing: Mapping[str, float] | None, goals: Mapping[str, str]
+) -> str:
+    """What the parent scored, and which way is up.
+
+    The direction is the whole reason the manifest's metrics reach this file.
+    "ms = 0.698" tells a model nothing it can act on; "ms = 0.698 (lower is
+    better)" tells it what improving means, which is the one thing it cannot
+    work out from the program in front of it.
+    """
+    if not standing:
+        return UNMEASURED
+    rows = "\n".join(
+        f"  {name} = {value:g}{_aim(name, goals)}"
+        for name, value in sorted(standing.items())
+    )
+    return STANDING.format(rows=rows)
+
+
+def _aim(name: str, goals: Mapping[str, str]) -> str:
+    direction = BETTER.get(goals.get(name, ""))
+    return f"   ({direction})" if direction else ""
+
+
+def _problem_block(problem: str | None) -> str:
+    if problem is None or not problem.strip():
+        return ""
+    return PROBLEM.format(problem=problem.strip())
 
 
 def render(recipe: Mapping[str, Any]) -> str:
@@ -140,6 +193,7 @@ class Model:
         guidance: str | None = None,
         calls: Calls | None = None,
         markers: tuple[str, str] = (BEGIN, END),
+        goals: Mapping[str, str] | None = None,
     ) -> None:
         if template not in TEMPLATES:
             raise KeyError(f"no template named {template!r}")
@@ -148,18 +202,29 @@ class Model:
         self.guidance = guidance
         self.calls = calls
         self.markers = markers
+        # Which way is better, per metric, from the manifest. Configuration
+        # like the template and the guidance are -- a search method should not
+        # have to carry it, and it is not a fact about any one parent.
+        self.goals = dict(goals or {})
 
-    def recipe(self, directive: Directive) -> Mapping[str, Any]:
-        # Guidance is part of the recipe, not an extra applied afterwards:
-        # rebuilding the prompt from the recipe has to reproduce it exactly.
+    def recipe(
+        self, directive: Directive, problem: str | None = None
+    ) -> Mapping[str, Any]:
+        # Every input to the prompt is in here, not applied afterwards:
+        # rebuilding the prompt from the recipe has to reproduce it exactly,
+        # or a replayed call answers a question we are no longer asking.
         return {
             "template": self.template,
             "code": directive.code,
+            "standing": _standing_block(directive.standing, self.goals),
+            "problem": _problem_block(problem),
             "hint": hint_for(directive.index),
             "guidance": _guidance_block(self.guidance),
         }
 
-    def prepare(self, directive: Directive, key: str = "") -> Request:
+    def prepare(
+        self, directive: Directive, key: str = "", problem: str | None = None
+    ) -> Request:
         """Everything about the call that costs nothing.
 
         Separate from send() so a caller can write down what it is about to do
@@ -167,7 +232,7 @@ class Model:
         the same request byte for byte, which is what makes the recipe worth
         storing at all.
         """
-        recipe = self.recipe(directive)
+        recipe = self.recipe(directive, problem)
         prompt = render(recipe)
         return Request(
             key=key or "unkeyed",

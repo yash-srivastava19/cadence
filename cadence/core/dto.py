@@ -89,6 +89,10 @@ class Directive(Value):
     code: NonBlank
     index: int = Field(ge=0, default=0)
     inspirations: tuple[str, ...] = ()
+    #: What the parent scored, or None for a seed nobody has measured. The
+    #: numbers only: which way is better is the manifest's, and saying so in
+    #: English is the prompting layer's.
+    standing: Frozen[str, float] | None = None
 
 
 class Proposal(Value):

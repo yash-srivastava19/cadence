@@ -442,7 +442,38 @@ class TestTheCallWeWereAboutToMake:
     def test_it_keeps_the_recipe_that_rebuilds_the_prompt(self, session, journalled):
         journalled(IMPROVES)
         recipe = rows(session, model_calls)[0]["recipe"]
-        assert set(recipe) == {"template", "code", "hint", "guidance"}
+        assert set(recipe) == {
+            "template",
+            "code",
+            "standing",
+            "problem",
+            "hint",
+            "guidance",
+        }
+
+    def test_the_stored_recipe_really_does_rebuild_it(self, session, journalled):
+        """Not the key names -- the prompt itself, against the digest of the
+        one that was sent. Replay is only sound if the row can reproduce the
+        question exactly, so anything new the prompt is built from has to be
+        in the recipe or the reproduction quietly drifts."""
+        from cadence.control.model import render
+        from cadence.control.recall import digest
+
+        journalled(IMPROVES)
+        row = rows(session, model_calls)[0]
+        assert digest(render(row["recipe"])) == row["request_hash"]
+
+    def test_it_rebuilds_a_retry_too(self, session, journalled):
+        """The attempt that carries what went wrong is the one most likely to
+        be left out of the recipe, because it comes from the loop rather than
+        from the directive."""
+        from cadence.control.model import render
+        from cadence.control.recall import digest
+
+        journalled(NONSENSE, IMPROVES)
+        retried = rows(session, model_calls)[1]
+        assert digest(render(retried["recipe"])) == retried["request_hash"]
+        assert "could not be used" in render(retried["recipe"])
 
     def test_it_counts_what_the_call_cost(self, session, journalled):
         journalled(IMPROVES)
@@ -453,8 +484,9 @@ class TestTheCallWeWereAboutToMake:
         assert rows(session, model_calls)[0]["trial_id"] == "h1/0"
 
     def test_a_retry_is_a_second_call_with_its_own_row(self, session, journalled):
-        """Deliberately not the same key: a retry asks the same question
-        again, and must not replay the answer that failed to parse."""
+        """Deliberately not the same key: a retry asks a different question --
+        the same program plus what was wrong with the last reply -- and must
+        not replay the answer that already failed to parse."""
         journalled(NONSENSE, IMPROVES)
         assert len(rows(session, model_calls)) == 2
 

@@ -71,8 +71,10 @@ class Recorded:
 
 
 def key_for(run_id: str, index: int, attempt: int = 0) -> str:
-    # A retry asks the same question again, so it must not replay the answer
-    # that already failed to parse.
+    # A retry asks a different question -- the same program, plus what was
+    # wrong with the last reply -- so it needs its own key. Sharing one would
+    # replay the answer that already failed to parse, which is the one answer
+    # we know is no use.
     return f"{run_id}/{index}" if not attempt else f"{run_id}/{index}#{attempt}"
 
 

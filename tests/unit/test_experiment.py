@@ -201,6 +201,42 @@ class TestAFailedRunKeepsWhatItEarned:
         assert an_experiment(TerminalModelError("401")).run().best is None
 
 
+class TestTheLoopClosesTheFeedbackLoop:
+    """End to end: the score the runner measured has to come back round to
+    the next prompt, and what was wrong with a reply has to reach the ask
+    that follows it. Either half missing and the search is blind."""
+
+    def test_the_second_trial_is_told_what_the_first_scored(self):
+        experiment = an_experiment(IMPROVES, IMPROVES, budget=2)
+        experiment.run()
+        second = experiment.model.backend.prompts[1]
+        assert "value = 9" in second
+
+    def test_the_first_trial_is_told_there_is_no_score_yet(self):
+        experiment = an_experiment(IMPROVES)
+        experiment.run()
+        assert "Nobody has scored" in experiment.model.backend.prompts[0]
+
+    def test_a_retry_is_told_why_the_last_reply_was_useless(self):
+        experiment = an_experiment(NONSENSE, IMPROVES)
+        experiment.run()
+        retry = experiment.model.backend.prompts[1]
+        assert "could not be used" in retry
+        assert "```python block" in retry
+
+    def test_the_first_ask_of_a_trial_carries_no_complaint(self):
+        experiment = an_experiment(IMPROVES)
+        experiment.run()
+        assert "could not be used" not in experiment.model.backend.prompts[0]
+
+    def test_the_complaint_does_not_leak_into_the_next_trial(self):
+        """It is about one reply, not about the program. Carrying it forward
+        would have the model apologising for a mistake it did not make."""
+        experiment = an_experiment(NONSENSE, IMPROVES, IMPROVES, budget=2)
+        experiment.run()
+        assert "could not be used" not in experiment.model.backend.prompts[2]
+
+
 class TestABrokenProjectStopsTheRun:
     TWO_MARKERS = "# CADENCE:BEGIN\nx = 1\n# CADENCE:BEGIN\ny = 2\n# CADENCE:END\n"
 
