@@ -5,7 +5,7 @@ from typing import Any
 
 from cadence.control.recall import digest, through
 from cadence.control.region import BEGIN, END, splice, split
-from cadence.core.dto import Directive, Proposal, Request, Suggestion
+from cadence.core.dto import Completion, Directive, Proposal, Request, Suggestion
 from cadence.core.ports import Backend, Calls
 from cadence.errors import PatchError
 
@@ -176,23 +176,34 @@ class Model:
             recipe=recipe,
         )
 
-    def send(self, request: Request, code: str) -> Suggestion:
-        """The half that is billed."""
+    def ask(self, request: Request) -> tuple[Completion, bool]:
+        """The billed step, and only that.
+
+        Separate from reading the answer because a reply that cannot be
+        parsed was still paid for: a caller counting what a run spends has to
+        count it here, before anything can go wrong with what came back.
+        """
         if self.calls is None:
-            completion, replayed = self._ask(request.prompt), False
-        else:
-            completion, replayed = through(
-                self.calls,
-                request.key,
-                request.prompt,
-                lambda: self._ask(request.prompt),
-            )
-        proposal = Proposal(
+            return self._ask(request.prompt), False
+        return through(
+            self.calls,
+            request.key,
+            request.prompt,
+            lambda: self._ask(request.prompt),
+        )
+
+    def read(self, request: Request, completion: Completion, code: str) -> Proposal:
+        """What we made of the answer. Free, and where it may be refused."""
+        return Proposal(
             patch=self._patch(code, completion.text),
             prompt=request.prompt,
             recipe=request.recipe,
             raw_response=completion.text,
         )
+
+    def send(self, request: Request, code: str) -> Suggestion:
+        completion, replayed = self.ask(request)
+        proposal = self.read(request, completion, code)
         return Suggestion(proposal, completion, replayed, request.key)
 
     def propose(self, directive: Directive, key: str | None = None) -> Suggestion:

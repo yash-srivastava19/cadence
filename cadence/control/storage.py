@@ -183,6 +183,8 @@ model_calls = sa.Table(
     _hash("template_hash", sa.ForeignKey("templates.hash")),
     sa.Column("recipe", postgresql.JSONB, nullable=False),
     sa.Column("response", sa.Text),
+    sa.Column("model", sa.Text),
+    sa.Column("latency_ms", sa.Float),
     sa.Column("tokens_in", sa.Integer),
     sa.Column("tokens_out", sa.Integer),
     sa.Column("cost_usd", sa.Numeric(12, 6)),

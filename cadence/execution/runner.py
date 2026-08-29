@@ -12,7 +12,7 @@ from cadence.execution.sandboxes.subprocess import (
     Sandbox,
     workspace_digest,
 )
-from cadence.parsing.metrics import read
+from cadence.parsing.metrics import read, verifier_broke
 
 __all__ = ["MEASUREMENT_EPOCH", "TrialRunner"]
 
@@ -98,6 +98,16 @@ class TrialRunner:
                 memory_mb=self.memory_mb,
             )
         )
+        broke = verifier_broke(execution.stdout)
+        if broke is not None:
+            # Not the candidate's fault, so not a score. Escalating stops the
+            # run: an expired key in a verifier would otherwise score every
+            # candidate at the floor and report success.
+            return Failed(
+                fingerprint=fingerprint(code),
+                outcome=Outcome.VERIFIER_ERROR,
+                reason=f"the scoring command reported a fault of its own: {broke}",
+            )
         failure = _failure(fingerprint(code), execution)
         if failure is not None:
             return failure

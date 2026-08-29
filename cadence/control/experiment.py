@@ -4,11 +4,14 @@ from cadence.control.entities import Candidate, Run, Trial
 from cadence.control.model import Model
 from cadence.control.patcher import apply_patch
 from cadence.control.recall import key_for
+from cadence.control.restore import Resumption
 from cadence.core.dto import (
     Directive,
     RecordedManifest,
     Report,
     RunHistory,
+    Spend,
+    Suggestion,
     TrialBudget,
     TrialResult,
 )
@@ -22,6 +25,7 @@ from cadence.errors import (
     UnusableReply,
 )
 from cadence.execution.runner import TrialRunner
+from cadence.lifecycle.states import RunState
 from cadence.observe.channel import Emitter
 from cadence.observe.signals import (
     CandidateBuilt,
@@ -30,6 +34,7 @@ from cadence.observe.signals import (
     PatchRejected,
     ProposalReceived,
     RunFinished,
+    RunResumed,
     RunStarted,
     TrialAbandoned,
     TrialMeasured,
@@ -50,6 +55,7 @@ class Experiment:
         runner: TrialRunner,
         seeds: Sequence[str],
         budget: int,
+        resumed: Resumption | None = None,
     ) -> None:
         self.run_id = run_id
         self.manifest = manifest
@@ -58,10 +64,23 @@ class Experiment:
         self.runner = runner
         self.seeds = tuple(seeds)
         self.budget = budget
+        self.resumed = resumed
+        self.spend = Spend()
 
     def run(self) -> Report:
-        run = Run(id=self.run_id)
         self.trace = Emitter(run_id=self.run_id)
+        run = self._pick_up() if self.resumed else self._begin()
+        try:
+            return self._search(run, self._known())
+        except NoCandidates as error:
+            return self._fail(run, str(error))
+        except ModelError as error:
+            return self._fail(run, f"{type(error).__name__}: {error}")
+        except SetupError as error:
+            return self._fail(run, f"{type(error).__name__}: {error}")
+
+    def _begin(self) -> Run:
+        run = Run(id=self.run_id)
         run.start()
         self.trace.emit(
             RunStarted,
@@ -70,18 +89,29 @@ class Experiment:
             seeds=self.seeds,
             budget={"trials": float(self.budget)},
         )
-        try:
-            return self._search(run)
-        except NoCandidates as error:
-            return self._fail(run, str(error))
-        except ModelError as error:
-            return self._fail(run, f"{type(error).__name__}: {error}")
-        except SetupError as error:
-            return self._fail(run, f"{type(error).__name__}: {error}")
+        return run
 
-    def _search(self, run: Run) -> Report:
-        results: list[TrialResult] = []
-        scored = 0
+    def _pick_up(self) -> Run:
+        """Carry on a run that was already under way.
+
+        The status is set rather than transitioned to: the machine describes
+        what a run may do next, and a process that died holding one did not
+        leave it anywhere the machine has a word for.
+        """
+        resumed = self.resumed
+        assert resumed is not None  # only called when there is one
+        run = Run(id=self.run_id, status=RunState.RUNNING)
+        run.trials = resumed.trials
+        self.trace.emit(
+            RunResumed, trials=resumed.trials, results=len(resumed.history.results)
+        )
+        return run
+
+    def _known(self) -> list[TrialResult]:
+        return list(self.resumed.history.results) if self.resumed else []
+
+    def _search(self, run: Run, results: list[TrialResult]) -> Report:
+        scored = sum(1 for result in results if result.verdict.is_scored)
         while True:
             history = self._history(results)
             directive = self.method.next_directive(
@@ -119,6 +149,8 @@ class Experiment:
             ModelCalled,
             backend=self.model.backend.name,
             key=key,
+            response=completion.text,
+            model=completion.model,
             replayed=replayed,
             **completion.cost,
         )
@@ -167,8 +199,11 @@ class Experiment:
                 prompt_digest=request.digest,
                 recipe=request.recipe,
             )
+            completion, replayed = None, False
             try:
-                return self.model.send(request, directive.code)
+                completion, replayed = self.model.ask(request)
+                proposal = self.model.read(request, completion, directive.code)
+                return Suggestion(proposal, completion, replayed, request.key)
             except UnusableReply as error:
                 if trial.may_retry:
                     trial.retry()
@@ -177,6 +212,16 @@ class Experiment:
                 trial.abandon(reason=str(error))
                 trace.emit(TrialAbandoned, reason=str(error))
                 return None
+            finally:
+                # In a finally because the call is billed whether or not we
+                # could use what came back. A provider that answers with
+                # nothing charged for it, and a run that undercounts its
+                # retries reports a price nobody was asked to pay.
+                self.spend = self.spend.and_also(
+                    completion.tokens_in if completion else 0,
+                    completion.tokens_out if completion else 0,
+                    replayed,
+                )
 
     def _finish(self, run: Run, history: RunHistory, scored: int) -> Report:
         best = self.method.best(history)
@@ -189,6 +234,7 @@ class Experiment:
             status=run.status,
             trials=run.trials,
             scored=scored,
+            spend=self.spend,
             best=run.best,
             program=best.code if best else None,
             metrics=best.metrics if best else None,
@@ -208,5 +254,6 @@ class Experiment:
             status=run.status,
             trials=run.trials,
             scored=0,
+            spend=self.spend,
             reason=reason,
         )

@@ -226,3 +226,48 @@ class TestEveryTransitionIsOnTheTape:
         with cadence.recording() as tape:
             an_experiment(TerminalModelError("401")).run()
         assert tape.of(RunFinished)[0].best is None
+
+
+class TestABrokenVerifierStopsTheRun:
+    """Handled since the beginning and never constructed, because with the
+    candidate and the verifier in one process a non-zero exit could not be
+    attributed. It can be now: the scoring command says so itself."""
+
+    BROKE = (
+        "Here.\n```python\nimport json\n"
+        "print(json.dumps({'cadence_verifier_error': 'OPENAI_API_KEY unset'}))\n```"
+    )
+
+    def test_the_run_fails(self):
+        assert an_experiment(self.BROKE).run().status == RunState.FAILED
+
+    def test_it_says_the_scoring_command_was_at_fault(self):
+        assert "scoring command" in an_experiment(self.BROKE).run().reason
+
+    def test_it_does_not_spend_the_rest_of_the_budget(self):
+        """Every later candidate would score the same way, so the budget
+        would buy nothing but a confident wrong answer."""
+        experiment = an_experiment(self.BROKE, budget=5)
+        assert experiment.run().trials == 1
+
+
+class TestARunSaysWhatItCost:
+    """Best-found is incomparable across runs that spent differently, which
+    is every comparison a person actually makes."""
+
+    def test_it_counts_the_calls(self):
+        assert an_experiment(IMPROVES).run().spend.calls == 1
+
+    def test_it_counts_the_tokens(self):
+        assert an_experiment(IMPROVES).run().spend.tokens > 0
+
+    def test_a_retry_costs_another_call(self):
+        assert an_experiment(NONSENSE, IMPROVES).run().spend.calls == 2
+
+    def test_a_failed_run_still_says_what_it_spent(self):
+        """The point of counting is the runs that go wrong."""
+        report = an_experiment(*GIVES_UP, budget=1).run()
+        assert report.spend.calls == Trial.max_attempts + 1
+
+    def test_nothing_asked_for_is_nothing_spent(self):
+        assert an_experiment(budget=0).run().spend.calls == 0

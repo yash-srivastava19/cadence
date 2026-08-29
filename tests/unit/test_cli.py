@@ -208,3 +208,67 @@ class TestCheckCatchesWhatItUsedToWaveThrough:
         assert "has no option 'sizee'" in output
         assert "Did you mean 'size'?" in output
         assert "Options: size, tournament" in output
+
+
+NOISY = MARKED % "import random; print(f'value: {random.random()}')"
+STEADY = MARKED % "print('value: 1.0')"
+
+
+def a_project(tmp_path, program, extra=""):
+    (tmp_path / ".cadence").write_text(
+        "api_version: cadence/v1alpha2\nprogram: p.py\n"
+        "metrics: {value: maximize}\nbudget: {trials: 2}\n" + extra
+    )
+    (tmp_path / "p.py").write_text(program)
+    return tmp_path
+
+
+class TestCheckCatchesAScoringRuleThatChasesItsOwnTail:
+    """Four of the five ways a scoring rule fails are silent. This is the
+    cheapest one to catch: run the unmodified program twice and compare."""
+
+    def test_a_steady_score_is_reported_as_repeatable(self, tmp_path):
+        result = runner.invoke(app, ["check", str(a_project(tmp_path, STEADY))])
+        assert "repeatable" in result.output
+
+    def test_a_score_that_wanders_is_called_out(self, tmp_path):
+        result = runner.invoke(app, ["check", str(a_project(tmp_path, NOISY))])
+        assert "scored differently the second time" in result.output
+
+    def test_it_says_what_the_noise_will_do_to_the_run(self, tmp_path):
+        result = runner.invoke(app, ["check", str(a_project(tmp_path, NOISY))])
+        assert "chase that noise" in result.stdout + result.output
+
+    def test_undeclared_repeatability_is_not_a_failure(self, tmp_path):
+        """Cadence cannot reuse a score nobody has vouched for, and that is
+        worth saying without refusing to run."""
+        result = runner.invoke(app, ["check", str(a_project(tmp_path, STEADY))])
+        assert result.exit_code == 0
+        assert "nothing declares it" in result.output
+
+    def test_a_declared_tolerance_is_held_to(self, tmp_path):
+        project = a_project(tmp_path, NOISY, "verifier: {tolerance: 0.0}\n")
+        result = runner.invoke(app, ["check", str(project)])
+        assert result.exit_code == 1
+        assert "outside it" in result.output
+
+
+class TestCheckSaysWhatTheRunWillCost:
+    def test_it_projects_the_scoring_time(self, tmp_path):
+        result = runner.invoke(app, ["check", str(a_project(tmp_path, STEADY))])
+        assert "of scoring" in result.output
+
+    def test_it_multiplies_trials_by_seeds(self, tmp_path):
+        result = runner.invoke(app, ["check", str(a_project(tmp_path, STEADY))])
+        assert "2 trials x 3 seeds" in result.output
+
+
+class TestCheckRefusesABrokenScoringCommand:
+    def test_a_verifier_that_says_it_broke_stops_check(self, tmp_path):
+        broken = MARKED % (
+            "import json;"
+            " print(json.dumps({'cadence_verifier_error': 'OPENAI_API_KEY unset'}))"
+        )
+        result = runner.invoke(app, ["check", str(a_project(tmp_path, broken))])
+        assert result.exit_code == 1
+        assert "fault of its own" in result.output
