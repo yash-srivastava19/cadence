@@ -18,7 +18,7 @@ from cadence.control.storage import blobs, candidates, runs, trials, verdicts
 from cadence.core.dto import RunHistory, TrialResult
 from cadence.core.values import Value
 from cadence.core.verdict import Failed, Outcome, Scored
-from cadence.lifecycle.states import RunState, TrialState
+from cadence.lifecycle.states import CandidateState, RunState, TrialState
 
 __all__ = ["Resumption", "history_of", "resume_from", "seeds_of", "status_of"]
 
@@ -55,6 +55,7 @@ def seeds_of(session: Session, run_id: str) -> tuple[str, ...]:
         .select_from(candidates.join(blobs, candidates.c.code_hash == blobs.c.hash))
         .where(candidates.c.run_id == run_id)
         .where(candidates.c.parent_id.is_(None))
+        .where(candidates.c.status != CandidateState.QUARANTINED)
         .order_by(candidates.c.created_at, candidates.c.fingerprint)
     ).scalars()
     return tuple(rows)
@@ -98,6 +99,10 @@ def _results(session: Session, run_id: str) -> list[TrialResult]:
         .select_from(measured)
         .where(trials.c.run_id == run_id)
         .where(trials.c.status == TrialState.MEASURED)
+        # A quarantined candidate is simply not offered. The search method
+        # stays a pure function of what it is handed and never learns that
+        # quarantine exists -- which is why it can stay one.
+        .where(candidates.c.status != CandidateState.QUARANTINED)
         # In the order they were tried. A method that walks the history is
         # entitled to see it happen the way it happened.
         .order_by(trials.c.seq)

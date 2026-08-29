@@ -39,7 +39,11 @@ from cadence.core.identity import fingerprint  # noqa: E402
 from cadence.core.verdict import Outcome  # noqa: E402
 from cadence.execution.runner import TrialRunner  # noqa: E402
 from cadence.execution.sandboxes.subprocess import Subprocess  # noqa: E402
-from cadence.lifecycle.states import RunState, TrialState  # noqa: E402
+from cadence.lifecycle.states import (  # noqa: E402
+    CandidateState,
+    RunState,
+    TrialState,
+)
 from cadence.observe.signals import cadence  # noqa: E402
 from tests.factories import BASELINE, a_manifest  # noqa: E402
 
@@ -376,3 +380,36 @@ class TestATrialSaysWhatItProduced:
         """It produced no candidate, so there is nothing to point at."""
         journalled(*[NONSENSE] * 4)
         assert rows(session, trials, run_id="h1")[0]["candidate_fingerprint"] is None
+
+
+class TestAPoisonCandidate:
+    """A candidate that keeps crashing must not come back alive after a
+    restart. That is the whole reason the crash count is a column."""
+
+    def test_a_crash_is_counted_against_the_candidate(self, session, journalled):
+        journalled(CRASHES)
+        crashed = next(
+            row for row in rows(session, candidates, run_id="h1") if row["parent_id"]
+        )
+        assert crashed["crashes"] == 1
+
+    def test_it_stays_alive_while_it_is_under_the_limit(self, session, journalled):
+        journalled(CRASHES)
+        crashed = next(
+            row for row in rows(session, candidates, run_id="h1") if row["parent_id"]
+        )
+        assert crashed["status"] == CandidateState.ALIVE
+
+    def test_enough_crashes_quarantine_it(self, session, journalled):
+        journalled(*[CRASHES] * 3, budget=3)
+        crashed = next(
+            row for row in rows(session, candidates, run_id="h1") if row["parent_id"]
+        )
+        assert crashed["status"] == CandidateState.QUARANTINED
+
+    def test_a_scored_candidate_is_never_counted_against(self, session, journalled):
+        journalled(IMPROVES)
+        best = next(
+            row for row in rows(session, candidates, run_id="h1") if row["parent_id"]
+        )
+        assert best["crashes"] == 0

@@ -22,6 +22,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.orm import Session
 
+from cadence.control.entities import Candidate
 from cadence.control.locking import LocalLocks
 from cadence.control.storage import (
     blobs,
@@ -36,7 +37,7 @@ from cadence.control.storage import (
 from cadence.core.dto import RecordedManifest
 from cadence.core.identity import fingerprint as digest_of
 from cadence.core.ports import Locks
-from cadence.core.verdict import Scored
+from cadence.core.verdict import Outcome, Scored
 from cadence.lifecycle.states import CandidateState, RunState, TrialState
 from cadence.observe.channel import Fact
 from cadence.observe.signals import (
@@ -168,6 +169,8 @@ class Journal:
             )
         elif isinstance(fact, TrialMeasured):
             self._measured(fact)
+            if fact.verdict.outcome is Outcome.CRASHED:
+                self._crashed(fact.verdict.fingerprint, run_id)
         elif isinstance(fact, ModelRequested):
             self._asking(fact, run_id)
         elif isinstance(fact, ModelCalled):
@@ -225,6 +228,32 @@ class Journal:
                 tokens_out=fact.tokens_out,
             )
         )
+
+    def _crashed(self, fingerprint: str, run_id: str) -> None:
+        """Count it, and retire it once it has crashed often enough.
+
+        Durable on purpose: a poison candidate whose crash count lives only in
+        memory comes back alive after a restart, and the loop tries it again
+        forever. This is the whole reason the count is a column.
+        """
+        self.session.execute(
+            sa.update(candidates)
+            .where(candidates.c.run_id == run_id)
+            .where(candidates.c.fingerprint == fingerprint)
+            .values(crashes=candidates.c.crashes + 1)
+        )
+        crashes = self.session.execute(
+            sa.select(candidates.c.crashes)
+            .where(candidates.c.run_id == run_id)
+            .where(candidates.c.fingerprint == fingerprint)
+        ).scalar()
+        if crashes is not None and crashes >= Candidate.crash_limit:
+            self.session.execute(
+                sa.update(candidates)
+                .where(candidates.c.run_id == run_id)
+                .where(candidates.c.fingerprint == fingerprint)
+                .values(status=CandidateState.QUARANTINED)
+            )
 
     def _measured(self, fact: TrialMeasured) -> None:
         """What this candidate scored, against this task, on these seeds.

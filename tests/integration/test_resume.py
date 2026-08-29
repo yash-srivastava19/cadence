@@ -30,6 +30,7 @@ from cadence.execution.sandboxes.subprocess import Subprocess  # noqa: E402
 from cadence.lifecycle.states import RunState  # noqa: E402
 from tests.factories import BASELINE, a_manifest  # noqa: E402
 from tests.integration.test_journal import (  # noqa: E402
+    CRASHES,
     IMPROVES,
     IMPROVES_MORE,
     owner_engine,
@@ -203,3 +204,21 @@ def _running(session):
         .where(sa.column("id") == RUN)
         .values(status=RunState.RUNNING.value)
     )
+
+
+class TestAQuarantinedCandidateIsNotOfferedBack:
+    def test_it_is_left_out_of_the_history(self, session, journal):
+        """The search method never learns quarantine exists. It is handed a
+        history without the poison in it, which is how it stays a pure
+        function of what it is given."""
+        from cadence.control.restore import history_of
+        from cadence.control.storage import candidates
+
+        an_experiment(session, CRASHES, budget=1).run()
+        assert len(history_of(session, RUN).results) == 1
+        session.execute(
+            sa.update(candidates)
+            .where(candidates.c.parent_id.isnot(None))
+            .values(status="quarantined")
+        )
+        assert history_of(session, RUN).results == ()
