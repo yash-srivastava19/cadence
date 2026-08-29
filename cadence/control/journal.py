@@ -46,6 +46,7 @@ from cadence.observe.signals import (
     PatchRejected,
     ProposalReceived,
     RunFinished,
+    RunResumed,
     RunStarted,
     TrialAbandoned,
     TrialMeasured,
@@ -91,6 +92,14 @@ class Journal:
                 # they are what every later candidate's lineage points back to.
                 self._blob(seed)
                 self._candidate(run_id, digest_of(seed), seed, parent=None)
+        elif isinstance(fact, RunResumed):
+            # The row is already there; what changed is that it is running
+            # again, and that whatever claimed it before no longer holds it.
+            self.session.execute(
+                sa.update(runs)
+                .where(runs.c.id == run_id)
+                .values(status=RunState.RUNNING, reason=None)
+            )
         elif isinstance(fact, RunFinished):
             self.session.execute(
                 sa.update(runs)
@@ -120,8 +129,12 @@ class Journal:
 
     def _about_the_trial(self, fact: Fact, run_id: str) -> None:
         if isinstance(fact, TrialStarted):
+            # Upserted, because a resumed run redoes the trial that was in
+            # flight when it died, under the same id. Starting again means
+            # starting again: the attempts it had used are not owed to it.
             self.session.execute(
-                sa.insert(trials).values(
+                upsert(trials)
+                .values(
                     id=fact.trial_id,
                     run_id=run_id,
                     seq=fact.seq,
@@ -129,6 +142,15 @@ class Journal:
                     attempts=0,
                     parent_fingerprint=fact.parent,
                     started_at=fact.at,
+                )
+                .on_conflict_do_update(
+                    index_elements=["id"],
+                    set_={
+                        "status": TrialState.STARTED,
+                        "attempts": 0,
+                        "reason": None,
+                        "candidate_fingerprint": None,
+                    },
                 )
             )
         elif isinstance(fact, TrialRetried):
@@ -196,6 +218,9 @@ class Journal:
             .where(model_calls.c.id == fact.key)
             .values(
                 status=self.DONE,
+                response=fact.response,
+                model=fact.model,
+                latency_ms=fact.latency_ms,
                 tokens_in=fact.tokens_in,
                 tokens_out=fact.tokens_out,
             )
@@ -312,4 +337,7 @@ class Journal:
         # The recipe is what rebuilds a prompt byte for byte, and it holds the
         # whole parent program. It lives in model_calls, where replay reads it.
         written.pop("recipe", None)
+        # The answer, for the same reason. It lives in model_calls, which is
+        # where replay looks for it.
+        written.pop("response", None)
         return written

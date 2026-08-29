@@ -17,6 +17,7 @@ __all__ = [
     "PatchRejected",
     "ProposalReceived",
     "RunFinished",
+    "RunResumed",
     "RunStarted",
     "TrialAbandoned",
     "TrialMeasured",
@@ -42,6 +43,18 @@ class RunStarted(Event):
     # lineage.
     seeds: tuple[NonBlank, ...] = ()
     budget: Mapping[str, float] = Field(default_factory=dict)
+
+
+class RunResumed(Event):
+    """This run was already under way and is being picked up again.
+
+    Not a second RunStarted: the run row exists, the tape has facts on it
+    already, and a start that happened twice would be two accounts of one
+    thing. What is worth saying is where it is picking up from.
+    """
+
+    trials: int = Field(ge=0)
+    results: int = Field(ge=0)
 
 
 class RunFinished(Event):
@@ -87,6 +100,11 @@ class ModelCalled(Event):
     backend: NonBlank
     # Which request this answers, so a recorded call has a question.
     key: NonBlank
+    # And what came back. Stored, so a run picked up again hands the answer
+    # over instead of buying it twice. Kept out of the event payload for the
+    # same reason the program is: it is large, and events may not be pruned.
+    response: str
+    model: NonBlank
     replayed: bool = False
     tokens_in: int = Field(ge=0)
     tokens_out: int = Field(ge=0)

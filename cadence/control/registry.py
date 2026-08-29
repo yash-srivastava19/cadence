@@ -9,6 +9,8 @@ from cadence.control.manifest import FILENAME, Manifest, Plugin
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import Pareto, WeightedSum
+from cadence.control.recall import Recorded
+from cadence.control.restore import resume_from
 from cadence.core.dto import RecordedManifest
 from cadence.errors import UnknownPlugin
 from cadence.execution.runner import TrialRunner
@@ -109,7 +111,20 @@ def guidance(manifest: Manifest, root: Path) -> str | None:
     return path.read_text() if path.exists() else None
 
 
-def build(manifest: Manifest, root: Path, run_id: str, backend=None) -> Experiment:
+def build(
+    manifest: Manifest,
+    root: Path,
+    run_id: str,
+    backend=None,
+    session=None,
+) -> Experiment:
+    """Assemble a run.
+
+    With a session it also remembers: the model replays calls this run already
+    paid for, and a run that was under way is picked up rather than started
+    again. Without one nothing is stored and the loop behaves as it always
+    did, which is what lets the example run with no database at all.
+    """
     return Experiment(
         run_id=run_id,
         manifest=recorded(manifest, root),
@@ -120,6 +135,7 @@ def build(manifest: Manifest, root: Path, run_id: str, backend=None) -> Experime
             backend=backend or resolve("backend", BACKENDS, manifest.model),
             markers=(manifest.markers.begin, manifest.markers.end),
             guidance=guidance(manifest, root),
+            calls=Recorded(session, run_id) if session is not None else None,
         ),
         runner=TrialRunner(
             program=manifest.program,
@@ -133,4 +149,5 @@ def build(manifest: Manifest, root: Path, run_id: str, backend=None) -> Experime
         ),
         seeds=[seed_program(manifest, root)],
         budget=manifest.budget.trials,
+        resumed=resume_from(session, run_id) if session is not None else None,
     )

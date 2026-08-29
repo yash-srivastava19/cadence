@@ -2,6 +2,7 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -13,16 +14,16 @@ from cadence.observe.signals import cadence
 
 
 @contextmanager
-def _writing_it_down() -> Iterator[bool]:
-    """Record the run, if there is somewhere to record it.
+def _remembering() -> Iterator[Any]:
+    """Give the run a memory, if there is somewhere to keep one.
 
     DATABASE_URL is what decides. Without it the loop runs exactly as before
-    and keeps everything in memory -- which is what lets the example run with
-    no database, no key and no network.
+    and keeps everything in its head -- which is what lets the example run
+    with no database, no key and no network.
     """
     url = os.environ.get("DATABASE_URL")
     if not url:
-        yield False
+        yield None
         return
     from cadence.control.journal import Journal
     from cadence.control.storage import sessions
@@ -30,9 +31,19 @@ def _writing_it_down() -> Iterator[bool]:
     with sessions(url)() as session:
         stop = cadence.record(Journal(session).record)
         try:
-            yield True
+            yield session
         finally:
             stop()
+
+
+def _what_it_remembers(experiment, run_id: str) -> str:
+    resumed = experiment.resumed
+    if resumed is None:
+        return f"recording run {run_id}"
+    return (
+        f"resuming run {run_id} from trial {resumed.trials}"
+        f" with {len(resumed.history.results)} results already scored"
+    )
 
 
 def run(
@@ -41,10 +52,10 @@ def run(
 ) -> None:
     """Improve the program named by .cadence."""
     try:
-        experiment = build(load(root), root, run_id)
-        with _writing_it_down() as recorded:
-            if recorded:
-                note(f"recording run {run_id}")
+        with _remembering() as session:
+            experiment = build(load(root), root, run_id, session=session)
+            if session is not None:
+                note(_what_it_remembers(experiment, run_id))
             report = experiment.run()
     except CadenceError as error:
         die(str(error))

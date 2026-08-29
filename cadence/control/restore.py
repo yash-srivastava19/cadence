@@ -11,14 +11,32 @@ nothing about the method changes when the answer starts coming from Postgres.
 """
 
 import sqlalchemy as sa
+from pydantic import Field
 from sqlalchemy.orm import Session
 
 from cadence.control.storage import blobs, candidates, runs, trials, verdicts
 from cadence.core.dto import RunHistory, TrialResult
+from cadence.core.values import Value
 from cadence.core.verdict import Failed, Outcome, Scored
-from cadence.lifecycle.states import TrialState
+from cadence.lifecycle.states import RunState, TrialState
 
-__all__ = ["history_of", "seeds_of", "status_of"]
+__all__ = ["Resumption", "history_of", "resume_from", "seeds_of", "status_of"]
+
+
+class Resumption(Value):
+    """Enough to carry on: what the run has learned, and how far it got.
+
+    Two numbers rather than one, because they count different things. The
+    history holds only trials that produced a measured candidate; trials
+    counts every trial that started, including the ones that were abandoned.
+    Numbering the next trial from the first would reuse a seq the database is
+    unique on.
+    """
+
+    history: RunHistory
+    #: How many trials are settled. The next one takes this as its seq, so an
+    #: unfinished trial is redone rather than skipped past.
+    trials: int = Field(ge=0)
 
 
 def status_of(session: Session, run_id: str) -> str | None:
@@ -95,3 +113,45 @@ def _verdict(row) -> Scored | Failed:
         outcome=row["outcome"],
         reason=row["reason"],
     )
+
+
+#: A trial in one of these is over, whatever it turned out to be.
+SETTLED = (TrialState.MEASURED, TrialState.UNUSABLE, TrialState.ABANDONED)
+
+
+def trials_of(session: Session, run_id: str) -> int:
+    """How many trials are over.
+
+    Settled ones only, so the next trial takes the seq of whichever one was
+    in flight when the process died. That is what makes the recorded model
+    call reachable: the redone trial asks under the same key, and the answer
+    it already paid for is handed back instead of bought again.
+
+    A trial redone this way loses whatever it had got to. It is one trial,
+    and the alternative -- numbering past it -- leaves a row nothing will
+    ever finish and an answer nothing will ever collect.
+    """
+    return (
+        session.execute(
+            sa.select(sa.func.count())
+            .select_from(trials)
+            .where(trials.c.run_id == run_id)
+            .where(trials.c.status.in_(SETTLED))
+        ).scalar()
+        or 0
+    )
+
+
+def resume_from(session: Session, run_id: str) -> Resumption | None:
+    """What a run needs to pick up where it stopped, or None if it cannot.
+
+    A run that finished is not resumable: there is nothing left to do and
+    starting again under its id would write a second account of it.
+    """
+    status = status_of(session, run_id)
+    if status is None or status in (RunState.FINISHED, RunState.CANCELLED):
+        return None
+    history = history_of(session, run_id)
+    if history is None:
+        return None
+    return Resumption(history=history, trials=trials_of(session, run_id))
