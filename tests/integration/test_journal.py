@@ -363,3 +363,16 @@ class TestTheCallWeWereAboutToMake:
             if row["type"] == "ModelRequested"
         )
         assert "recipe" not in asked["payload"]
+
+
+class TestATrialSaysWhatItProduced:
+    def test_a_measured_trial_names_its_candidate(self, session, journalled):
+        report = journalled(IMPROVES)
+        assert rows(session, trials, run_id="h1")[0]["candidate_fingerprint"] == (
+            report.best
+        )
+
+    def test_an_abandoned_trial_names_nothing(self, session, journalled):
+        """It produced no candidate, so there is nothing to point at."""
+        journalled(*[NONSENSE] * 4)
+        assert rows(session, trials, run_id="h1")[0]["candidate_fingerprint"] is None
