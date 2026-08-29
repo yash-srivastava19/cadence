@@ -167,3 +167,40 @@ class TestWhatMakesAMeasurementUnique:
         before = a_runner(workspace=str(tmp_path)).task_hash
         (tmp_path / "prog.py").write_text("print('value: 2')")
         assert before == a_runner(workspace=str(tmp_path)).task_hash
+
+
+class TestWhenTheScoringCommandIsTheBrokenOne:
+    """The failure cadence could not previously see. A verifier with an
+    expired key scores every candidate at the floor, and a run that reports
+    success on that is worse than one that stops."""
+
+    def test_a_verifier_that_says_it_broke_is_believed(self, tmp_path):
+        verdict = a_runner().try_(
+            "import json;"
+            " print(json.dumps({'cadence_verifier_error': 'OPENAI_API_KEY unset'}))"
+        )
+        assert verdict.outcome == Outcome.VERIFIER_ERROR
+
+    def test_the_reason_says_what_the_verifier_said(self):
+        verdict = a_runner().try_(
+            "import json;"
+            " print(json.dumps({'cadence_verifier_error': 'OPENAI_API_KEY unset'}))"
+        )
+        assert "OPENAI_API_KEY unset" in verdict.reason
+
+    def test_it_escalates_rather_than_scoring_at_the_floor(self):
+        verdict = a_runner().try_(
+            "import json; print(json.dumps({'cadence_verifier_error': 'no key'}))"
+        )
+        assert verdict.escalates
+
+    def test_a_metric_printed_alongside_it_is_not_used(self):
+        """A broken verifier often prints a number anyway. It is not a score."""
+        verdict = a_runner().try_(
+            "import json; print('value: 0');"
+            " print(json.dumps({'cadence_verifier_error': 'no key'}))"
+        )
+        assert verdict.outcome == Outcome.VERIFIER_ERROR
+
+    def test_an_ordinary_run_is_untouched(self):
+        assert a_runner().try_("print('value: 3')").outcome == Outcome.SCORED

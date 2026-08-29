@@ -16,7 +16,27 @@ from typing import Literal, Protocol, get_args
 from cadence.core.types import Metrics
 from cadence.errors import MetricNotReported
 
-__all__ = ["Goal", "JsonReport", "KeyValueLines", "MetricReader", "direction", "read"]
+__all__ = [
+    "BROKE",
+    "Goal",
+    "JsonReport",
+    "KeyValueLines",
+    "MetricReader",
+    "direction",
+    "read",
+    "verifier_broke",
+]
+
+#: How a scoring command says the fault is its own rather than the
+#: candidate's. Printed on stdout, because attribution belongs in the result
+#: and not in an exit code: an exit code is a thing a subprocess has, and the
+#: plan is to point execution at a cluster.
+#:
+#:     print(json.dumps({"cadence_verifier_error": "OPENAI_API_KEY unset"}))
+#:
+#: Without it a broken verifier scores every candidate at the floor and the
+#: run reports success, which is the one failure cadence cannot see.
+BROKE = "cadence_verifier_error"
 
 #: A real type rather than an alias for str, so a manifest saying
 #: `value: maximise` is refused where it is read rather than where it is used.
@@ -30,6 +50,22 @@ NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
 REPORTED = re.compile(
     rf"^\s*(?P<name>[A-Za-z_][\w.]*)\s*[:=]\s*(?P<value>{NUMBER})\s*$"
 )
+
+
+def verifier_broke(stdout: str) -> str | None:
+    """What the scoring command said went wrong with itself, if anything."""
+    for line in reversed(stdout.strip().splitlines()):
+        line = line.strip()
+        if not line.startswith("{") or BROKE not in line:
+            continue
+        try:
+            document = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        said = document.get(BROKE) if isinstance(document, dict) else None
+        if isinstance(said, str) and said.strip():
+            return said.strip()
+    return None
 
 
 def direction(goal: Goal) -> float:

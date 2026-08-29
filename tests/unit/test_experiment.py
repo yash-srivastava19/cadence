@@ -226,3 +226,26 @@ class TestEveryTransitionIsOnTheTape:
         with cadence.recording() as tape:
             an_experiment(TerminalModelError("401")).run()
         assert tape.of(RunFinished)[0].best is None
+
+
+class TestABrokenVerifierStopsTheRun:
+    """Handled since the beginning and never constructed, because with the
+    candidate and the verifier in one process a non-zero exit could not be
+    attributed. It can be now: the scoring command says so itself."""
+
+    BROKE = (
+        "Here.\n```python\nimport json\n"
+        "print(json.dumps({'cadence_verifier_error': 'OPENAI_API_KEY unset'}))\n```"
+    )
+
+    def test_the_run_fails(self):
+        assert an_experiment(self.BROKE).run().status == RunState.FAILED
+
+    def test_it_says_the_scoring_command_was_at_fault(self):
+        assert "scoring command" in an_experiment(self.BROKE).run().reason
+
+    def test_it_does_not_spend_the_rest_of_the_budget(self):
+        """Every later candidate would score the same way, so the budget
+        would buy nothing but a confident wrong answer."""
+        experiment = an_experiment(self.BROKE, budget=5)
+        assert experiment.run().trials == 1
