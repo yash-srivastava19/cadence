@@ -26,6 +26,7 @@ from cadence.observe.channel import Emitter
 from cadence.observe.signals import (
     CandidateBuilt,
     ModelCalled,
+    ModelRequested,
     PatchRejected,
     ProposalReceived,
     RunFinished,
@@ -113,10 +114,11 @@ class Experiment:
         suggestion = self._propose(run, trial, trace, directive)
         if suggestion is None:
             return None
-        proposal, completion, replayed = suggestion
+        proposal, completion, replayed, key = suggestion
         trace.emit(
             ModelCalled,
             backend=self.model.backend.name,
+            key=key,
             replayed=replayed,
             **completion.cost,
         )
@@ -153,11 +155,20 @@ class Experiment:
         # An unparseable reply is worth asking again for: it costs a model call,
         # not a trial. Only once the retry budget is gone is the trial lost.
         while True:
+            request = self.model.prepare(
+                directive, key=key_for(self.run_id, run.trials, trial.attempts)
+            )
+            # Written down before the call is made. A restart that finds this
+            # with no answer knows it may already have been paid for.
+            trace.emit(
+                ModelRequested,
+                backend=self.model.backend.name,
+                key=request.key,
+                prompt_digest=request.digest,
+                recipe=request.recipe,
+            )
             try:
-                return self.model.propose(
-                    directive,
-                    key=key_for(self.run_id, run.trials, trial.attempts),
-                )
+                return self.model.send(request, directive.code)
             except UnusableReply as error:
                 if trial.may_retry:
                     trial.retry()

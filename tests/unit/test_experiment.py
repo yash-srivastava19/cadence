@@ -73,6 +73,7 @@ class TestTheRunIsTraceable:
         assert [type(fact).__name__ for fact in tape] == [
             "RunStarted",
             "TrialStarted",
+            "ModelRequested",
             "ModelCalled",
             "ProposalReceived",
             "CandidateBuilt",
@@ -190,6 +191,7 @@ class TestEveryTransitionIsOnTheTape:
         from cadence.observe.signals import (
             CandidateBuilt,
             ModelCalled,
+            ModelRequested,
             ProposalReceived,
             RunFinished,
             RunStarted,
@@ -203,6 +205,7 @@ class TestEveryTransitionIsOnTheTape:
         assert reported == [
             RunStarted,
             TrialStarted,
+            ModelRequested,
             ModelCalled,
             ProposalReceived,
             CandidateBuilt,

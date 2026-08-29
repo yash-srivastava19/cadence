@@ -20,6 +20,7 @@ class TestTheCadenceChannel:
                 run_id="h1",
                 trial_id="t1",
                 backend="mock",
+                key="h1/0",
                 tokens_in=1,
                 tokens_out=2,
                 latency_ms=3.0,

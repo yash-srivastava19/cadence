@@ -30,6 +30,7 @@ from cadence.control.storage import (  # noqa: E402
     candidates,
     engine,
     events,
+    model_calls,
     runs,
     trials,
     verdicts,
@@ -137,6 +138,7 @@ class TestTheTapeIsTheWholeRun:
         assert [row["type"] for row in rows(session, events, run_id="h1")] == [
             "RunStarted",
             "TrialStarted",
+            "ModelRequested",
             "ModelCalled",
             "ProposalReceived",
             "CandidateBuilt",
@@ -147,7 +149,7 @@ class TestTheTapeIsTheWholeRun:
     def test_the_tape_is_numbered_from_zero(self, session, journalled):
         journalled(IMPROVES)
         assert [row["seq"] for row in rows(session, events, run_id="h1")] == list(
-            range(7)
+            range(8)
         )
 
     def test_a_fact_carries_what_it_was_about(self, session, journalled):
@@ -317,3 +319,47 @@ class TestTheSameMeasurementTwice:
     def test_two_different_programs_are_two_measurements(self, session, journalled):
         journalled(IMPROVES, IMPROVES_MORE, budget=2)
         assert len(rows(session, verdicts)) == 2
+
+
+class TestTheCallWeWereAboutToMake:
+    """Every other step of a trial happens inside our own process, where
+    dying means it either committed or it did not. A model call is the one
+    step where dying leaves the question open."""
+
+    def test_the_request_is_written_down(self, session, journalled):
+        journalled(IMPROVES)
+        assert len(rows(session, model_calls)) == 1
+
+    def test_it_ends_up_marked_done(self, session, journalled):
+        journalled(IMPROVES)
+        assert rows(session, model_calls)[0]["status"] == "done"
+
+    def test_it_keeps_the_recipe_that_rebuilds_the_prompt(self, session, journalled):
+        journalled(IMPROVES)
+        recipe = rows(session, model_calls)[0]["recipe"]
+        assert set(recipe) == {"template", "code", "hint", "guidance"}
+
+    def test_it_counts_what_the_call_cost(self, session, journalled):
+        journalled(IMPROVES)
+        assert rows(session, model_calls)[0]["tokens_out"] > 0
+
+    def test_it_belongs_to_the_trial_that_asked(self, session, journalled):
+        journalled(IMPROVES)
+        assert rows(session, model_calls)[0]["trial_id"] == "h1/0"
+
+    def test_a_retry_is_a_second_call_with_its_own_row(self, session, journalled):
+        """Deliberately not the same key: a retry asks the same question
+        again, and must not replay the answer that failed to parse."""
+        journalled(NONSENSE, IMPROVES)
+        assert len(rows(session, model_calls)) == 2
+
+    def test_the_recipe_is_not_also_on_the_tape(self, session, journalled):
+        """It holds the whole parent program, and events is the one table
+        nobody may prune."""
+        journalled(IMPROVES)
+        asked = next(
+            row
+            for row in rows(session, events, run_id="h1")
+            if row["type"] == "ModelRequested"
+        )
+        assert "recipe" not in asked["payload"]
