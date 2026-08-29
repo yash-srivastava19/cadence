@@ -14,6 +14,7 @@ from cadence.core.dto import (
     Completion,
     Directive,
     Recalled,
+    Request,
     RunHistory,
     TrialBudget,
     TrialResult,
@@ -25,12 +26,18 @@ __all__ = ["Audit", "Backend", "Calls", "Locks", "Method", "Objective"]
 
 @runtime_checkable
 class Backend(Protocol):
-    """Somewhere a prompt can be sent. Says nothing about how."""
+    """Somewhere a request can be sent. Says nothing about how.
+
+    The whole Request rather than its text: a call needs the prompt, and
+    anything travelling with it -- today the key that stops a retry being
+    charged twice. Widening this signature every time something else has to
+    reach the wire is the branch in the caller this interface exists to avoid.
+    """
 
     @property
     def name(self) -> str: ...
 
-    def call(self, prompt: str) -> Completion: ...
+    def call(self, request: Request) -> Completion: ...
 
 
 @runtime_checkable

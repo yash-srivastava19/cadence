@@ -56,6 +56,7 @@ class Experiment:
         seeds: Sequence[str],
         budget: int,
         resumed: Resumption | None = None,
+        cap_usd: float | None = None,
     ) -> None:
         self.run_id = run_id
         self.manifest = manifest
@@ -65,6 +66,7 @@ class Experiment:
         self.seeds = tuple(seeds)
         self.budget = budget
         self.resumed = resumed
+        self.cap_usd = cap_usd
         self.spend = Spend()
 
     def run(self) -> Report:
@@ -123,6 +125,18 @@ class Experiment:
             )
             if directive is None:
                 return self._finish(run, history, scored)
+            if self._overspent():
+                # Checked before dispatch rather than after: the point of a
+                # cap is the call that does not get made.
+                return self._finish(
+                    run,
+                    history,
+                    scored,
+                    reason=(
+                        f"stopped at the ${self.cap_usd:.2f} cap,"
+                        f" having spent ${self.spend.usd:.4f}"
+                    ),
+                )
             reply = self._one(run, directive)
             run.counted()
             if reply is None:
@@ -131,6 +145,17 @@ class Experiment:
             if isinstance(reply.verdict, Failed) and reply.verdict.escalates:
                 return self._fail(run, reply.verdict.reason, results)
             scored += reply.verdict.is_scored
+
+    def _overspent(self) -> bool:
+        """Whether the next call would go past what the manifest allows.
+
+        Nothing to hold to if the provider has no declared price: `usd` is
+        None then, and a cap cannot be enforced against a number nobody gave
+        us. Saying so beats stopping a run on an imagined total.
+        """
+        if self.cap_usd is None or self.spend.usd is None:
+            return False
+        return self.spend.usd >= self.cap_usd
 
     def _history(self, results: list[TrialResult]) -> RunHistory:
         return RunHistory(run_id=self.run_id, seeds=self.seeds, results=tuple(results))
@@ -201,6 +226,8 @@ class Experiment:
                 key=request.key,
                 prompt_digest=request.digest,
                 recipe=request.recipe,
+                template=self.model.template,
+                template_hash=request.template_hash,
             )
             completion, replayed = None, False
             try:
@@ -243,11 +270,17 @@ class Experiment:
                     completion.cost_usd if completion else None,
                 )
 
-    def _finish(self, run: Run, history: RunHistory, scored: int) -> Report:
+    def _finish(
+        self, run: Run, history: RunHistory, scored: int, reason: str | None = None
+    ) -> Report:
         best = self.method.best(history)
         run.finish(best=best.verdict.fingerprint if best else None)
         self.trace.emit(
-            RunFinished, status=run.status, trials=run.trials, best=run.best
+            RunFinished,
+            status=run.status,
+            trials=run.trials,
+            best=run.best,
+            reason=reason,
         )
         return Report(
             run_id=self.run_id,
@@ -258,6 +291,7 @@ class Experiment:
             best=run.best,
             program=best.code if best else None,
             metrics=best.metrics if best else None,
+            reason=reason,
         )
 
     def _fail(self, run: Run, reason: str, results: list[TrialResult]) -> Report:

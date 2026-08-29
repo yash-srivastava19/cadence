@@ -54,6 +54,9 @@ class Settings(BaseModel):
     backoff: float = Field(ge=0)
     key: str | None = None
     prices: Mapping[str, Price] = {}
+    #: The header this provider dedupes on, if it has one. Absent means it
+    #: does not, and a retried call is a second charge.
+    idempotency_header: str | None = None
 
     @property
     def url(self) -> str:
@@ -72,11 +75,19 @@ class Settings(BaseModel):
         """
         return self.prices.get(model) or self.prices.get(ANY_MODEL)
 
-    def headers(self) -> dict[str, str]:
-        """What this provider needs on the wire to accept a request."""
-        if not self.needs_a_key:
-            return {}
-        return {"Authorization": f"Bearer {self.demand_key()}"}
+    def headers(self, key: str | None = None) -> dict[str, str]:
+        """What this provider needs on the wire to accept a request.
+
+        The key names this call, so a retry after a timeout is recognised as
+        the same one. A timeout is exactly when the provider may have answered
+        a request we never saw, and a blind second attempt is a second charge.
+        """
+        sending = {}
+        if self.needs_a_key:
+            sending["Authorization"] = f"Bearer {self.demand_key()}"
+        if key and self.idempotency_header:
+            sending[self.idempotency_header] = key
+        return sending
 
     def demand_key(self) -> str:
         if self.key:

@@ -12,6 +12,7 @@ from cadence.control.recall import (
     key_for,
     through,
 )
+from cadence.core.dto import Request
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
 from cadence.lifecycle.states import RunState
@@ -26,7 +27,9 @@ ANSWERS = (ANSWER, "```python\nprint('value: 11')\n```")
 
 
 def a_completion(text="hello"):
-    return Scripted(text).call("a prompt")
+    return Scripted(text).call(
+        Request(key="k", prompt="a prompt", digest="d" * 16, recipe={"t": 1})
+    )
 
 
 class TestTheStore:

@@ -2,7 +2,7 @@
 
 import time
 
-from cadence.core.dto import Completion
+from cadence.core.dto import Completion, Request
 from cadence.core.ports import Audit, Backend
 from cadence.errors import RetryableModelError, TerminalModelError, UnusableReply
 
@@ -40,10 +40,10 @@ class Reliable:
     def name(self) -> str:
         return self.backend.name
 
-    def call(self, prompt: str) -> Completion:
+    def call(self, request: Request) -> Completion:
         for attempt in range(1, self.attempts + 1):
             try:
-                completion = self.backend.call(prompt)
+                completion = self.backend.call(request)
             except (TerminalModelError, UnusableReply) as error:
                 # An unusable reply is not retried here -- the trial asks
                 # again, which is a fresh call. It is audited here because

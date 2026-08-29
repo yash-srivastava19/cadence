@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from cadence.control.entities import Candidate
 from cadence.control.locking import LocalLocks
+from cadence.control.model import TEMPLATES
 from cadence.control.storage import (
     blobs,
     candidates,
@@ -31,6 +32,7 @@ from cadence.control.storage import (
     manifests,
     model_calls,
     runs,
+    templates,
     translating,
     trials,
     verdicts,
@@ -203,6 +205,22 @@ class Journal:
     IN_FLIGHT = "in_flight"
     DONE = "done"
 
+    def _template(self, fact: ModelRequested) -> None:
+        """The prompt template, by content.
+
+        The recipe names the template; the body is in code that changes, so a
+        run replayed after an edit would rebuild a different prompt and the
+        recorded answer would belong to a question nobody asked.
+        """
+        body = TEMPLATES.get(fact.template)
+        if body is None:  # pragma: no cover - a template we do not ship
+            return
+        self.session.execute(
+            upsert(templates)
+            .values(hash=fact.template_hash, name=fact.template, body=body)
+            .on_conflict_do_nothing(index_elements=["hash"])
+        )
+
     def _asking(self, fact: ModelRequested, run_id: str) -> None:
         """Written before the call, so a restart can tell what is in doubt.
 
@@ -211,6 +229,7 @@ class Journal:
         where dying leaves the question open, and a row with no response is
         the answer to "did we already pay for this?".
         """
+        self._template(fact)
         self.session.execute(
             upsert(model_calls)
             .values(
@@ -218,6 +237,7 @@ class Journal:
                 run_id=run_id,
                 trial_id=fact.trial_id,
                 request_hash=fact.prompt_digest,
+                template_hash=fact.template_hash,
                 recipe=dict(fact.recipe),
                 status=self.IN_FLIGHT,
                 occurred_at=fact.at,

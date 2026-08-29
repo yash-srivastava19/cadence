@@ -4,7 +4,7 @@ from cadence.control.experiment import Experiment
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import WeightedSum
-from cadence.core.dto import Report
+from cadence.core.dto import Report, Spend
 from cadence.errors import EmptyReply, TerminalModelError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
@@ -235,6 +235,53 @@ class TestTheLoopClosesTheFeedbackLoop:
         experiment = an_experiment(NONSENSE, IMPROVES, IMPROVES, budget=2)
         experiment.run()
         assert "could not be used" not in asked(experiment)[2]
+
+
+class TestARunStopsAtItsCap:
+    """A trials budget cannot see what a trial costs. One trial with a huge
+    context outspends fifty cheap ones."""
+
+    #: Distinct on purpose: the same program twice is a patch that changes
+    #: nothing, which costs the trial's retries rather than a trial.
+    CLIMBS = (
+        IMPROVES,
+        rewritten("print('value: 11')"),
+        rewritten("print('value: 13')"),
+    )
+
+    def _capped(self, cap, spent):
+        experiment = an_experiment(*self.CLIMBS, budget=3)
+        experiment.cap_usd = cap
+        experiment.spend = Spend(calls=1, tokens_in=10, tokens_out=10, usd=spent)
+        return experiment.run()
+
+    def test_it_stops_once_the_cap_is_reached(self):
+        assert self._capped(cap=1.00, spent=1.00).trials == 0
+
+    def test_it_says_it_stopped_at_the_cap(self):
+        assert "stopped at the $1.00 cap" in self._capped(cap=1.00, spent=1.00).reason
+
+    def test_it_says_what_was_spent(self):
+        assert "$1.5000" in self._capped(cap=1.00, spent=1.50).reason
+
+    def test_stopping_at_the_cap_is_not_a_failure(self):
+        """The run did what it was told. Only the trials it did not buy are
+        missing."""
+        assert self._capped(cap=1.00, spent=1.00).status == RunState.FINISHED
+
+    def test_under_the_cap_it_carries_on(self):
+        assert self._capped(cap=10.00, spent=0.01).trials == 3
+
+    def test_no_cap_means_no_stopping(self):
+        assert an_experiment(*self.CLIMBS, budget=3).run().trials == 3
+
+    def test_an_unpriced_run_is_not_stopped_on_an_imagined_total(self):
+        """usd is None when nobody declared a price. A cap cannot be held to
+        against a number we do not have, and guessing zero would let it run
+        for ever while claiming to be capped."""
+        experiment = an_experiment(*self.CLIMBS, budget=3)
+        experiment.cap_usd = 0.01
+        assert experiment.run().trials == 3
 
 
 class TestABrokenProjectStopsTheRun:

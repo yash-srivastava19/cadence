@@ -126,6 +126,10 @@ class Request(Value):
     prompt: NonBlank
     digest: NonBlank
     recipe: Frozen[str, Any] = Field(min_length=1)
+    #: The template this was rendered from, by content. The recipe names the
+    #: template; the body of it lives in code that changes, so a run replayed
+    #: after an edit would rebuild a different prompt without this.
+    template_hash: NonBlank = "unknown"
 
 
 class Suggestion(NamedTuple):

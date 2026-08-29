@@ -151,5 +151,6 @@ def build(
         ),
         seeds=[seed_program(manifest, root)],
         budget=manifest.budget.trials,
+        cap_usd=manifest.budget.usd,
         resumed=resume_from(session, run_id) if session is not None else None,
     )

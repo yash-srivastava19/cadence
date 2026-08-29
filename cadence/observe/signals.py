@@ -93,6 +93,8 @@ class ModelRequested(Event):
     key: NonBlank
     prompt_digest: NonBlank
     recipe: Mapping[str, Any]
+    template: NonBlank = "unknown"
+    template_hash: NonBlank = "unknown"
 
 
 class ModelCalled(Event):
