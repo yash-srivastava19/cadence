@@ -173,11 +173,13 @@ class Experiment:
             code=child.code,
             parent=directive.parent,
         )
-        verdict = self.runner.try_(child.code)
+        measured = self.runner.try_(child.code)
+        verdict = measured.verdict
         trial.measure(verdict=verdict)
         trace.emit(
             TrialMeasured,
             verdict=verdict,
+            wall_ms=measured.wall_ms,
             task_hash=self.runner.task_hash,
             seeds_hash=self.runner.seeds_hash,
         )

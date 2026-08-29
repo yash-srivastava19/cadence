@@ -133,6 +133,7 @@ def build(
         ),
         model=Model(
             backend=backend or resolve("backend", BACKENDS, manifest.model),
+            template=manifest.prompt.template,
             markers=(manifest.markers.begin, manifest.markers.end),
             guidance=guidance(manifest, root),
             calls=Recorded(session, run_id) if session is not None else None,

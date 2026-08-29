@@ -275,6 +275,7 @@ class Journal:
                 outcome=verdict.outcome,
                 metrics=dict(verdict.metrics) if isinstance(verdict, Scored) else None,
                 reason=None if isinstance(verdict, Scored) else verdict.reason,
+                wall_ms=fact.wall_ms,
                 occurred_at=fact.at,
             )
             .on_conflict_do_nothing(

@@ -305,3 +305,41 @@ class TestBothDoorsAgreeOnWhatAValidProjectIs:
         )
         runner.invoke(app, ["run", str(project)])
         assert not (project / "ran").exists()
+
+
+class TestARunCanBeReadByAPersonOrAProgram:
+    """The same Report, shown two ways. Neither of them is the one the loop
+    knows about, which is the point of having a plane for it."""
+
+    WORKS = MARKED % "print('value: 1')"
+
+    def test_the_text_report_says_what_happened(self, tmp_path):
+        result = runner.invoke(app, ["run", str(a_project(tmp_path, self.WORKS))])
+        assert "scored" in result.output
+
+    def test_it_says_what_the_run_cost(self, tmp_path):
+        result = runner.invoke(app, ["run", str(a_project(tmp_path, self.WORKS))])
+        assert "tokens" in result.output
+
+    def test_json_is_the_same_facts(self, tmp_path):
+        import json
+
+        result = runner.invoke(
+            app, ["run", "--json", str(a_project(tmp_path, self.WORKS))]
+        )
+        report = json.loads(result.output)
+        assert set(report) >= {"status", "trials", "scored", "spend"}
+
+    def test_json_carries_the_spend_a_pipe_would_want(self, tmp_path):
+        import json
+
+        result = runner.invoke(
+            app, ["run", "--json", str(a_project(tmp_path, self.WORKS))]
+        )
+        assert "calls" in json.loads(result.output)["spend"]
+
+    def test_a_failed_run_still_exits_one(self, tmp_path):
+        result = runner.invoke(
+            app, ["run", "--json", str(a_project(tmp_path, self.WORKS))]
+        )
+        assert result.exit_code == 1

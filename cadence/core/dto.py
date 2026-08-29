@@ -27,6 +27,7 @@ from cadence.lifecycle.states import RunState
 __all__ = [
     "Completion",
     "Directive",
+    "Measurement",
     "Proposal",
     "Recalled",
     "RecordedManifest",
@@ -138,6 +139,18 @@ class Recalled(Value):
 
     prompt_digest: NonBlank
     completion: Completion
+
+
+class Measurement(Value):
+    """What running a candidate turned out to be, and how long it took.
+
+    The time is not part of the verdict: two runs of one program that score
+    the same are the same verdict however long they took, and the verdict is
+    keyed on being the same. It travels beside it instead.
+    """
+
+    verdict: Verdict
+    wall_ms: float = Field(ge=0, allow_inf_nan=False)
 
 
 class TrialResult(Value):

@@ -194,9 +194,6 @@ class TestDefaults:
     def test_guidance_defaults_to_a_conventional_file(self, tmp_path):
         assert load(write(tmp_path, MINIMAL)).guidance == "IMPROVE.md"
 
-    def test_no_task_module_is_needed(self, tmp_path):
-        assert load(write(tmp_path, MINIMAL)).task is None
-
     def test_the_method_defaults(self, tmp_path):
         assert load(write(tmp_path, MINIMAL)).method.name == "evolution"
 
@@ -223,9 +220,25 @@ class TestDefaults:
         with pytest.raises(ManifestError, match="metrics"):
             load(write(tmp_path, text))
 
-    def test_a_python_task_stays_available_for_the_hard_cases(self, tmp_path):
+    def test_a_key_cadence_never_read_is_refused_rather_than_ignored(self, tmp_path):
+        """`task` was accepted and read by nothing. A manifest key that does
+        nothing is a promise, and one that is never kept is worse than one
+        that was never made."""
         text = MINIMAL + "task: verify:Knapsack\n"
-        assert load(write(tmp_path, text)).task == "verify:Knapsack"
+        with pytest.raises(ManifestError, match="task"):
+            load(write(tmp_path, text))
+
+    def test_the_prompt_template_can_be_chosen(self, tmp_path):
+        text = MINIMAL + "prompt: {template: improve}\n"
+        assert load(write(tmp_path, text)).prompt.template == "improve"
+
+    def test_it_defaults_to_the_one_that_edits_a_region(self, tmp_path):
+        assert load(write(tmp_path, MINIMAL)).prompt.template == "region"
+
+    def test_a_template_that_does_not_exist_is_refused(self, tmp_path):
+        text = MINIMAL + "prompt: {template: freestyle}\n"
+        with pytest.raises(ManifestError, match="template"):
+            load(write(tmp_path, text))
 
     def test_naming_an_objective_still_works(self, tmp_path):
         text = MINIMAL + "objective: {pareto: {value: 1, weight: -1}}\n"

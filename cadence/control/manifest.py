@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -73,6 +73,18 @@ class Verifier(Strict):
         return self.tolerance is not None
 
 
+class Prompt(Strict):
+    """How the model is asked.
+
+    region shows the whole program and asks for the marked part back. rewrite
+    asks for the whole program. improve asks the model to write the diff
+    itself. All three have always existed; until now only region could be
+    reached, because nothing let a project name one.
+    """
+
+    template: Literal["region", "rewrite", "improve"] = "region"
+
+
 class Budget(Strict):
     trials: int = Field(default=20, gt=0)
 
@@ -89,11 +101,11 @@ class Manifest(Strict):
     metrics: Mapping[NonBlank, Goal] = Field(min_length=1)
     run: NonBlank = DEFAULT_RUN
     guidance: NonBlank = DEFAULT_GUIDANCE
-    task: NonBlank | None = None
     method: Plugin = Plugin(name=DEFAULT_METHOD)
     model: Plugin = Plugin(name=DEFAULT_MODEL)
     objective: Plugin | None = None
     markers: Markers = Markers()
+    prompt: Prompt = Prompt()
     budget: Budget = Budget()
     sandbox: Sandbox = Sandbox()
     verifier: Verifier = Verifier()

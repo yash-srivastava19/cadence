@@ -10,6 +10,7 @@ from cadence.commands.report import die, note
 from cadence.control.manifest import load
 from cadence.control.preflight import inspect
 from cadence.control.registry import build, seed_program
+from cadence.delivery import as_json, as_text
 from cadence.errors import CadenceError
 from cadence.observe.signals import cadence
 
@@ -54,21 +55,6 @@ def _refuse_a_project_check_would_refuse(manifest, root: Path) -> None:
         die(finding.detail, finding.fix)
 
 
-def _what_it_spent(spend) -> str:
-    """Tokens, and how many of them were not bought again.
-
-    A run that reports what it found and not what it cost cannot be compared
-    with another one -- best-found is incomparable across runs that spent
-    differently, which is every comparison a person actually makes.
-    """
-    replayed = f", {spend.replayed} replayed" if spend.replayed else ""
-    return (
-        f"{spend.calls} model call{'s' if spend.calls != 1 else ''}{replayed},"
-        f" {spend.tokens:,} tokens"
-        f" ({spend.tokens_in:,} in, {spend.tokens_out:,} out)"
-    )
-
-
 def _what_it_remembers(experiment, run_id: str) -> str:
     resumed = experiment.resumed
     if resumed is None:
@@ -82,6 +68,9 @@ def _what_it_remembers(experiment, run_id: str) -> str:
 def run(
     root: Path = typer.Argument(Path(".")),
     run_id: str = typer.Option("local", "--id"),
+    as_json_output: bool = typer.Option(
+        False, "--json", help="Print the report as JSON instead of text."
+    ),
 ) -> None:
     """Improve the program named by .cadence."""
     try:
@@ -95,11 +84,6 @@ def run(
     except CadenceError as error:
         die(str(error))
         raise  # unreachable; die() exits. keeps `report` definitely bound.
-    typer.echo(f"\n{report.status}  {report.scored}/{report.trials} scored")
-    typer.echo(_what_it_spent(report.spend))
+    typer.echo(as_json(report) if as_json_output else f"\n{as_text(report)}")
     if report.reason:
-        die(report.reason)
-    if report.metrics:
-        for name, value in report.metrics.items():
-            typer.echo(f"  {name} = {value:g}")
-        typer.echo(f"\n{report.program}")
+        raise typer.Exit(1)
