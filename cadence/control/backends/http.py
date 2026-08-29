@@ -4,12 +4,15 @@ Knows nothing about models or prompts. The only judgement it makes is whether
 asking again could plausibly work.
 """
 
+import http.client
 import json
+import socket
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
 from functools import wraps
+from itertools import zip_longest
 from typing import Any, ParamSpec, Protocol, TypeVar, runtime_checkable
 
 from cadence.core.values import Value
@@ -65,9 +68,21 @@ class Posts(Protocol):
     ) -> HttpResponse: ...
 
 
+#: Getting a connection, all addresses together. A model may think for
+#: minutes; reaching a host either works soon or will not.
+CONNECT_SECONDS = 10.0
+
+#: And any one address, so a dead one leaves time for the next.
+ATTEMPT_SECONDS = 3.0
+
+
 class Http:
-    def __init__(self, timeout: float = 300.0) -> None:
+    def __init__(
+        self, timeout: float = 300.0, connect_timeout: float = CONNECT_SECONDS
+    ) -> None:
         self.timeout = timeout
+        self.connect_timeout = connect_timeout
+        self._opener = _opener_for(connect_timeout, timeout)
 
     def post(
         self,
@@ -88,12 +103,91 @@ class Http:
             headers={"Content-Type": "application/json", **headers},
         )
         try:
-            with urllib.request.urlopen(posted, timeout=self.timeout) as response:
+            with self._opener.open(posted, timeout=self.timeout) as response:
                 return json.loads(response.read() or b"{}")
         except urllib.error.HTTPError as error:
             raise error_for(error.code, _detail(error)) from error
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             raise RetryableModelError(f"{url} did not answer: {error}") from error
+
+
+def _opener_for(connect: float, read: float) -> urllib.request.OpenerDirector:
+    """An opener that budgets connecting and reading separately.
+
+    urlopen takes one timeout and uses it for both, so a long read budget --
+    which a slow model needs -- becomes a long wait on a host that never
+    answers.
+    """
+
+    class Connection(http.client.HTTPSConnection):
+        def connect(self) -> None:
+            self._create_connection = _within(connect)
+            super().connect()
+            self.sock.settimeout(read)  # connected; now it is the model's time
+
+    class Plain(http.client.HTTPConnection):
+        def connect(self) -> None:
+            self._create_connection = _within(connect)
+            super().connect()
+            self.sock.settimeout(read)
+
+    class Secure(urllib.request.HTTPSHandler):
+        def https_open(self, req):
+            return self.do_open(Connection, req)
+
+    class Insecure(urllib.request.HTTPHandler):
+        def http_open(self, req):
+            return self.do_open(Plain, req)
+
+    return urllib.request.build_opener(Secure, Insecure)
+
+
+def _within(budget: float) -> Callable[..., socket.socket]:
+    """The first address that answers, within one budget for all of them.
+
+    socket.create_connection spends the whole timeout on each address, and a
+    host with eight of them turns ten seconds into eighty.
+    """
+
+    def connect(address, timeout=None, source_address=None) -> socket.socket:
+        deadline = time.monotonic() + budget
+        host, port = address[0], address[1]
+        last: OSError | None = None
+        for family, kind, proto, _, where in _by_turns(
+            socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)
+        ):
+            left = deadline - time.monotonic()
+            if left <= 0:
+                break
+            sock = socket.socket(family, kind, proto)
+            try:
+                sock.settimeout(min(left, ATTEMPT_SECONDS))
+                if source_address:
+                    sock.bind(source_address)
+                sock.connect(where)
+                return sock
+            except OSError as error:
+                last = error
+                sock.close()
+        raise TimeoutError(
+            f"no address for {host} accepted a connection within {budget:g}s"
+        ) from last
+
+    return connect
+
+
+def _by_turns(infos: list) -> list:
+    """The same addresses, alternating between IPv6 and IPv4.
+
+    A resolver lists one family first. If its route is a black hole, trying
+    them in order spends every attempt on it. curl races the families; taking
+    turns is the cheap half, and enough to stop a run hanging.
+    """
+    families: dict[int, list] = {}
+    for info in infos:
+        families.setdefault(info[0], []).append(info)
+    taking = list(families.values())
+    return [info for group in zip_longest(*taking) for info in group if info]
 
 
 def _detail(error: urllib.error.HTTPError) -> str:

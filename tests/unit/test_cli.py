@@ -80,13 +80,49 @@ class TestCheckAsksAboutTheProjectNotTheMachine:
         result = runner.invoke(app, ["check", str(tmp_path)])
         assert result.exit_code == 0, result.output
 
-    def test_it_never_mentions_a_key(self, tmp_path):
+    def test_it_names_the_variable_it_did_not_find(self, tmp_path, monkeypatch):
+        """It may say so; it may not fail for it.
+
+        `ready` used to mean "ready except for the one thing that will stop
+        the first call", because a project whose provider had no key passed
+        in twenty milliseconds and then failed a run after building
+        everything. Naming the variable costs nothing and is not a judgement
+        about the project.
+        """
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         (tmp_path / ".cadence").write_text(
             "api_version: cadence/v1alpha2\nprogram: p.py\n"
             "metrics: {v: maximize}\nmodel: {gemini: {}}\n"
         )
         (tmp_path / "p.py").write_text(MARKED % "print('v: 1')")
-        assert "key" not in runner.invoke(app, ["check", str(tmp_path)]).output
+        result = runner.invoke(app, ["check", str(tmp_path)])
+        assert "GEMINI_API_KEY" in result.output
+        assert result.exit_code == 0
+
+    def test_a_key_that_is_there_is_not_remarked_on(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GEMINI_API_KEY", "sk-not-a-real-key")
+        (tmp_path / ".cadence").write_text(
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
+            "metrics: {v: maximize}\nmodel: {gemini: {}}\n"
+        )
+        (tmp_path / "p.py").write_text(MARKED % "print('v: 1')")
+        result = runner.invoke(app, ["check", str(tmp_path)])
+        assert "GEMINI_API_KEY" not in result.output
+        assert "gemini" in result.output
+
+    def test_the_key_is_never_printed(self, tmp_path, monkeypatch):
+        """The variable's name, never its contents."""
+        monkeypatch.setenv("GEMINI_API_KEY", "sk-not-a-real-key")
+        (tmp_path / ".cadence").write_text(
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
+            "metrics: {v: maximize}\nmodel: {gemini: {}}\n"
+        )
+        (tmp_path / "p.py").write_text(MARKED % "print('v: 1')")
+        assert (
+            "sk-not-a-real-key"
+            not in runner.invoke(app, ["check", str(tmp_path)]).output
+        )
 
 
 class TestSchema:
@@ -165,6 +201,39 @@ class TestCheckSaysWhatItVerified:
         output = self._project(tmp_path).output
         assert "manifest" in output
         assert "ready." in output
+
+
+class TestCheckSaysWhichModelWillBeAsked:
+    """A run that cannot reach a model is a run that cannot start. check knew
+    nothing about the backend and said `ready` anyway."""
+
+    def _project(self, tmp_path, model):
+        (tmp_path / ".cadence").write_text(
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
+            f"metrics: {{value: maximize}}\nmodel: {{{model}}}\n"
+        )
+        (tmp_path / "p.py").write_text(MARKED % "print('value: 1')")
+        return runner.invoke(app, ["check", str(tmp_path)])
+
+    def test_it_names_the_provider_and_the_model(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GEMINI_API_KEY", "sk-not-a-real-key")
+        assert "gemini, model gemini-" in self._project(tmp_path, "gemini: {}").output
+
+    def test_the_scripted_default_is_called_out(self, tmp_path):
+        result = self._project(tmp_path, "scripted: {}")
+        assert "no answers in it" in result.output
+        assert result.exit_code == 0
+
+    def test_an_unknown_provider_stops_the_check(self, tmp_path):
+        result = self._project(tmp_path, "nosuchprovider: {}")
+        assert result.exit_code == 1
+
+    def test_a_model_named_in_the_manifest_is_the_one_reported(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("GEMINI_API_KEY", "sk-not-a-real-key")
+        result = self._project(tmp_path, "gemini: {model: gemini-3.6-pro}")
+        assert "gemini-3.6-pro" in result.output
 
 
 class TestCheckCatchesWhatItUsedToWaveThrough:
