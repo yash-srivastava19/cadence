@@ -31,6 +31,7 @@ __all__ = [
     "Recalled",
     "RecordedManifest",
     "Report",
+    "Request",
     "RunHistory",
     "Suggestion",
     "TrialBudget",
@@ -100,6 +101,22 @@ class Proposal(Value):
         return sum(1 for line in self.patch if line.startswith("+++"))
 
 
+class Request(Value):
+    """A model call that has been built but not yet made.
+
+    The half of asking a model that costs nothing: the prompt is rendered,
+    the recipe that rebuilds it is fixed, and the replay key is decided. It
+    exists so that all of that can be written down before the call is made,
+    which is the only way a restart can tell "about to pay" from "never
+    started".
+    """
+
+    key: NonBlank
+    prompt: NonBlank
+    digest: NonBlank
+    recipe: Frozen[str, Any] = Field(min_length=1)
+
+
 class Suggestion(NamedTuple):
     """What the model layer hands back: the proposal, and what it cost.
 
@@ -111,6 +128,8 @@ class Suggestion(NamedTuple):
     proposal: Proposal
     completion: Completion
     replayed: bool = False
+    #: Which request this answers. Empty when nobody asked for one by key.
+    key: str = ""
 
 
 class Recalled(Value):

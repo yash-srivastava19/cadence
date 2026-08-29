@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from typing import Any
 
 from pydantic import Field
 
@@ -12,6 +13,7 @@ __all__ = [
     "CandidateBuilt",
     "Event",
     "ModelCalled",
+    "ModelRequested",
     "PatchRejected",
     "ProposalReceived",
     "RunFinished",
@@ -59,9 +61,32 @@ class TrialStarted(Event):
     parent: str | None = None
 
 
+class ModelRequested(Event):
+    """We are about to call a model, and here is exactly what we will ask.
+
+    Emitted before the call, and recorded before it is made. Everything else
+    in a trial happens inside our own process, where dying means it either
+    happened or it did not and a restart can tell. A model call is the one
+    step where dying leaves the question open -- so it is written down first,
+    and a restart that finds a request with no answer knows it may already
+    have been paid for.
+
+    The recipe is what makes that useful: it has to rebuild this prompt byte
+    for byte, or a replayed answer is an answer to a different question.
+    """
+
+    trial_id: NonBlank
+    backend: NonBlank
+    key: NonBlank
+    prompt_digest: NonBlank
+    recipe: Mapping[str, Any]
+
+
 class ModelCalled(Event):
     trial_id: NonBlank
     backend: NonBlank
+    # Which request this answers, so a recorded call has a question.
+    key: NonBlank
     replayed: bool = False
     tokens_in: int = Field(ge=0)
     tokens_out: int = Field(ge=0)

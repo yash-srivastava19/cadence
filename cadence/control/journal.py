@@ -28,6 +28,7 @@ from cadence.control.storage import (
     candidates,
     events,
     manifests,
+    model_calls,
     runs,
     trials,
     verdicts,
@@ -41,6 +42,7 @@ from cadence.observe.channel import Fact
 from cadence.observe.signals import (
     CandidateBuilt,
     ModelCalled,
+    ModelRequested,
     PatchRejected,
     ProposalReceived,
     RunFinished,
@@ -139,6 +141,10 @@ class Journal:
             self._built(fact, run_id)
         elif isinstance(fact, TrialMeasured):
             self._measured(fact)
+        elif isinstance(fact, ModelRequested):
+            self._asking(fact, run_id)
+        elif isinstance(fact, ModelCalled):
+            self._answered(fact)
         reached = self.REACHED.get(type(fact))
         trial_id = getattr(fact, "trial_id", None)
         if (
@@ -151,6 +157,44 @@ class Journal:
                 .where(trials.c.id == trial_id)
                 .values(status=reached, reason=getattr(fact, "reason", None))
             )
+
+    IN_FLIGHT = "in_flight"
+    DONE = "done"
+
+    def _asking(self, fact: ModelRequested, run_id: str) -> None:
+        """Written before the call, so a restart can tell what is in doubt.
+
+        Everything else a trial does happens inside our own process: if we
+        die, it either committed or it did not. A model call is the one step
+        where dying leaves the question open, and a row with no response is
+        the answer to "did we already pay for this?".
+        """
+        self.session.execute(
+            upsert(model_calls)
+            .values(
+                id=fact.key,
+                run_id=run_id,
+                trial_id=fact.trial_id,
+                request_hash=fact.prompt_digest,
+                recipe=dict(fact.recipe),
+                status=self.IN_FLIGHT,
+                occurred_at=fact.at,
+            )
+            .on_conflict_do_nothing(index_elements=["id"])
+        )
+
+    def _answered(self, fact: ModelCalled) -> None:
+        """The reply came back. Only ever an update: the row was written
+        before the call, and a call nobody asked for should not appear."""
+        self.session.execute(
+            sa.update(model_calls)
+            .where(model_calls.c.id == fact.key)
+            .values(
+                status=self.DONE,
+                tokens_in=fact.tokens_in,
+                tokens_out=fact.tokens_out,
+            )
+        )
 
     def _measured(self, fact: TrialMeasured) -> None:
         """What this candidate scored, against this task, on these seeds.
@@ -260,4 +304,7 @@ class Journal:
         # is never allowed to be pruned.
         written.pop("code", None)
         written.pop("seeds", None)
+        # The recipe is what rebuilds a prompt byte for byte, and it holds the
+        # whole parent program. It lives in model_calls, where replay reads it.
+        written.pop("recipe", None)
         return written

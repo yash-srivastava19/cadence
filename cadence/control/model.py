@@ -3,9 +3,9 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from cadence.control.recall import through
+from cadence.control.recall import digest, through
 from cadence.control.region import BEGIN, END, splice, split
-from cadence.core.dto import Directive, Proposal, Suggestion
+from cadence.core.dto import Directive, Proposal, Request, Suggestion
 from cadence.core.ports import Backend, Calls
 from cadence.errors import PatchError
 
@@ -159,22 +159,45 @@ class Model:
             "guidance": _guidance_block(self.guidance),
         }
 
-    def propose(self, directive: Directive, key: str | None = None) -> Suggestion:
+    def prepare(self, directive: Directive, key: str = "") -> Request:
+        """Everything about the call that costs nothing.
+
+        Separate from send() so a caller can write down what it is about to do
+        before doing it. Pure: called twice with the same directive it builds
+        the same request byte for byte, which is what makes the recipe worth
+        storing at all.
+        """
         recipe = self.recipe(directive)
         prompt = render(recipe)
-        if self.calls is None or key is None:
-            completion, replayed = self._ask(prompt), False
+        return Request(
+            key=key or "unkeyed",
+            prompt=prompt,
+            digest=digest(prompt),
+            recipe=recipe,
+        )
+
+    def send(self, request: Request, code: str) -> Suggestion:
+        """The half that is billed."""
+        if self.calls is None:
+            completion, replayed = self._ask(request.prompt), False
         else:
             completion, replayed = through(
-                self.calls, key, prompt, lambda: self._ask(prompt)
+                self.calls,
+                request.key,
+                request.prompt,
+                lambda: self._ask(request.prompt),
             )
         proposal = Proposal(
-            patch=self._patch(directive.code, completion.text),
-            prompt=prompt,
-            recipe=recipe,
+            patch=self._patch(code, completion.text),
+            prompt=request.prompt,
+            recipe=request.recipe,
             raw_response=completion.text,
         )
-        return Suggestion(proposal, completion, replayed)
+        return Suggestion(proposal, completion, replayed, request.key)
+
+    def propose(self, directive: Directive, key: str | None = None) -> Suggestion:
+        """prepare then send, for a caller with nothing to write down."""
+        return self.send(self.prepare(directive, key or ""), directive.code)
 
     def _patch(self, before: str, answer: str) -> tuple[str, ...]:
         if self.template not in WHOLE:

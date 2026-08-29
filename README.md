@@ -1,165 +1,304 @@
 # Cadence
 
 [![CI](https://github.com/yash-srivastava19/cadence/actions/workflows/python-ci.yml/badge.svg)](https://github.com/yash-srivastava19/cadence/actions)
-[![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://cadence.readthedocs.io/en/latest/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Cadence improves a program by rewriting it over and over. A language model
-proposes an edit, Cadence runs the result against a scoring function you
-provide, keeps what scored better, and repeats.
+Cadence is a laboratory for improving programs with models.
 
-You supply two things: a program with the editable region marked, and a way to
-score it. Cadence supplies the loop.
+You bring a program, a scoring command, and the environment where the program
+is allowed to run. Cadence brings the loop: propose a change, apply it as a
+diff, execute the candidate in a sandbox, read the metrics, keep what improved,
+and make the next generation from the best evidence so far.
+
+The goal is not another benchmark harness. The goal is a system you can point
+at your own problems: a packing heuristic, a parser, a trading rule, a routing
+policy, a simulator, a model-serving path, or any piece of code where “better”
+can be measured.
+
+```text
+              propose        apply         measure        select
+program  ──▶  model  ──▶  unified diff ──▶ sandbox ──▶ objective ──▶ next
+              ▲                           │
+              │                           ▼
+          backend                    metrics on stdout
+```
+
+Cadence is built around one constraint: your problem stays yours. Your files,
+your verifier, your data, your secrets, your sandbox policy, and your model
+backend are outside the core loop and connected through narrow interfaces.
+
+## How Cadence Works
+
+A Cadence run should feel like this:
+
+1. Mark the part of a file the model may change.
+2. Write a command that scores the current program.
+3. Describe the run in `.cadence`.
+4. Check the project before spending model calls.
+5. Run generations.
+6. Watch candidates, diffs, metrics, failures, and lineage as they happen.
+7. Keep the program that actually scored better in your environment.
+
+The research question underneath is how to make that loop reliable enough to
+trust: failures have names, model calls are replayable, candidates are measured
+under explicit limits, and every boundary is shaped so new search methods,
+objectives, sandboxes, providers, and delivery surfaces can be added without
+rewriting the coordinator.
 
 ## Quickstart
+
+The repository includes a small knapsack lab. It runs with a scripted model, so
+you can try the loop without an API key or network.
 
 ```bash
 git clone https://github.com/yash-srivastava19/cadence
 cd cadence
 uv sync
-source .venv/bin/activate
-export GEMINI_API_KEY="your-key-here"
-
-python run_h1_experiment.py
+uv run cadence check examples/lab
 ```
 
-That evolves a Traveling Salesman heuristic for 30 generations against two
-hand-written baselines, then writes `h1_results.png` and
-`experiment_log.json`. It costs roughly 30 Gemini calls.
-
-The environment variable is `GEMINI_API_KEY`. A `.env` at the project root
-works too — `src/llm.py` calls `load_dotenv()` on import.
-
-> **Where did my results go?** Hydra changes the working directory before the
-> script runs, so output lands in `outputs/<date>/<time>/`, including a fresh
-> empty `cadence_db.sqlite`. Pass `hydra.run.dir=.` to keep everything in the
-> project root.
-
-## How one generation works
-
-1. **Sample a parent** — from the previous generation, or, every
-   `ELITISM_INTERVAL` generations, the best program found so far.
-2. **Build a prompt** from the parent, its siblings, and the current lesson.
-3. **Ask the model to rewrite the marked block.**
-4. **Swap the block into the parent**, positionally.
-5. **Score the child** on five fixed seeds, in parallel.
-6. **Store it** in SQLite with its cost, its parent, and its lineage.
-
-Every `LESSON_INTERVAL` generations Cadence asks the model what it has learned
-so far and prepends that to later prompts. Every `META_PROMPT_EDIT_INTERVAL`
-generations it rewrites its own instruction text.
-
-## Using it on your own problem
-
-Implement four members of `Task`:
-
-```python
-from src.task import Task
-from src.models import EvaluationResult
-
-
-class MyTask(Task):
-    @property
-    def function_name(self) -> str:
-        return "solve"
-
-    def generate_inputs(self, seed: int):
-        ...  # deterministic for a given seed
-
-    def evaluate(self, output, input_data) -> EvaluationResult:
-        ...  # lower cost is better
-
-    @property
-    def baseline_program(self) -> str:
-        return "### START_BLOCK\ndef solve(data):\n    ...\n### END_BLOCK"
-```
-
-Everything between `### START_BLOCK` and `### END_BLOCK` is what the model
-rewrites. Everything outside is fixed.
-
-**[docs/tasks.md](docs/tasks.md) is the full guide**, with a complete worked
-knapsack example and the rules about cost direction, determinism, and checking
-that your scoring function can tell a good program from a bad one.
-
-## Configuration
-
-Every setting is a [Hydra](https://hydra.cc/) key in `conf/`. Override on the
-command line rather than editing files:
-
-```bash
-python run_h1_experiment.py GENERATIONS=60 LESSON_INTERVAL=3
-```
-
-There are no `CADENCE_*` environment variables and no `--generations` style
-flags. [docs/configuration.md](docs/configuration.md) lists every key that
-each script actually reads.
-
-## Web interface
-
-```bash
-python ui/launch_ui.py
-```
-
-Then open <http://localhost:5000>. It reads `./cadence_db.sqlite` relative to
-where you launch it, which is why it looks empty if your run wrote to a Hydra
-output directory.
-
-## What Cadence does not do yet
-
-Stated plainly, because finding out later wastes your time:
-
-- **One provider.** Google Gemini only, defaulting to `gemini-2.0-flash`.
-- **One objective.** A single float, minimised. No Pareto, no multi-objective.
-- **One operator.** Whole-block replacement. No crossover, no full rewrite.
-- **No sandbox.** Candidates run via `exec()` in the same process as the loop,
-  with access to your files, environment, and network. Point Cadence only at
-  code you would run by hand on the same machine.
-- **No timeout.** A candidate with an infinite loop hangs the run. `Evaluator`
-  accepts `timeout` and `max_memory_mb` and ignores both.
-
-## Layout
+`cadence check` is the preflight. It reads `.cadence`, finds the editable
+region, builds the search method and objective, runs the baseline once in the
+sandbox, and confirms the metric can be read.
 
 ```text
-conf/                  Hydra configs, one per entry script
-src/                   the library that runs today
-  task.py              the Task interface
-  evaluator.py         execute() -- source in, cost out
-  evolve.py            apply_diff() -- block replacement
-  llm.py               Gemini provider and legacy helpers
-  prompt_sampler.py    build() -- prompt assembly
-  database.py          SQLite storage and parent sampling
-  tasks/               TSPTask
-cadence/               the framework replacing src/ -- not usable yet
-docs/                  documentation, tested by tests/test_docs.py
-ui/                    Flask dashboard
-main.py                the full loop, with lessons and meta-prompting
-run_h1_experiment.py   evolution against baselines
-run_h2_experiment.py   scaling across problem sizes
+  manifest    cadence/v1alpha2, 9 defaults applied
+  region      pack.py lines 6-11 (6 lines the model may rewrite)
+  method      evolution built with size=8, tournament=3
+  objective   weighted_sum over value to maximize
+  baseline    `python pack.py` exited 0 in 15ms
+  metric      value = 0, and maximize is better
+  sandbox     3 seeds per trial, 10s and 256MB each
+  guidance    IMPROVE.md will be sent with every prompt
+
+ready. `cadence run` will spend up to 2 trials.
 ```
 
-## Documentation
+Then run the demo:
 
-The docs are tested. `tests/test_docs.py` compiles every Python example,
-resolves every symbol they import against the source tree, checks that every
-script they name exists, and fails the build on any environment variable
-nothing reads. A page that drifts from the code breaks CI.
+```bash
+uv run python examples/lab/demo.py
+```
 
-| Page | For |
+The first candidate improves the score. Later scripted replies are malformed on
+purpose, so you can see Cadence retry the model, reject unusable output, and
+continue the run instead of collapsing around one bad response.
+
+## Run Your Own Project
+
+A project needs a marked program, a scoring command, and a manifest. This
+example is intentionally one file so you can paste it into an empty directory
+and check the setup before bringing Cadence to a larger codebase.
+
+### Create A Program
+
+```python
+ITEMS = [
+    {"name": "map", "weight": 9, "value": 150},
+    {"name": "compass", "weight": 13, "value": 35},
+    {"name": "water", "weight": 153, "value": 200},
+    {"name": "sandwich", "weight": 50, "value": 160},
+    {"name": "glucose", "weight": 15, "value": 60},
+    {"name": "tin", "weight": 68, "value": 45},
+]
+CAPACITY = 100
+
+# CADENCE:BEGIN
+def pack():
+    return []
+# CADENCE:END
+
+chosen = pack()
+weight = sum(ITEMS[i]["weight"] for i in chosen)
+value = sum(ITEMS[i]["value"] for i in chosen) if weight <= CAPACITY else 0
+print(f"value: {value}")
+print(f"weight: {weight}")
+```
+
+Cadence rewrites only the region between the markers. Everything outside that
+region is context for the model and fixed code for the candidate.
+
+Save that as `pack.py`.
+
+### Expose Metrics
+
+Cadence reads numbers from stdout. JSON is the cleanest contract:
+
+```python
+import json
+
+print(json.dumps({"value": 45, "weight": 18}))
+```
+
+For quick experiments, plain lines such as `value: 45` or `value = 45` also
+work. The metric names are the names you put in `.cadence`.
+
+The one-file example above uses the simple line format so there is nothing else
+to install or import.
+
+### Add A Manifest
+
+```yaml
+api_version: cadence/v1alpha2
+program: pack.py
+metrics:
+  value: maximize
+budget:
+  trials: 20
+```
+
+Then:
+
+```bash
+uv run cadence check .
+```
+
+With the starter implementation, `cadence check` should report `value = 0`.
+That is the baseline Cadence will try to beat once you choose a model backend.
+
+For most real projects, keep the evolved file and the verifier separate:
+
+```yaml
+api_version: cadence/v1alpha2
+program: pack.py
+run: python verify.py
+metrics:
+  value: maximize
+  weight: minimize
+sandbox:
+  seconds: 30
+  memory_mb: 1024
+  seeds: [0, 1, 2, 3, 4]
+```
+
+Cadence copies the project into a scratch workspace, writes the candidate over
+`pack.py`, and runs `python verify.py` inside that workspace. Your verifier
+imports the candidate by its normal filename, which means the same verifier can
+be run by hand when you want to inspect a result.
+
+## Configure Models
+
+Backends are configured from `.cadence`. Keys come from the environment, not
+from the manifest, so the file can stay committed.
+
+```yaml
+model:
+  openai:
+    model: your-model-name
+```
+
+After a backend is configured, start the run:
+
+```bash
+uv run cadence run .
+```
+
+Provider definitions live in `cadence/control/backends/providers.yml`. The
+design is deliberately boring: if a provider speaks the OpenAI chat dialect,
+adding it is data, not a new class hierarchy.
+
+## Tune The Experiment
+
+The manifest is where ordinary product decisions belong:
+
+```yaml
+api_version: cadence/v1alpha2
+program: solver.py
+run: python verify.py
+guidance: IMPROVE.md
+metrics:
+  score: maximize
+  latency_ms: minimize
+method:
+  evolution:
+    size: 12
+    tournament: 4
+objective:
+  pareto:
+    score: 1
+    latency_ms: -1
+budget:
+  trials: 100
+sandbox:
+  seconds: 20
+  memory_mb: 2048
+  seeds: [0, 1, 2]
+model:
+  ollama:
+    model: qwen3:4b
+```
+
+`IMPROVE.md` is for human guidance: constraints, known traps, invariants, and
+ideas worth trying. It gives the model project-specific context without baking
+that context into Cadence itself.
+
+Use the schema when in doubt:
+
+```bash
+uv run cadence schema
+```
+
+## Architecture For Extension
+
+Cadence is split into three product planes and a small shared vocabulary.
+
+```text
+cadence/
+  core/          DTOs, verdicts, identities, and ports
+  lifecycle/     state-machine support
+  observe/       run signals
+  parsing/       metric reading
+
+  control/       choose parents, call models, parse replies, apply patches
+  execution/     run candidates in sandboxes and return verdicts
+  delivery/      present runs: CLI today, richer surfaces next
+  commands/      check, run, schema
+```
+
+The planes are the developer promise:
+
+| Plane | Owns | Should not know |
+| --- | --- | --- |
+| `control` | search, prompts, model calls, patches, objectives | subprocess details or UI concerns |
+| `execution` | sandboxes, resource limits, process outcomes, metric collection | why a candidate was chosen |
+| `delivery` | reports, streams, dashboards, notebooks, logs | how search or sandboxing is implemented |
+
+That split matters because Cadence is a research project as much as a tool. A
+new search method should be one implementation behind the method interface. A
+new sandbox should satisfy the execution port. A dashboard, notebook, or report
+view should subscribe to events instead of reaching into the experiment loop.
+
+## Research Roadmap
+
+Cadence is useful when the object of study is not only “did a model find a
+better answer?” but “what made the loop trustworthy enough to know?”
+
+The system keeps separate concepts separate:
+
+| Concept | Why it exists |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | Your first run, and what the output means |
-| [Tasks](docs/tasks.md) | Your own problem |
-| [Configuration](docs/configuration.md) | Every key, and what is hardcoded |
-| [Evolution pipeline](docs/evolution.md) | What each generation does |
-| [Examples](docs/examples.md) | Working snippets |
-| [Experiments](docs/experiments.md) | Reproducing H1 and H2 |
-| [API reference](docs/api/index.md) | Signatures |
-| [Architecture](docs/architecture.md) | Where this is going |
-| [Contributing](docs/contributing.md) | Sending a patch |
+| `Verdict` | A candidate can score, crash, time out, report no metric, or exhaust memory. Those are different facts, not bad numbers. |
+| `Objective` | Metrics are an open map. Ranking them is a policy, not a property of stdout. |
+| `Proposal` | Every model response becomes a unified diff, so storage, review, replay, and reporting all see one durable shape. |
+| `Directive` | Search chooses a parent; prompting decides how to ask the model to improve it. |
+| Signals | Delivery surfaces can observe a run without coupling themselves to the coordinator. |
+| Manifest hash | A result is only meaningful with the exact configuration that produced it. |
 
-## Citation
+The long-term direction is durable, inspectable evolution: model-call replay,
+candidate lineage, verdict caching for deterministic verifiers, resumable runs,
+budget reservation, leases for parallel workers, and delivery surfaces that let
+you watch a generation tree form in real time.
 
-See [CITATION.cff](CITATION.cff).
+## Development
 
-## Licence
+Set up the repo:
+
+```bash
+uv sync --group dev
+uv run pytest
+uv run pre-commit run --all-files
+```
+
+## License
 
 MIT. See [LICENSE](LICENSE).
