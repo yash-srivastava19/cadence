@@ -1,7 +1,7 @@
 import random
 
 from cadence.control.objectives.ranking import Pareto, WeightedSum
-from cadence.core.ports import Objective, Task
+from cadence.core.ports import Objective
 
 CAPACITY = 20
 
@@ -37,40 +37,6 @@ def greedy(items, capacity):
             picked.append(i)
             weight += items[i][0]
     return picked
-
-
-class TestATaskIsUsable:
-    def test_a_plain_class_satisfies_the_protocol(self):
-        assert isinstance(Knapsack(), Task)
-
-    def test_the_same_seed_gives_the_same_inputs(self):
-        task = Knapsack()
-        assert task.inputs(7) == task.inputs(7)
-
-    def test_different_seeds_give_different_inputs(self):
-        task = Knapsack()
-        assert task.inputs(1) != task.inputs(2)
-
-    def test_scoring_a_real_solution_returns_metrics(self):
-        task = Knapsack()
-        inputs = task.inputs(7)
-        metrics = task.score(greedy(*inputs), inputs)
-        assert metrics["value"] > 0
-        assert metrics["weight"] <= CAPACITY
-
-    def test_the_baseline_runs_and_scores(self):
-        task = Knapsack()
-        namespace = {}
-        exec(task.baseline, namespace)
-        inputs = task.inputs(7)
-        metrics = task.score(namespace[task.entry_point](*inputs), inputs)
-        assert metrics == {"value": 0.0, "weight": 0.0}
-
-    def test_an_overweight_answer_scores_nothing(self):
-        task = Knapsack()
-        inputs = task.inputs(7)
-        everything = list(range(len(inputs[0])))
-        assert task.score(everything, inputs)["value"] == 0.0
 
 
 class TestAnObjectiveRanksThoseMetrics:

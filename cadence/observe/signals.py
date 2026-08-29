@@ -151,6 +151,10 @@ class CandidateBuilt(Event):
 class TrialMeasured(Event):
     trial_id: NonBlank
     verdict: Verdict
+    # How long measuring took. Beside the verdict rather than in it: two runs
+    # of one program that score the same are the same verdict however long
+    # they took, and the verdict is keyed on being the same.
+    wall_ms: float = Field(ge=0, allow_inf_nan=False)
     # What it was measured against. On the fact rather than looked up later,
     # so a verdict on the tape says what it is a verdict about -- and so the
     # three of them together are the key the verdicts table is stored under.

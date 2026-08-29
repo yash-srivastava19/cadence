@@ -7,9 +7,8 @@ population. That is the whole reason a new provider is a row in a YAML file
 and a new search strategy is one module.
 """
 
-from collections.abc import Sequence
 from contextlib import AbstractContextManager
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from cadence.core.dto import (
     Completion,
@@ -21,7 +20,7 @@ from cadence.core.dto import (
 )
 from cadence.core.types import Metrics
 
-__all__ = ["Audit", "Backend", "Calls", "Locks", "Method", "Objective", "Task"]
+__all__ = ["Audit", "Backend", "Calls", "Locks", "Method", "Objective"]
 
 
 @runtime_checkable
@@ -92,22 +91,3 @@ class Method(Protocol):
     ) -> Directive | None: ...
 
     def best(self, history: RunHistory) -> TrialResult | None: ...
-
-
-@runtime_checkable
-class Task(Protocol):
-    """A problem defined in Python rather than by a command.
-
-    Declared, unbuilt: nothing in cadence constructs one yet. The manifest
-    accepts a `task` key and no code reads it.
-    """
-
-    @property
-    def entry_point(self) -> str: ...
-
-    @property
-    def baseline(self) -> str: ...
-
-    def inputs(self, seed: int) -> Sequence[Any]: ...
-
-    def score(self, output: Any, inputs: Sequence[Any]) -> Metrics: ...

@@ -8,7 +8,9 @@ import typer
 
 from cadence.commands.report import die, note
 from cadence.control.manifest import load
-from cadence.control.registry import build
+from cadence.control.preflight import inspect
+from cadence.control.registry import build, seed_program
+from cadence.delivery import as_json, as_text
 from cadence.errors import CadenceError
 from cadence.observe.signals import cadence
 
@@ -36,19 +38,21 @@ def _remembering() -> Iterator[Any]:
             stop()
 
 
-def _what_it_spent(spend) -> str:
-    """Tokens, and how many of them were not bought again.
+def _refuse_a_project_check_would_refuse(manifest, root: Path) -> None:
+    """The same checks, from both doors.
 
-    A run that reports what it found and not what it cost cannot be compared
-    with another one -- best-found is incomparable across runs that spent
-    differently, which is every comparison a person actually makes.
+    Without this, `cadence check` refuses an unmarked program and `cadence
+    run` accepts it and rewrites the whole file on every trial -- two entry
+    points with two definitions of a valid project, and the expensive one is
+    the lenient one.
+
+    Only the free half. Rehearsing the scoring command is check's job: run
+    would be spending a subprocess to re-learn what check already said, and
+    for a verifier that takes forty seconds that is a real bill.
     """
-    replayed = f", {spend.replayed} replayed" if spend.replayed else ""
-    return (
-        f"{spend.calls} model call{'s' if spend.calls != 1 else ''}{replayed},"
-        f" {spend.tokens:,} tokens"
-        f" ({spend.tokens_in:,} in, {spend.tokens_out:,} out)"
-    )
+    preflight = inspect(manifest, root, seed_program(manifest, root))
+    for finding in preflight.wrong:
+        die(finding.detail, finding.fix)
 
 
 def _what_it_remembers(experiment, run_id: str) -> str:
@@ -64,22 +68,22 @@ def _what_it_remembers(experiment, run_id: str) -> str:
 def run(
     root: Path = typer.Argument(Path(".")),
     run_id: str = typer.Option("local", "--id"),
+    as_json_output: bool = typer.Option(
+        False, "--json", help="Print the report as JSON instead of text."
+    ),
 ) -> None:
     """Improve the program named by .cadence."""
     try:
+        manifest = load(root)
+        _refuse_a_project_check_would_refuse(manifest, root)
         with _remembering() as session:
-            experiment = build(load(root), root, run_id, session=session)
+            experiment = build(manifest, root, run_id, session=session)
             if session is not None:
                 note(_what_it_remembers(experiment, run_id))
             report = experiment.run()
     except CadenceError as error:
         die(str(error))
         raise  # unreachable; die() exits. keeps `report` definitely bound.
-    typer.echo(f"\n{report.status}  {report.scored}/{report.trials} scored")
-    typer.echo(_what_it_spent(report.spend))
+    typer.echo(as_json(report) if as_json_output else f"\n{as_text(report)}")
     if report.reason:
-        die(report.reason)
-    if report.metrics:
-        for name, value in report.metrics.items():
-            typer.echo(f"  {name} = {value:g}")
-        typer.echo(f"\n{report.program}")
+        raise typer.Exit(1)

@@ -31,6 +31,7 @@ class TestTheCadenceChannel:
                 run_id="h1",
                 trial_id="t1",
                 verdict=a_verdict(),
+                wall_ms=12.0,
                 task_hash="task0",
                 seeds_hash="seeds0",
             ).emit()
@@ -76,6 +77,7 @@ class TestWritingToStorage:
             run_id="h1",
             trial_id="t1",
             verdict=a_verdict(),
+            wall_ms=12.0,
             task_hash="task0",
             seeds_hash="seeds0",
         )
@@ -86,6 +88,7 @@ class TestWritingToStorage:
             run_id="h1",
             trial_id="t1",
             verdict=a_verdict(),
+            wall_ms=12.0,
             task_hash="task0",
             seeds_hash="seeds0",
         )
@@ -97,6 +100,7 @@ class TestWritingToStorage:
             run_id="h1",
             trial_id="t1",
             verdict=a_verdict(),
+            wall_ms=12.0,
             task_hash="task0",
             seeds_hash="seeds0",
         ).model_dump()

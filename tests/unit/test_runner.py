@@ -48,24 +48,28 @@ class TestPatching:
 
 class TestScoring:
     def test_a_working_candidate_is_scored(self):
-        assert a_runner().try_(BETTER).is_scored
+        assert a_runner().try_(BETTER).verdict.is_scored
 
     def test_the_metric_comes_from_what_the_program_printed(self):
-        assert a_runner().try_(BETTER).metrics["value"] == 9.0
+        assert a_runner().try_(BETTER).verdict.metrics["value"] == 9.0
 
     def test_the_verdict_names_the_code_it_measured(self):
         from cadence.core.identity import fingerprint
 
-        assert a_runner().try_(BETTER).fingerprint == fingerprint(BETTER)
+        assert a_runner().try_(BETTER).verdict.fingerprint == fingerprint(BETTER)
 
     def test_several_metrics_come_back(self):
         code = "print('value: 2')\nprint('cost: 5')"
-        verdict = a_runner(metrics={"value": "maximize", "cost": "minimize"}).try_(code)
+        verdict = (
+            a_runner(metrics={"value": "maximize", "cost": "minimize"})
+            .try_(code)
+            .verdict
+        )
         assert verdict.metrics == {"value": 2.0, "cost": 5.0}
 
     def test_readings_are_averaged_across_seeds(self):
         code = "import os\nprint('value:', int(os.environ['CADENCE_SEED']))"
-        verdict = a_runner(seeds=(0, 2)).try_(code)
+        verdict = a_runner(seeds=(0, 2)).try_(code).verdict
         assert verdict.metrics["value"] == 1.0
 
     def test_a_runner_needs_a_seed(self):
@@ -85,24 +89,24 @@ class TestScoring:
 
 class TestFailuresAreDistinguished:
     def test_a_crash_is_a_crash(self):
-        verdict = a_runner().try_("raise ValueError('x')")
+        verdict = a_runner().try_("raise ValueError('x')").verdict
         assert verdict.outcome is Outcome.CRASHED
 
     def test_a_crash_keeps_the_reason(self):
-        verdict = a_runner().try_("raise ValueError('x')")
+        verdict = a_runner().try_("raise ValueError('x')").verdict
         assert "ValueError" in verdict.reason
 
     def test_a_timeout_is_a_timeout(self):
         spins = "while True:\n    pass"
-        verdict = a_runner(seconds=1.0).try_(spins)
+        verdict = a_runner(seconds=1.0).try_(spins).verdict
         assert verdict.outcome is Outcome.TIMED_OUT
 
     def test_a_program_that_reports_nothing_is_invalid(self):
-        verdict = a_runner().try_("print('all done')")
+        verdict = a_runner().try_("print('all done')").verdict
         assert verdict.outcome is Outcome.INVALID
 
     def test_it_says_which_metric_was_missing(self):
-        verdict = a_runner().try_("print('all done')")
+        verdict = a_runner().try_("print('all done')").verdict
         assert "value" in verdict.reason
 
     def test_one_bad_seed_fails_the_whole_verdict(self):
@@ -111,12 +115,14 @@ class TestFailuresAreDistinguished:
             "if os.environ['CADENCE_SEED'] == '2': raise ValueError('x')\n"
             "print('value: 1')"
         )
-        assert not a_runner(seeds=(0, 2)).try_(code).is_scored
+        assert not a_runner(seeds=(0, 2)).try_(code).verdict.is_scored
 
 
 class TestOutOfMemoryReachesTheVerdict:
     def test_a_greedy_candidate_is_out_of_memory_not_crashed(self):
-        verdict = a_runner(memory_mb=64).try_("x = bytearray(500 * 1024 * 1024)")
+        verdict = (
+            a_runner(memory_mb=64).try_("x = bytearray(500 * 1024 * 1024)").verdict
+        )
         assert verdict.outcome is Outcome.OUT_OF_MEMORY
         assert "memory" in verdict.reason
 
@@ -175,32 +181,48 @@ class TestWhenTheScoringCommandIsTheBrokenOne:
     success on that is worse than one that stops."""
 
     def test_a_verifier_that_says_it_broke_is_believed(self, tmp_path):
-        verdict = a_runner().try_(
-            "import json;"
-            " print(json.dumps({'cadence_verifier_error': 'OPENAI_API_KEY unset'}))"
+        verdict = (
+            a_runner()
+            .try_(
+                "import json;"
+                " print(json.dumps({'cadence_verifier_error': 'OPENAI_API_KEY unset'}))"
+            )
+            .verdict
         )
         assert verdict.outcome == Outcome.VERIFIER_ERROR
 
     def test_the_reason_says_what_the_verifier_said(self):
-        verdict = a_runner().try_(
-            "import json;"
-            " print(json.dumps({'cadence_verifier_error': 'OPENAI_API_KEY unset'}))"
+        verdict = (
+            a_runner()
+            .try_(
+                "import json;"
+                " print(json.dumps({'cadence_verifier_error': 'OPENAI_API_KEY unset'}))"
+            )
+            .verdict
         )
         assert "OPENAI_API_KEY unset" in verdict.reason
 
     def test_it_escalates_rather_than_scoring_at_the_floor(self):
-        verdict = a_runner().try_(
-            "import json; print(json.dumps({'cadence_verifier_error': 'no key'}))"
+        verdict = (
+            a_runner()
+            .try_(
+                "import json; print(json.dumps({'cadence_verifier_error': 'no key'}))"
+            )
+            .verdict
         )
         assert verdict.escalates
 
     def test_a_metric_printed_alongside_it_is_not_used(self):
         """A broken verifier often prints a number anyway. It is not a score."""
-        verdict = a_runner().try_(
-            "import json; print('value: 0');"
-            " print(json.dumps({'cadence_verifier_error': 'no key'}))"
+        verdict = (
+            a_runner()
+            .try_(
+                "import json; print('value: 0');"
+                " print(json.dumps({'cadence_verifier_error': 'no key'}))"
+            )
+            .verdict
         )
         assert verdict.outcome == Outcome.VERIFIER_ERROR
 
     def test_an_ordinary_run_is_untouched(self):
-        assert a_runner().try_("print('value: 3')").outcome == Outcome.SCORED
+        assert a_runner().try_("print('value: 3')").verdict.outcome == Outcome.SCORED

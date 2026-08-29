@@ -272,3 +272,74 @@ class TestCheckRefusesABrokenScoringCommand:
         result = runner.invoke(app, ["check", str(a_project(tmp_path, broken))])
         assert result.exit_code == 1
         assert "fault of its own" in result.output
+
+
+class TestBothDoorsAgreeOnWhatAValidProjectIs:
+    """check refused an unmarked program and run accepted it, rewriting the
+    whole file on every trial. Two entry points, two definitions, and the
+    expensive one was the lenient one."""
+
+    UNMARKED = "def pack():\n    return []\nprint('value: 0')\n"
+
+    def test_check_refuses_it(self, tmp_path):
+        result = runner.invoke(app, ["check", str(a_project(tmp_path, self.UNMARKED))])
+        assert result.exit_code == 1
+
+    def test_run_refuses_it_too(self, tmp_path):
+        result = runner.invoke(app, ["run", str(a_project(tmp_path, self.UNMARKED))])
+        assert result.exit_code == 1
+
+    def test_they_say_the_same_thing(self, tmp_path):
+        project = str(a_project(tmp_path, self.UNMARKED))
+        checked = runner.invoke(app, ["check", project]).output
+        ran = runner.invoke(app, ["run", project]).output
+        assert "replace the whole file" in checked
+        assert "replace the whole file" in ran
+
+    def test_run_does_not_rehearse_the_scoring_command(self, tmp_path):
+        """Only the free half. A verifier that takes forty seconds should not
+        be run twice to re-learn what check already said."""
+        project = a_project(tmp_path, MARKED % "print('value: 1')")
+        (project / "p.py").write_text(
+            (project / "p.py").read_text() + "\nopen('ran', 'a').write('x')\n"
+        )
+        runner.invoke(app, ["run", str(project)])
+        assert not (project / "ran").exists()
+
+
+class TestARunCanBeReadByAPersonOrAProgram:
+    """The same Report, shown two ways. Neither of them is the one the loop
+    knows about, which is the point of having a plane for it."""
+
+    WORKS = MARKED % "print('value: 1')"
+
+    def test_the_text_report_says_what_happened(self, tmp_path):
+        result = runner.invoke(app, ["run", str(a_project(tmp_path, self.WORKS))])
+        assert "scored" in result.output
+
+    def test_it_says_what_the_run_cost(self, tmp_path):
+        result = runner.invoke(app, ["run", str(a_project(tmp_path, self.WORKS))])
+        assert "tokens" in result.output
+
+    def test_json_is_the_same_facts(self, tmp_path):
+        import json
+
+        result = runner.invoke(
+            app, ["run", "--json", str(a_project(tmp_path, self.WORKS))]
+        )
+        report = json.loads(result.output)
+        assert set(report) >= {"status", "trials", "scored", "spend"}
+
+    def test_json_carries_the_spend_a_pipe_would_want(self, tmp_path):
+        import json
+
+        result = runner.invoke(
+            app, ["run", "--json", str(a_project(tmp_path, self.WORKS))]
+        )
+        assert "calls" in json.loads(result.output)["spend"]
+
+    def test_a_failed_run_still_exits_one(self, tmp_path):
+        result = runner.invoke(
+            app, ["run", "--json", str(a_project(tmp_path, self.WORKS))]
+        )
+        assert result.exit_code == 1

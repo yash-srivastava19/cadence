@@ -1,7 +1,9 @@
+import time
 from collections.abc import Mapping, Sequence
 from importlib.metadata import version
 from statistics import fmean
 
+from cadence.core.dto import Measurement
 from cadence.core.identity import fingerprint, hash_of
 from cadence.core.types import Metrics
 from cadence.core.verdict import Failed, Failure, Outcome, Scored, Verdict
@@ -77,7 +79,12 @@ class TrialRunner:
         measurement, not a partial one."""
         return hash_of({"seeds": list(self.seeds)})
 
-    def try_(self, code: str) -> Verdict:
+    def try_(self, code: str) -> Measurement:
+        started = time.monotonic()
+        verdict = self._verdict(code)
+        return Measurement(verdict=verdict, wall_ms=(time.monotonic() - started) * 1000)
+
+    def _verdict(self, code: str) -> Verdict:
         readings: list[Metrics] = []
         for seed in self.seeds:
             verdict = self._one(code, seed)
