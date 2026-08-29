@@ -113,6 +113,9 @@ trials = sa.Table(
     sa.Column("status", stored(TrialState, "trial_state"), nullable=False),
     sa.Column("attempts", sa.Integer, nullable=False, server_default="0"),
     _hash("parent_fingerprint"),
+    # What it produced. Null until the patch applies, and for good if it never
+    # does: an abandoned trial made nothing.
+    _hash("candidate_fingerprint"),
     sa.Column("reason", sa.Text),
     sa.Column("owner", sa.Text),
     _when("lease_expires_at"),

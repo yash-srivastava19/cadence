@@ -139,6 +139,11 @@ class Journal:
             )
         elif isinstance(fact, CandidateBuilt):
             self._built(fact, run_id)
+            self.session.execute(
+                sa.update(trials)
+                .where(trials.c.id == fact.trial_id)
+                .values(candidate_fingerprint=fact.fingerprint)
+            )
         elif isinstance(fact, TrialMeasured):
             self._measured(fact)
         elif isinstance(fact, ModelRequested):
