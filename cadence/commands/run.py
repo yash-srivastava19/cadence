@@ -36,6 +36,21 @@ def _remembering() -> Iterator[Any]:
             stop()
 
 
+def _what_it_spent(spend) -> str:
+    """Tokens, and how many of them were not bought again.
+
+    A run that reports what it found and not what it cost cannot be compared
+    with another one -- best-found is incomparable across runs that spent
+    differently, which is every comparison a person actually makes.
+    """
+    replayed = f", {spend.replayed} replayed" if spend.replayed else ""
+    return (
+        f"{spend.calls} model call{'s' if spend.calls != 1 else ''}{replayed},"
+        f" {spend.tokens:,} tokens"
+        f" ({spend.tokens_in:,} in, {spend.tokens_out:,} out)"
+    )
+
+
 def _what_it_remembers(experiment, run_id: str) -> str:
     resumed = experiment.resumed
     if resumed is None:
@@ -61,6 +76,7 @@ def run(
         die(str(error))
         raise  # unreachable; die() exits. keeps `report` definitely bound.
     typer.echo(f"\n{report.status}  {report.scored}/{report.trials} scored")
+    typer.echo(_what_it_spent(report.spend))
     if report.reason:
         die(report.reason)
     if report.metrics:

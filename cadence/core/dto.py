@@ -33,6 +33,7 @@ __all__ = [
     "Report",
     "Request",
     "RunHistory",
+    "Spend",
     "Suggestion",
     "TrialBudget",
     "TrialResult",
@@ -186,6 +187,32 @@ class TrialBudget(Value):
         return self.remaining == 0
 
 
+class Spend(Value):
+    """What a run cost. Tokens, because they are what cadence can count.
+
+    Not dollars: turning tokens into money needs a price per provider per
+    model, which changes without telling anyone, and a stale price is a
+    worse answer than none.
+    """
+
+    calls: int = Field(default=0, ge=0)
+    replayed: int = Field(default=0, ge=0)
+    tokens_in: int = Field(default=0, ge=0)
+    tokens_out: int = Field(default=0, ge=0)
+
+    @property
+    def tokens(self) -> int:
+        return self.tokens_in + self.tokens_out
+
+    def and_also(self, tokens_in: int, tokens_out: int, replayed: bool) -> "Spend":
+        return Spend(
+            calls=self.calls + 1,
+            replayed=self.replayed + int(replayed),
+            tokens_in=self.tokens_in + tokens_in,
+            tokens_out=self.tokens_out + tokens_out,
+        )
+
+
 class Report(Value):
     """What a finished run tells the user. The public output of cadence."""
 
@@ -193,6 +220,7 @@ class Report(Value):
     status: RunState
     trials: int = Field(ge=0)
     scored: int = Field(ge=0)
+    spend: Spend = Spend()
     best: str | None = None
     program: str | None = None
     metrics: Mapping[str, float] | None = None

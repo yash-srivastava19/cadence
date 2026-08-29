@@ -10,6 +10,8 @@ from cadence.core.dto import (
     RecordedManifest,
     Report,
     RunHistory,
+    Spend,
+    Suggestion,
     TrialBudget,
     TrialResult,
 )
@@ -63,6 +65,7 @@ class Experiment:
         self.seeds = tuple(seeds)
         self.budget = budget
         self.resumed = resumed
+        self.spend = Spend()
 
     def run(self) -> Report:
         self.trace = Emitter(run_id=self.run_id)
@@ -196,8 +199,11 @@ class Experiment:
                 prompt_digest=request.digest,
                 recipe=request.recipe,
             )
+            completion, replayed = None, False
             try:
-                return self.model.send(request, directive.code)
+                completion, replayed = self.model.ask(request)
+                proposal = self.model.read(request, completion, directive.code)
+                return Suggestion(proposal, completion, replayed, request.key)
             except UnusableReply as error:
                 if trial.may_retry:
                     trial.retry()
@@ -206,6 +212,16 @@ class Experiment:
                 trial.abandon(reason=str(error))
                 trace.emit(TrialAbandoned, reason=str(error))
                 return None
+            finally:
+                # In a finally because the call is billed whether or not we
+                # could use what came back. A provider that answers with
+                # nothing charged for it, and a run that undercounts its
+                # retries reports a price nobody was asked to pay.
+                self.spend = self.spend.and_also(
+                    completion.tokens_in if completion else 0,
+                    completion.tokens_out if completion else 0,
+                    replayed,
+                )
 
     def _finish(self, run: Run, history: RunHistory, scored: int) -> Report:
         best = self.method.best(history)
@@ -218,6 +234,7 @@ class Experiment:
             status=run.status,
             trials=run.trials,
             scored=scored,
+            spend=self.spend,
             best=run.best,
             program=best.code if best else None,
             metrics=best.metrics if best else None,
@@ -237,5 +254,6 @@ class Experiment:
             status=run.status,
             trials=run.trials,
             scored=0,
+            spend=self.spend,
             reason=reason,
         )

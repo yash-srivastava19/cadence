@@ -249,3 +249,25 @@ class TestABrokenVerifierStopsTheRun:
         would buy nothing but a confident wrong answer."""
         experiment = an_experiment(self.BROKE, budget=5)
         assert experiment.run().trials == 1
+
+
+class TestARunSaysWhatItCost:
+    """Best-found is incomparable across runs that spent differently, which
+    is every comparison a person actually makes."""
+
+    def test_it_counts_the_calls(self):
+        assert an_experiment(IMPROVES).run().spend.calls == 1
+
+    def test_it_counts_the_tokens(self):
+        assert an_experiment(IMPROVES).run().spend.tokens > 0
+
+    def test_a_retry_costs_another_call(self):
+        assert an_experiment(NONSENSE, IMPROVES).run().spend.calls == 2
+
+    def test_a_failed_run_still_says_what_it_spent(self):
+        """The point of counting is the runs that go wrong."""
+        report = an_experiment(*GIVES_UP, budget=1).run()
+        assert report.spend.calls == Trial.max_attempts + 1
+
+    def test_nothing_asked_for_is_nothing_spent(self):
+        assert an_experiment(budget=0).run().spend.calls == 0
