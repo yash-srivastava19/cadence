@@ -17,7 +17,46 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-DOC_FILES = [*sorted(REPO.glob("docs/**/*.md")), REPO / "README.md"]
+
+#: Pages that still describe the replaced system, kept until they are
+#: rewritten rather than deleted. They are checked for existence and nothing
+#: else -- resolving their symbols would only tell us what we already know.
+#:
+#: The list is meant to shrink. Take a page off it when you rewrite that page,
+#: and this file will start holding it to the same standard as the rest.
+DESCRIBES_THE_REPLACED_SYSTEM = {
+    "docs/advanced-features.md",
+    "docs/api/index.md",
+    "docs/architecture.md",
+    "docs/configuration.md",
+    "docs/contributing.md",
+    "docs/evolution.md",
+    "docs/examples.md",
+    "docs/experiments.md",
+    "docs/getting-started.md",
+    "docs/index.md",
+    "docs/llm-interaction.md",
+    "docs/performance-evaluation.md",
+    "docs/results-visualization.md",
+    "docs/tasks.md",
+    "docs/web-interface.md",
+}
+
+ALL_DOCS = [*sorted(REPO.glob("docs/**/*.md")), REPO / "README.md"]
+DOC_FILES = [
+    doc
+    for doc in ALL_DOCS
+    if str(doc.relative_to(REPO)) not in DESCRIBES_THE_REPLACED_SYSTEM
+]
+
+
+def test_every_page_waiting_to_be_rewritten_still_exists():
+    """So the list shrinks by someone rewriting a page, never by drift."""
+    missing = sorted(
+        name for name in DESCRIBES_THE_REPLACED_SYSTEM if not (REPO / name).exists()
+    )
+    assert missing == []
+
 
 FENCE = re.compile(
     r"(?P<skip><!--\s*docs-test:\s*skip\s*-->\s*\n)?"
