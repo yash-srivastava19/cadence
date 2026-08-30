@@ -5,20 +5,8 @@ __pycache__/
 .idea/
 .DS_Store
 venv/
-cadence_db.sqlite
-experiment_log.json
-cost_evolution.png
-experiments/results_*
-experiments/__pycache__
 docs/.venv
 docs/site/
-src/__pycache__
-src/rl/__pycache__
-src/tasks/__pycache__
-tests/fixtures/__pycache__
-lesson_history.json
-outputs/
-multirun/
 .arc/
 
 .env
