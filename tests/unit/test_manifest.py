@@ -316,3 +316,33 @@ class TestMarkers:
 
     def test_the_plan_shows_them(self, tmp_path):
         assert "CADENCE:BEGIN .. CADENCE:END" in load(write(tmp_path, MINIMAL)).plan
+
+
+class TestWhichQuestionARunIsPartOf:
+    """A label for grouping runs in a shared database. In the manifest
+    because everyone who clones the repo is asking the same question."""
+
+    def test_it_is_read(self, tmp_path):
+        assert (
+            load(write(tmp_path, MINIMAL + "experiment: cache-eviction\n")).experiment
+            == "cache-eviction"
+        )
+
+    def test_it_is_optional(self, tmp_path):
+        """Alone on a laptop there is no group to be legible to."""
+        assert load(write(tmp_path, MINIMAL)).experiment is None
+
+    def test_a_blank_label_is_refused(self, tmp_path):
+        """An empty string would group runs under a name nobody can type."""
+        with pytest.raises(ManifestError):
+            load(write(tmp_path, MINIMAL + 'experiment: "   "\n'))
+
+    def test_it_is_not_the_manifest_hash(self, tmp_path):
+        """The reason it exists. Raising the budget makes a new manifest and
+        the same experiment, so grouping by hash would split a sweep every
+        time somebody adjusted a knob."""
+        text = MINIMAL + "experiment: cache-eviction\nbudget:\n  trials: %d\n"
+        forty = load(write(tmp_path, text % 40, name="a"))
+        fifty = load(write(tmp_path, text % 50, name="b"))
+        assert forty.hash != fifty.hash
+        assert forty.experiment == fifty.experiment

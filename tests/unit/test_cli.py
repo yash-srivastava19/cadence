@@ -412,3 +412,49 @@ class TestARunCanBeReadByAPersonOrAProgram:
             app, ["run", "--json", str(a_project(tmp_path, self.WORKS))]
         )
         assert result.exit_code == 1
+
+
+class TestTheQueryCommandsNeedADatabase:
+    """They read rows. With nowhere to read from, say that rather than
+    printing an empty table, which reads like "you have no runs"."""
+
+    def test_listing_runs_without_one_fails(self):
+        assert runner.invoke(app, ["runs", "list"]).exit_code == 1
+
+    def test_it_says_which_variable_is_missing(self):
+        assert "DATABASE_URL" in runner.invoke(app, ["runs", "list"]).output
+
+    def test_listing_trials_without_one_fails(self):
+        assert runner.invoke(app, ["trials", "list", "--run", "r1"]).exit_code == 1
+
+    def test_the_verbs_are_plural(self):
+        """`cadence run` starts one; `cadence runs` lists them. Two words
+        that differ by an "s", because one word cannot mean both."""
+        assert runner.invoke(app, ["runs", "--help"]).exit_code == 0
+        assert runner.invoke(app, ["run", "--help"]).exit_code == 0
+
+    def test_mine_needs_to_know_who_you_are(self, monkeypatch):
+        monkeypatch.delenv("CADENCE_OWNER", raising=False)
+        monkeypatch.delenv("USER", raising=False)
+        monkeypatch.setattr("cadence.commands.identity._git_email", lambda: None)
+        result = runner.invoke(app, ["runs", "list", "--mine"])
+        assert result.exit_code == 1
+        assert "CADENCE_OWNER" in result.output
+
+    def test_mine_and_owner_are_not_both_answerable(self, monkeypatch):
+        monkeypatch.setenv("CADENCE_OWNER", "ada")
+        result = runner.invoke(app, ["runs", "list", "--mine", "--owner", "bob"])
+        assert result.exit_code == 1
+
+
+class TestARunIsNamedOnce:
+    """The id used to default to "local" for everybody, and a matching id
+    meant resume. Two people sharing a database silently continued each
+    other's experiment."""
+
+    def test_id_and_resume_contradict_each_other(self, tmp_path):
+        result = runner.invoke(
+            app, ["run", str(tmp_path), "--id", "a", "--resume", "b"]
+        )
+        assert result.exit_code == 1
+        assert "--resume" in result.output

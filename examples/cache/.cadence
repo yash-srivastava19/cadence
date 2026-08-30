@@ -1,0 +1,17 @@
+api_version: cadence/v1alpha2
+program: policy.py
+experiment: cache-eviction
+
+metrics:
+  hit_rate: maximize
+
+budget:
+  trials: 20
+  usd: 2.0
+
+model:
+  gemini: {}
+
+sandbox:
+  seconds: 30
+  memory_mb: 512

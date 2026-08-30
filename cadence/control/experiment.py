@@ -57,6 +57,8 @@ class Experiment:
         budget: int,
         resumed: Resumption | None = None,
         cap_usd: float | None = None,
+        owner: str | None = None,
+        experiment: str | None = None,
     ) -> None:
         self.run_id = run_id
         self.manifest = manifest
@@ -67,6 +69,8 @@ class Experiment:
         self.budget = budget
         self.resumed = resumed
         self.cap_usd = cap_usd
+        self.owner = owner
+        self.experiment = experiment
         self.spend = Spend()
 
     def run(self) -> Report:
@@ -94,6 +98,8 @@ class Experiment:
             manifest=self.manifest,
             seeds=self.seeds,
             budget={"trials": float(self.budget)},
+            owner=self.owner,
+            experiment=self.experiment,
         )
         return run
 

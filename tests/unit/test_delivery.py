@@ -6,9 +6,15 @@ here is about one question: can a reader compare this run with another one?
 
 import json
 
-from cadence.core.dto import Report, Spend
-from cadence.delivery import as_json, as_text
-from cadence.lifecycle.states import RunState
+from cadence.core.dto import Report, RunSummary, Spend, TrialSummary
+from cadence.delivery import (
+    as_json,
+    as_text,
+    one_as_text,
+    runs_as_text,
+    trials_as_text,
+)
+from cadence.lifecycle.states import RunState, TrialState
 
 
 def a_report(**overrides):
@@ -117,3 +123,112 @@ class TestAFailedRunIsStillAReport:
             )
         )
         assert text.index("401") < text.index("value = 9")
+
+
+def a_run(**overrides):
+    fields = {"id": "r1", "status": RunState.FINISHED, "trials": 3}
+    return RunSummary(**{**fields, **overrides})
+
+
+def a_trial(**overrides):
+    fields = {
+        "id": "t1",
+        "run_id": "r1",
+        "seq": 0,
+        "status": TrialState.MEASURED,
+        "attempts": 1,
+    }
+    return TrialSummary(**{**fields, **overrides})
+
+
+class TestListingRuns:
+    def test_an_empty_listing_says_so(self):
+        """Rather than printing headers over nothing, which reads like a
+        failed query."""
+        assert runs_as_text([]) == "no runs"
+
+    def test_it_puts_every_run_on_its_own_line(self):
+        text = runs_as_text([a_run(id="r1"), a_run(id="r2")])
+        assert len(text.splitlines()) == 4  # header, rule, two runs
+
+    def test_the_columns_line_up(self):
+        """The reason to list runs is to compare them, and comparing means
+        reading down a column."""
+        lines = runs_as_text([a_run(id="short"), a_run(id="a-much-longer-id")])
+        assert len({line.index("finished") for line in lines.splitlines()[2:]}) == 1
+
+    def test_a_missing_label_is_not_a_blank(self):
+        """An empty cell reads as a column that failed to render."""
+        assert "-" in runs_as_text([a_run(experiment=None)])
+
+    def test_it_shows_who_ran_it(self):
+        assert "her@lab.edu" in runs_as_text([a_run(owner="her@lab.edu")])
+
+    def test_it_shows_which_question(self):
+        assert "cache-eviction" in runs_as_text([a_run(experiment="cache-eviction")])
+
+    def test_a_hash_is_cut_short(self):
+        """Fingerprints are 64 characters and no two differ in the last 50.
+        Printed whole they push every later column off the screen."""
+        assert "f" * 64 not in runs_as_text([a_run(best="f" * 64)])
+
+
+class TestListingTrials:
+    def test_an_empty_listing_says_so(self):
+        assert trials_as_text([]) == "no trials"
+
+    def test_it_shows_the_sequence(self):
+        assert "7" in trials_as_text([a_trial(seq=7)])
+
+    def test_it_shows_why_one_was_abandoned(self):
+        text = trials_as_text(
+            [a_trial(status=TrialState.ABANDONED, reason="patch did not apply")]
+        )
+        assert "patch did not apply" in text
+
+
+class TestOneRecord:
+    def test_it_is_read_down_the_page(self):
+        """Nothing to compare it with, so no columns."""
+        assert one_as_text(a_run()).count("\n") >= 5
+
+    def test_it_holds_nothing_back(self):
+        """`show` is where somebody goes when the listing was not enough."""
+        for name in RunSummary.model_fields:
+            assert name in one_as_text(a_run())
+
+
+class TestListingsAreAlsoJson:
+    def test_a_list_comes_back_as_an_array(self):
+        assert json.loads(as_json([a_run(id="r1"), a_run(id="r2")])) == [
+            *[json.loads(as_json(one)) for one in (a_run(id="r1"), a_run(id="r2"))]
+        ]
+
+    def test_an_empty_list_is_an_empty_array_not_a_sentence(self):
+        """ "no runs" is for a person. A pipe wants something it can iterate."""
+        assert json.loads(as_json([])) == []
+
+    def test_one_record_is_an_object(self):
+        assert json.loads(as_json(a_run(id="r1")))["id"] == "r1"
+
+
+class TestATrialShowsWhatItScored:
+    """The number somebody is actually watching for. Without it a listing
+    says a trial happened and not whether it was any good."""
+
+    def test_the_score_is_there(self):
+        assert "0.6183" in trials_as_text([a_trial(metrics={"hit_rate": 0.6183})])
+
+    def test_a_single_metric_prints_bare(self):
+        """Naming it in every row costs a column and says nothing new."""
+        assert "hit_rate=" not in trials_as_text([a_trial(metrics={"hit_rate": 0.5})])
+
+    def test_several_metrics_are_named(self):
+        text = trials_as_text([a_trial(metrics={"speed": 2.0, "size": 3.0})])
+        assert "size=3" in text
+        assert "speed=2" in text
+
+    def test_a_trial_with_no_score_is_not_a_blank(self):
+        """An abandoned trial produced nothing to score, which is a fact
+        worth printing rather than an empty cell."""
+        assert "-" in trials_as_text([a_trial(metrics=None)])

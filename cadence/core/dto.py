@@ -15,6 +15,7 @@ know what a signal is.
 """
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any, NamedTuple
 
 from pydantic import Field
@@ -22,7 +23,7 @@ from pydantic import Field
 from cadence.core.types import Frozen, Metrics, NonBlank
 from cadence.core.values import Value
 from cadence.core.verdict import Scored, Verdict
-from cadence.lifecycle.states import RunState
+from cadence.lifecycle.states import RunState, TrialState
 
 __all__ = [
     "Completion",
@@ -34,10 +35,12 @@ __all__ = [
     "Report",
     "Request",
     "RunHistory",
+    "RunSummary",
     "Spend",
     "Suggestion",
     "TrialBudget",
     "TrialResult",
+    "TrialSummary",
 ]
 
 
@@ -286,3 +289,40 @@ class Report(Value):
     program: str | None = None
     metrics: Mapping[str, float] | None = None
     reason: str | None = None
+
+
+class RunSummary(Value):
+    """A run as the database remembers it.
+
+    Not a Report: a Report is what a run that just ended says about itself,
+    and it can hold the winning program. A listing of four hundred runs
+    cannot.
+    """
+
+    id: NonBlank
+    status: RunState
+    trials: int = Field(ge=0)
+    # Null for runs recorded before cadence wrote these down.
+    owner: str | None = None
+    experiment: str | None = None
+    best: str | None = None
+    reason: str | None = None
+    started_at: datetime | None = None
+
+
+class TrialSummary(Value):
+    """One trial, as the database remembers it."""
+
+    id: NonBlank
+    run_id: NonBlank
+    seq: int = Field(ge=0)
+    status: TrialState
+    attempts: int = Field(ge=0)
+    parent: str | None = None
+    candidate: str | None = None
+    # What running it was worth. Null until it has been run, and for good if
+    # the patch never applied -- an abandoned trial produced nothing to score.
+    outcome: str | None = None
+    metrics: Mapping[str, float] | None = None
+    reason: str | None = None
+    started_at: datetime | None = None

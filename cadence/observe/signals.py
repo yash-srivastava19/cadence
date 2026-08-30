@@ -43,6 +43,10 @@ class RunStarted(Event):
     # lineage.
     seeds: tuple[NonBlank, ...] = ()
     budget: Mapping[str, float] = Field(default_factory=dict)
+    # Said once, at the start: a run that changed hands halfway would be two
+    # runs.
+    owner: str | None = None
+    experiment: str | None = None
 
 
 class RunResumed(Event):
