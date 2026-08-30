@@ -84,11 +84,13 @@ def journalled(session):
     journal = Journal(session)
     stop = cadence.record(journal.record)
 
-    def run(*responses, run_id="h1", budget=1, backend=None):
+    def run(*responses, run_id="h1", budget=1, backend=None, owner=None, label=None):
         from cadence.control.backends import Scripted
 
         experiment = Experiment(
             run_id=run_id,
+            owner=owner,
+            experiment=label,
             manifest=a_manifest(),
             method=Evolution(objective=WeightedSum(value=1.0)),
             model=Model(backend=backend or Scripted(*responses)),
@@ -573,3 +575,30 @@ class TestAPoisonCandidate:
             row for row in rows(session, candidates, run_id="h1") if row["parent_id"]
         )
         assert best["crashes"] == 0
+
+
+class TestARunSaysWhoAskedForItAndWhy:
+    """One database shared by a group is unreadable without these. Both are
+    written once, at the start, and never updated."""
+
+    def test_the_owner_is_written(self, session, journalled):
+        journalled(IMPROVES, owner="her@lab.edu")
+        assert rows(session, runs, id="h1")[0]["owner"] == "her@lab.edu"
+
+    def test_the_experiment_is_written(self, session, journalled):
+        journalled(IMPROVES, label="cache-eviction")
+        assert rows(session, runs, id="h1")[0]["experiment"] == "cache-eviction"
+
+    def test_neither_is_required(self, session, journalled):
+        """A solo run on a laptop has no group to be legible to."""
+        journalled(IMPROVES)
+        row = rows(session, runs, id="h1")[0]
+        assert (row["owner"], row["experiment"]) == (None, None)
+
+    def test_they_survive_the_run_finishing(self, session, journalled):
+        """RunFinished updates the row. An update that named every column
+        would blank the two nothing thought to carry forward."""
+        journalled(IMPROVES, owner="her@lab.edu", label="cache-eviction")
+        row = rows(session, runs, id="h1")[0]
+        assert row["status"] == RunState.FINISHED
+        assert (row["owner"], row["experiment"]) == ("her@lab.edu", "cache-eviction")

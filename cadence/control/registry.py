@@ -117,13 +117,18 @@ def build(
     run_id: str,
     backend=None,
     session=None,
+    owner: str | None = None,
+    resume: bool = False,
 ) -> Experiment:
     """Assemble a run.
 
     With a session it also remembers: the model replays calls this run already
-    paid for, and a run that was under way is picked up rather than started
-    again. Without one nothing is stored and the loop behaves as it always
+    paid for. Without one nothing is stored and the loop behaves as it always
     did, which is what lets the example run with no database at all.
+
+    Resuming is asked for, never inferred. Picking a run up because its id
+    happened to match is how two people sharing a database silently continue
+    each other's experiment.
     """
     return Experiment(
         run_id=run_id,
@@ -152,5 +157,7 @@ def build(
         seeds=[seed_program(manifest, root)],
         budget=manifest.budget.trials,
         cap_usd=manifest.budget.usd,
-        resumed=resume_from(session, run_id) if session is not None else None,
+        owner=owner,
+        experiment=manifest.experiment,
+        resumed=resume_from(session, run_id) if resume and session else None,
     )

@@ -99,6 +99,8 @@ class Journal:
                     status=RunState.RUNNING,
                     trials=0,
                     manifest_hash=fact.manifest.hash,
+                    owner=fact.owner,
+                    experiment=fact.experiment,
                     started_at=fact.at,
                 )
             )

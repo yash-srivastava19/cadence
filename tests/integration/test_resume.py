@@ -272,3 +272,53 @@ class TestAQuarantinedCandidateIsNotOfferedBack:
             .values(status="quarantined")
         )
         assert present(history_of(session, RUN)).results == ()
+
+
+class TestResumingIsAskedForNeverInferred:
+    """build() used to pick a run up whenever its id was already in the
+    database. That is fine alone on a laptop and wrong the moment two people
+    share one: everybody's run was called "local", so the second person to
+    start one silently continued the first person's experiment."""
+
+    def _built(self, session, root, resume):
+        from pathlib import Path
+
+        from cadence.control.manifest import load
+        from cadence.control.registry import build
+
+        return build(
+            load(Path(root)),
+            Path(root),
+            RUN,
+            backend=Scripted(IMPROVES_MORE),
+            session=session,
+            resume=resume,
+        )
+
+    @pytest.fixture
+    def a_project(self, tmp_path):
+        (tmp_path / ".cadence").write_text(
+            "api_version: cadence/v1alpha2\nprogram: prog.py\n"
+            "metrics:\n  value: maximize\nbudget:\n  trials: 1\n"
+        )
+        (tmp_path / "prog.py").write_text(
+            "# CADENCE:BEGIN\nprint('value: 1')\n# CADENCE:END\n"
+        )
+        return tmp_path
+
+    def test_an_interrupted_run_is_not_picked_up_by_default(
+        self, interrupted, a_project
+    ):
+        assert self._built(interrupted, a_project, resume=False).resumed is None
+
+    def test_asking_picks_it_up(self, interrupted, a_project):
+        assert self._built(interrupted, a_project, resume=True).resumed is not None
+
+    def test_what_it_picks_up_is_what_was_learned(self, interrupted, a_project):
+        built = self._built(interrupted, a_project, resume=True)
+        assert len(present(built.resumed).history.results) == 1
+
+    def test_asking_to_resume_a_run_nobody_recorded_finds_nothing(
+        self, session, a_project
+    ):
+        assert self._built(session, a_project, resume=True).resumed is None

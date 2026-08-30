@@ -106,6 +106,9 @@ runs = sa.Table(
     # Nullable until the loop opens a session and starts recording these.
     _hash("manifest_hash", nullable=True),
     sa.Column("owner", sa.Text),
+    # Copied from the manifest rather than joined for: manifests are keyed by
+    # content, so bumping the budget makes a new one and would split a group.
+    sa.Column("experiment", sa.Text),
     _when("lease_expires_at"),
     sa.ForeignKeyConstraint(["manifest_hash"], ["manifests.hash"]),
 )
@@ -231,7 +234,7 @@ def engine(url: str | None = None, **kwargs) -> Engine:
 #: The migration this code writes against. A test reads alembic's head and
 #: asserts they match, so adding a migration without updating this constant
 #: fails in CI rather than at somebody's first run.
-EXPECTED_REVISION = "a1f7c93be204"
+EXPECTED_REVISION = "c4e81b90d7a2"
 
 
 def revision_of(connection: Connection) -> str | None:

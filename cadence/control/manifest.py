@@ -103,6 +103,10 @@ class Manifest(Strict):
     api_version: NonBlank
     program: NonBlank
     metrics: Mapping[NonBlank, Goal] = Field(min_length=1)
+    #: Which question these runs are part of, for grouping them in a shared
+    #: database. Here rather than on the command line because everyone who
+    #: clones the repo is asking the same one.
+    experiment: NonBlank | None = None
     run: NonBlank = DEFAULT_RUN
     guidance: NonBlank = DEFAULT_GUIDANCE
     method: Plugin = Plugin(name=DEFAULT_METHOD)
