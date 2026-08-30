@@ -64,8 +64,8 @@ FENCE = re.compile(
     re.MULTILINE | re.DOTALL,
 )
 IMPORT = re.compile(
-    r"^\s*(?:from\s+(?P<mod>(?:src|cadence)[\w.]*)\s+import\s+(?P<names>[^\n#]+)"
-    r"|import\s+(?P<plain>(?:src|cadence)[\w.]*))",
+    r"^\s*(?:from\s+(?P<mod>cadence[\w.]*)\s+import\s+(?P<names>[^\n#]+)"
+    r"|import\s+(?P<plain>cadence[\w.]*))",
     re.MULTILINE,
 )
 ENV_VAR = re.compile(r"\b(CADENCE_[A-Z0-9_]+|[A-Z0-9_]*API_KEY)\b")
@@ -207,7 +207,7 @@ def test_referenced_scripts_exist(doc: Path) -> None:
 
 def _source_text() -> str:
     parts = []
-    for pattern in ("src/**/*.py", "cadence/**/*.py", "*.py", "conf/*.yaml"):
+    for pattern in ("cadence/**/*.py", "*.py"):
         for f in REPO.glob(pattern):
             if ".venv" in f.parts or "venv" in f.parts:
                 continue
