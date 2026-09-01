@@ -4,7 +4,7 @@ from pathlib import Path
 
 import typer
 
-from cadence.commands.report import absent, die, found, note
+from cadence.commands.report import absent, die, found, json_capable, note
 from cadence.control.manifest import Manifest, load
 from cadence.control.preflight import Preflight, inspect
 from cadence.control.preflight import named as _named
@@ -18,7 +18,13 @@ from cadence.execution.sandboxes.subprocess import Job, Subprocess
 from cadence.parsing.metrics import MetricNotReported, read, verifier_broke
 
 
-def check(root: Path = typer.Argument(Path("."))) -> None:
+@json_capable
+def check(
+    root: Path = typer.Argument(Path(".")),
+    json_output: bool = typer.Option(
+        False, "--json", help="Output as JSON for programmatic use"
+    ),
+) -> None:
     """Check a project without spending a model call."""
     try:
         manifest = load(root)
