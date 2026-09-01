@@ -41,7 +41,7 @@ The repository includes a small knapsack lab that runs with a scripted model—n
 ```bash
 git clone https://github.com/yash-srivastava19/cadence
 cd cadence
-uv sync
+make install
 uv run cadence check examples/lab
 ```
 
@@ -255,9 +255,26 @@ The roadmap includes model-call replay, candidate lineage, resumable runs, and l
 Set up the repo:
 
 ```bash
-uv sync --group dev
-uv run pytest
-uv run pre-commit run --all-files
+make install                    # Install dependencies and project (~30s)
+source .venv/bin/activate       # Activate the virtual environment
+```
+
+Then use the CLI and dev commands:
+
+```bash
+cadence check                   # Use cadence directly
+make test                       # Run tests
+make lint                       # Run linting
+make fmt                        # Format code
+```
+
+See `make help` for all available commands. Everything runs in an isolated virtual environment—no system pollution.
+
+**Alternatively**, if you prefer not to activate:
+
+```bash
+uv run cadence check            # Use uv run prefix
+uv run pytest                   # Tests without activation
 ```
 
 ## License
