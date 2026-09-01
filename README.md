@@ -3,17 +3,28 @@
 [![CI](https://github.com/yash-srivastava19/cadence/actions/workflows/python-ci.yml/badge.svg)](https://github.com/yash-srivastava19/cadence/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Cadence is a laboratory for improving programs with models.
+**Cadence is a system for evolving code that you can measure.**
 
-You bring a program, a scoring command, and the environment where the program
-is allowed to run. Cadence brings the loop: propose a change, apply it as a
-diff, execute the candidate in a sandbox, read the metrics, keep what improved,
-and make the next generation from the best evidence so far.
+You bring a program, a scoring command, and a sandbox. Cadence brings the loop: propose a change, apply it as a diff, measure the candidate in your environment, keep what improved, and iterate from the best evidence so far.
 
-The goal is not another benchmark harness. The goal is a system you can point
-at your own problems: a packing heuristic, a parser, a trading rule, a routing
-policy, a simulator, a model-serving path, or any piece of code where “better”
-can be measured.
+## When to Use Cadence
+
+Cadence is for problems where:
+- You can express “better” as a metric (latency, accuracy, throughput, a custom score)
+- The problem lives in code (a heuristic, a parser, a model-serving path, a routing policy)
+- You want the search to stay inside *your* sandbox with *your* data and *your* secrets
+
+**Not for:** benchmarks that compare models, generic code generation, problems without a measurable objective, or one-off rewrites.
+
+## The Design Philosophy
+
+The core constraint: your problem stays yours.
+
+Cadence connects through narrow interfaces. Your files, verifier, data, secrets, sandbox policy, and model backend are external. The core loop never reaches out and touches them. This matters because it means:
+- A new search method doesn't need to know how you run code
+- A new sandbox doesn't need to care how the model was chosen
+- A new reporting surface doesn't need to touch the search algorithm
+- You can swap backends, metrics, or search strategies without rewriting the coordinator
 
 ```text
               propose        apply         measure        select
@@ -23,32 +34,9 @@ program  ──▶  model  ──▶  unified diff ──▶ sandbox ──▶ o
           backend                    metrics on stdout
 ```
 
-Cadence is built around one constraint: your problem stays yours. Your files,
-your verifier, your data, your secrets, your sandbox policy, and your model
-backend are outside the core loop and connected through narrow interfaces.
-
-## How Cadence Works
-
-A Cadence run should feel like this:
-
-1. Mark the part of a file the model may change.
-2. Write a command that scores the current program.
-3. Describe the run in `.cadence`.
-4. Check the project before spending model calls.
-5. Run generations.
-6. Watch candidates, diffs, metrics, failures, and lineage as they happen.
-7. Keep the program that actually scored better in your environment.
-
-The research question underneath is how to make that loop reliable enough to
-trust: failures have names, model calls are replayable, candidates are measured
-under explicit limits, and every boundary is shaped so new search methods,
-objectives, sandboxes, providers, and delivery surfaces can be added without
-rewriting the coordinator.
-
 ## Quickstart
 
-The repository includes a small knapsack lab. It runs with a scripted model, so
-you can try the loop without an API key or network.
+The repository includes a small knapsack lab that runs with a scripted model—no API key needed.
 
 ```bash
 git clone https://github.com/yash-srivastava19/cadence
@@ -57,9 +45,7 @@ uv sync
 uv run cadence check examples/lab
 ```
 
-`cadence check` is the preflight. It reads `.cadence`, finds the editable
-region, builds the search method and objective, runs the baseline once in the
-sandbox, and confirms the metric can be read.
+`cadence check` validates your setup. It reads `.cadence`, finds the editable region, runs the baseline once, and confirms the metric can be read.
 
 ```text
   manifest    cadence/v1alpha2, 9 defaults applied
@@ -80,15 +66,11 @@ Then run the demo:
 uv run python examples/lab/demo.py
 ```
 
-The first candidate improves the score. Later scripted replies are malformed on
-purpose, so you can see Cadence retry the model, reject unusable output, and
-continue the run instead of collapsing around one bad response.
+The first candidate improves the score. Later scripted replies are intentionally malformed so you can see Cadence retry the model, reject unusable output, and continue instead of collapsing.
 
 ## Run Your Own Project
 
-A project needs a marked program, a scoring command, and a manifest. This
-example is intentionally one file so you can paste it into an empty directory
-and check the setup before bringing Cadence to a larger codebase.
+A Cadence project needs three things: a marked program, a scoring command, and a manifest. This minimal example fits in one file so you can paste it into an empty directory and validate the setup before bringing Cadence to a larger codebase.
 
 ### Create A Program
 
@@ -115,26 +97,20 @@ print(f"value: {value}")
 print(f"weight: {weight}")
 ```
 
-Cadence rewrites only the region between the markers. Everything outside that
-region is context for the model and fixed code for the candidate.
+Cadence only rewrites the marked region. Everything else stays fixed.
 
-Save that as `pack.py`.
+Save as `pack.py`.
 
 ### Expose Metrics
 
-Cadence reads numbers from stdout. JSON is the cleanest contract:
+Cadence reads numbers from stdout. JSON is cleanest:
 
 ```python
 import json
-
 print(json.dumps({"value": 45, "weight": 18}))
 ```
 
-For quick experiments, plain lines such as `value: 45` or `value = 45` also
-work. The metric names are the names you put in `.cadence`.
-
-The one-file example above uses the simple line format so there is nothing else
-to install or import.
+Plain lines work too: `value: 45` or `value = 45`.
 
 ### Add A Manifest
 
@@ -153,10 +129,9 @@ Then:
 uv run cadence check .
 ```
 
-With the starter implementation, `cadence check` should report `value = 0`.
-That is the baseline Cadence will try to beat once you choose a model backend.
+With the starter implementation, `cadence check` should report `value = 0`. That is the baseline Cadence will try to beat once you configure a model backend.
 
-For most real projects, keep the evolved file and the verifier separate:
+For real projects, keep the evolved file separate from the verifier:
 
 ```yaml
 api_version: cadence/v1alpha2
@@ -171,15 +146,11 @@ sandbox:
   seeds: [0, 1, 2, 3, 4]
 ```
 
-Cadence copies the project into a scratch workspace, writes the candidate over
-`pack.py`, and runs `python verify.py` inside that workspace. Your verifier
-imports the candidate by its normal filename, which means the same verifier can
-be run by hand when you want to inspect a result.
+Cadence copies your project to a workspace, writes the candidate over `pack.py`, and runs `python verify.py`. You can also run the verifier by hand.
 
 ## Configure Models
 
-Backends are configured from `.cadence`. Keys come from the environment, not
-from the manifest, so the file can stay committed.
+Backends are configured in `.cadence`. Keys come from environment variables, so the manifest can stay committed:
 
 ```yaml
 model:
@@ -187,19 +158,17 @@ model:
     model: your-model-name
 ```
 
-After a backend is configured, start the run:
+Providers are defined in `cadence/control/backends/providers.yml`. Adding a new one is just YAML.
+
+Then start the run:
 
 ```bash
 uv run cadence run .
 ```
 
-Provider definitions live in `cadence/control/backends/providers.yml`. The
-design is deliberately boring: if a provider speaks the OpenAI chat dialect,
-adding it is data, not a new class hierarchy.
-
 ## Tune The Experiment
 
-The manifest is where ordinary product decisions belong:
+Product decisions live in the manifest:
 
 ```yaml
 api_version: cadence/v1alpha2
@@ -228,19 +197,17 @@ model:
     model: qwen3:4b
 ```
 
-`IMPROVE.md` is for human guidance: constraints, known traps, invariants, and
-ideas worth trying. It gives the model project-specific context without baking
-that context into Cadence itself.
+`IMPROVE.md` tells the model about your project: constraints, known gotchas, ideas to try.
 
-Use the schema when in doubt:
+Check the schema:
 
 ```bash
 uv run cadence schema
 ```
 
-## Architecture For Extension
+## Architecture: Designed for Extension
 
-Cadence is split into three product planes and a small shared vocabulary.
+Cadence is split into three product planes and a small shared vocabulary. Each plane can be swapped without touching the others.
 
 ```text
 cadence/
@@ -251,43 +218,37 @@ cadence/
 
   control/       choose parents, call models, parse replies, apply patches
   execution/     run candidates in sandboxes and return verdicts
-  delivery/      present runs: CLI today, richer surfaces next
+  delivery/      present runs: CLI today, dashboards next
   commands/      check, run, schema
 ```
 
-The planes are the developer promise:
+**The developer contract:**
 
-| Plane | Owns | Should not know |
+| Plane | Owns | Doesn't Know |
 | --- | --- | --- |
-| `control` | search, prompts, model calls, patches, objectives | subprocess details or UI concerns |
-| `execution` | sandboxes, resource limits, process outcomes, metric collection | why a candidate was chosen |
-| `delivery` | reports, streams, dashboards, notebooks, logs | how search or sandboxing is implemented |
+| `control` | search, prompts, model calls, patches, objectives | subprocess details, UI |
+| `execution` | sandboxes, resource limits, verdicts, metric collection | why a candidate was chosen |
+| `delivery` | reports, streams, dashboards, notebooks | how search or sandboxing works |
 
-That split matters because Cadence is a research project as much as a tool. A
-new search method should be one implementation behind the method interface. A
-new sandbox should satisfy the execution port. A dashboard, notebook, or report
-view should subscribe to events instead of reaching into the experiment loop.
+**Why this matters:**
+- Want a new search method? Implement the `Method` interface. The coordinator and execution layer don't care.
+- Want a different sandbox? Satisfy the `Executor` port. Control and delivery stay the same.
+- Want a dashboard? Subscribe to run signals. You don't reach into the experiment loop.
 
-## Research Roadmap
+This separation lets Cadence be both a usable tool *and* a research platform. You can use it as-is, or fork your own search strategy, sandbox, or UI without rewriting the coordinator.
 
-Cadence is useful when the object of study is not only “did a model find a
-better answer?” but “what made the loop trustworthy enough to know?”
+## What Makes Results Trustworthy
 
-The system keeps separate concepts separate:
+Cadence separates concerns so results are reproducible:
 
-| Concept | Why it exists |
-| --- | --- |
-| `Verdict` | A candidate can score, crash, time out, report no metric, or exhaust memory. Those are different facts, not bad numbers. |
-| `Objective` | Metrics are an open map. Ranking them is a policy, not a property of stdout. |
-| `Proposal` | Every model response becomes a unified diff, so storage, review, replay, and reporting all see one durable shape. |
-| `Directive` | Search chooses a parent; prompting decides how to ask the model to improve it. |
-| Signals | Delivery surfaces can observe a run without coupling themselves to the coordinator. |
-| Manifest hash | A result is only meaningful with the exact configuration that produced it. |
+- **Verdict:** whether a candidate scored, crashed, timed out, or ran out of memory. These are facts, not just bad numbers.
+- **Objective:** how to rank metrics. Pareto, weighted sum, custom rules—your choice.
+- **Proposal:** every model response becomes a diff. One shape for storage, review, replay, reporting.
+- **Directive:** search picks a parent; prompting decides how to ask for improvement. Two separate knobs.
+- **Signals:** delivery can observe a run without reaching into the search loop.
+- **Manifest hash:** every result is tied to its exact configuration.
 
-The long-term direction is durable, inspectable evolution: model-call replay,
-candidate lineage, verdict caching for deterministic verifiers, resumable runs,
-budget reservation, leases for parallel workers, and delivery surfaces that let
-you watch a generation tree form in real time.
+The roadmap includes model-call replay, candidate lineage, resumable runs, and live visualization of the evolution tree.
 
 ## Development
 
