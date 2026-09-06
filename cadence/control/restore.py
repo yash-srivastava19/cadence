@@ -61,6 +61,45 @@ def seeds_of(session: Session, run_id: str) -> tuple[str, ...]:
     return tuple(rows)
 
 
+class Winner(Value):
+    """The best program a run produced, and what it was produced from."""
+
+    code: str
+    fingerprint: str
+    manifest_hash: str | None
+
+
+def winner_of(session: Session, run_id: str) -> Winner | None:
+    """The run's best program, or None if it never settled on one.
+
+    None covers both "no such run" and "a run that scored nothing", which are
+    the same answer to the only question being asked: is there a program here
+    worth writing out.
+    """
+    row = (
+        session.execute(
+            sa.select(blobs.c.body, runs.c.best, runs.c.manifest_hash)
+            .select_from(
+                runs.join(
+                    candidates,
+                    sa.and_(
+                        candidates.c.run_id == runs.c.id,
+                        candidates.c.fingerprint == runs.c.best,
+                    ),
+                ).join(blobs, blobs.c.hash == candidates.c.code_hash)
+            )
+            .where(runs.c.id == run_id)
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        return None
+    return Winner(
+        code=row["body"], fingerprint=row["best"], manifest_hash=row["manifest_hash"]
+    )
+
+
 def history_of(session: Session, run_id: str) -> RunHistory | None:
     """Everything a search method needs to carry on where this run left off.
 

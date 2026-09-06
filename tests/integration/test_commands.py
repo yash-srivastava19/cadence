@@ -185,3 +185,97 @@ class TestOutputSuitsWhoIsReading:
         a_run(project)
         monkeypatch.setattr("sys.stdout.isatty", lambda: True)
         json.loads(runner.invoke(app, ["runs", "list", "--json"]).output)
+
+
+class TestApplyPutsTheWinnerBack:
+    """A run ends, prints the best program it found, and that was the only
+    copy anyone saw: `runs show` gives a fingerprint, `trials show` gives a
+    fingerprint, and nothing returned the code."""
+
+    WON = "# CADENCE:BEGIN\nprint('value: 9')\n# CADENCE:END\n"
+
+    def _best(self, run_id, code=WON):
+        """Put a winner on a run the way a scoring trial would have.
+
+        Upserted, because blobs and candidates are content-addressed and
+        _forget only clears the run-scoped tables: the same program written
+        by two runs of this test is the same row.
+        """
+        import sqlalchemy as sa
+        from sqlalchemy.dialects.postgresql import insert as upsert
+
+        from cadence.control.storage import blobs, candidates, engine, runs
+        from cadence.core.identity import fingerprint
+
+        mark = fingerprint(code)
+        bound = engine(URL)
+        with bound.begin() as connection:
+            connection.execute(
+                upsert(blobs)
+                .values(hash=mark, body=code)
+                .on_conflict_do_nothing(index_elements=["hash"])
+            )
+            connection.execute(
+                upsert(candidates)
+                .on_conflict_do_nothing(index_elements=["id"])
+                .values(
+                    id=f"{run_id}/{mark}",
+                    run_id=run_id,
+                    fingerprint=mark,
+                    code_hash=mark,
+                    status="alive",
+                )
+            )
+            connection.execute(
+                sa.update(runs).where(runs.c.id == run_id).values(best=mark)
+            )
+        bound.dispose()
+        return code
+
+    def _run_id(self, label):
+        [found] = listed(label)
+        return found["id"]
+
+    def test_it_writes_the_winner_over_the_program(self, project, label):
+        a_run(project)
+        run_id = self._run_id(label)
+        code = self._best(run_id)
+        result = runner.invoke(app, ["apply", run_id, str(project)])
+        assert result.exit_code == 0, result.output
+        assert (project / "prog.py").read_text() == code
+
+    def test_a_run_with_no_best_is_refused_rather_than_writing_nothing(
+        self, project, label
+    ):
+        """The common case, not an edge: every run that scored nothing has a
+        null best, and truncating someone's program to '' would be worse than
+        any error message."""
+        a_run(project)
+        before = (project / "prog.py").read_text()
+        result = runner.invoke(app, ["apply", self._run_id(label), str(project)])
+        assert result.exit_code == 1
+        assert "no best program to apply" in result.output
+        assert (project / "prog.py").read_text() == before
+
+    def test_a_run_from_another_project_is_refused(self, project, label, tmp_path):
+        """Its winner was scored under different settings, so writing it here
+        would produce a file that was never measured the way this project
+        measures. The manifest hash is what tells them apart."""
+        a_run(project)
+        run_id = self._run_id(label)
+        self._best(run_id)
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        (elsewhere / "prog.py").write_text(PROGRAM)
+        (elsewhere / ".cadence").write_text(
+            MANIFEST.format(label=label).replace("trials: 1", "trials: 7")
+        )
+        result = runner.invoke(app, ["apply", run_id, str(elsewhere)])
+        assert result.exit_code == 1
+        assert "not run against this project's manifest" in result.output
+        assert (elsewhere / "prog.py").read_text() == PROGRAM
+
+    def test_a_run_nobody_has_heard_of_is_refused(self, project):
+        result = runner.invoke(app, ["apply", "no-such-run", str(project)])
+        assert result.exit_code == 1
+        assert "no best program to apply" in result.output

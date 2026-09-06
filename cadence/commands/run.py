@@ -13,10 +13,16 @@ from cadence.control.manifest import load
 from cadence.control.preflight import inspect
 from cadence.control.registry import build, seed_program
 from cadence.control.restore import status_of
+from cadence.core.verdict import Scored
 from cadence.delivery import as_json, as_text
 from cadence.errors import CadenceError
 from cadence.lifecycle.states import RunState
-from cadence.observe.signals import cadence
+from cadence.observe.signals import (
+    RunFinished,
+    TrialMeasured,
+    TrialStarted,
+    cadence,
+)
 
 
 @contextmanager
@@ -40,6 +46,33 @@ def _remembering() -> Iterator[Any]:
             yield session
         finally:
             stop()
+
+
+def _narrate(fact) -> None:
+    """A line per trial, on stderr.
+
+    examples/lab/demo.py has printed one of these per trial since it was
+    written; `cadence run` printed nothing at all for however long the run
+    took. The signal bus was already there and already worked -- nobody had
+    attached it to a terminal.
+
+    stderr, so `cadence run > winner.json` still gets clean output and a
+    person still gets to watch. Two channels, one command, no flag.
+
+    Started and measured only. A line per model call would turn twenty trials
+    into a hundred lines nobody reads.
+    """
+    if isinstance(fact, TrialStarted):
+        note(f"  trial {fact.seq + 1}")
+    elif isinstance(fact, TrialMeasured):
+        verdict = fact.verdict
+        if isinstance(verdict, Scored):
+            scores = " ".join(f"{k} {v:g}" for k, v in verdict.metrics.items())
+            note(f"    scored   {scores}")
+        else:
+            note(f"    {verdict.outcome}   {verdict.reason or ''}".rstrip())
+    elif isinstance(fact, RunFinished):
+        note(f"  {fact.status} after {fact.trials} trials")
 
 
 def _refuse_a_project_check_would_refuse(manifest, root: Path) -> None:
@@ -113,6 +146,10 @@ def run(
     try:
         manifest = load(config or root)
         _refuse_a_project_check_would_refuse(manifest, root)
+        # Outside _remembering, because watching a run happen must not
+        # require a database. That is what made the example more legible
+        # than the product.
+        watching = cadence.subscribe(_narrate)
         with _remembering() as session:
             if session is not None:
                 _refuse_to_overwrite(session, run_id, resume)
@@ -126,7 +163,10 @@ def run(
             )
             if session is not None:
                 note(_what_it_remembers(experiment, run_id))
-            report = experiment.run()
+            try:
+                report = experiment.run()
+            finally:
+                watching()
     except CadenceError as error:
         die(str(error))
         raise  # unreachable; die() exits. keeps `report` definitely bound.

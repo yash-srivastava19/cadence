@@ -308,6 +308,10 @@ class RunSummary(Value):
     best: str | None = None
     reason: str | None = None
     started_at: datetime | None = None
+    #: Says RUNNING and has not written anything in a long time. Derived when
+    #: the row is read, not stored: no column, no migration, and a run that
+    #: comes back to life stops being stalled without anyone updating it.
+    stalled: bool = False
 
 
 class TrialSummary(Value):
