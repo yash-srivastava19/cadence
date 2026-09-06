@@ -27,8 +27,7 @@ def check(
         metavar="FILE",
         help="Read the manifest from FILE instead of <root>/.cadence.",
     ),
-    # Both halves, because run and runs list take both. Default stays off:
-    # check is read by a person far more often than by a pipe.
+    # Default off, unlike the query commands: check is read by a person.
     json_output: bool = typer.Option(
         False, "--json/--no-json", help="Output as JSON for programmatic use"
     ),
@@ -76,7 +75,6 @@ def _report(preflight: Preflight) -> None:
     should be making.
     """
     for finding in preflight.findings:
-        # Blocked findings go to "warnings" in --json, not "findings".
         (absent if finding.blocks else found)(finding.about, finding.detail)
     for finding in preflight.wrong:
         die(finding.detail, finding.fix)

@@ -63,7 +63,6 @@ class Preflight(Value):
 
     @property
     def blocked(self) -> tuple[Finding, ...]:
-        """Nothing is wrong, and a run still would not get off the ground."""
         return tuple(finding for finding in self.findings if finding.blocks)
 
 
