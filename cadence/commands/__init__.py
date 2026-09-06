@@ -1,8 +1,16 @@
 import typer
 
-from cadence.commands import check, run, runs, schema, trials
+from cadence.commands import check, init, run, runs, schema, trials
 
-app = typer.Typer(add_completion=False, help="Improve a program you already wrote.")
+app = typer.Typer(
+    add_completion=False,
+    help="Improve a program you already wrote.",
+    # A stack trace is not a message. Every command turns what it knows into
+    # a sentence and an exit code; the panel Typer draws over the top of that
+    # shows cadence's own source to somebody who typo'd a connection string.
+    pretty_exceptions_enable=False,
+)
+app.command()(init.init)
 app.command()(check.check)
 app.command()(run.run)
 app.command()(schema.schema)

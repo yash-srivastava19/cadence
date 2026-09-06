@@ -1,3 +1,4 @@
+import os
 import shlex
 from collections.abc import Mapping
 from pathlib import Path
@@ -44,6 +45,7 @@ def check(
         _repeats(manifest, root, code, readings)
         _affordable(manifest, execution)
         _guidance(manifest, root)
+        _recording()
     except MetricNotReported as error:
         die(str(error))
     except CadenceError as error:
@@ -75,7 +77,12 @@ def _report(preflight: Preflight) -> None:
     should be making.
     """
     for finding in preflight.findings:
-        (absent if finding.blocks else found)(finding.about, finding.detail)
+        # An ok finding carrying a fix is advice: worth doing something about,
+        # not worth refusing over. Same shape `repeatable` uses below.
+        advice = finding.ok and finding.fix and not finding.blocks
+        (absent if finding.blocks or advice else found)(finding.about, finding.detail)
+        if advice:
+            note(f"\n{finding.fix}\n")
     for finding in preflight.wrong:
         die(finding.detail, finding.fix)
 
@@ -212,6 +219,24 @@ def _affordable(manifest: Manifest, execution) -> None:
             f"\nThat is {total / 3600:.1f} hours before a model call is counted."
             "\nFewer seeds, fewer trials or a faster command would all help."
         )
+
+
+def _recording() -> None:
+    """Whether the run will leave a trace.
+
+    A run without DATABASE_URL works and records nothing, and says nothing
+    about it either -- so someone who believes they are recording finds out
+    when they go looking and the run is not there.
+
+    The variable only, no connection: check is offline and fast, and a
+    database that is unreachable or behind is already caught at run time by
+    demand_current_schema, which has a better message for it than a guess.
+    """
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        absent("recording", "nothing will be recorded -- DATABASE_URL is not set")
+        return
+    found("recording", f"to {url.rsplit('@', 1)[-1]}")
 
 
 def _guidance(manifest: Manifest, root: Path) -> None:

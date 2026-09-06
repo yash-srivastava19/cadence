@@ -75,6 +75,7 @@ def _looked_at(manifest: Manifest, root: Path, code: str) -> Sequence[Finding]:
     return [
         _the_manifest(manifest),
         _the_region(manifest, code),
+        _the_scoring(manifest, code),
         _the_method(manifest),
         _the_model(manifest),
     ]
@@ -116,6 +117,43 @@ def _the_region(manifest: Manifest, code: str) -> Finding:
         detail=(
             f"{manifest.program} lines {start}-{start + lines - 1}"
             f" ({lines} line{'s' if lines != 1 else ''} the model may rewrite)"
+        ),
+    )
+
+
+def _the_scoring(manifest: Manifest, code: str) -> Finding:
+    """Whether the model can rewrite the line it is judged by.
+
+    A single-file project usually puts the score at the bottom, and marking
+    "the part to improve" often swallows it. Then the model's reply decides
+    both the answer and the number, and every check downstream passes: the
+    program runs, prints a metric, and scores better every trial.
+
+    A warning rather than a refusal because this is text matching, not
+    analysis. It misses `print(f"{name}: {v}")`, so a clean result here is
+    not proof of anything -- and a false positive must not be able to stop
+    somebody running a project that is fine.
+    """
+    region = split(code, manifest.markers.begin, manifest.markers.end)
+    if region is None:
+        return Finding(about="scoring", detail="not checked; the program has no region")
+    printed = sorted(
+        name
+        for name in manifest.metrics
+        if any("print" in line and name in line for line in region.body.splitlines())
+    )
+    if not printed:
+        return Finding(about="scoring", detail="reported from outside the region")
+    return Finding(
+        about="scoring",
+        detail=(
+            f"the region prints {', '.join(printed)}, so the model can rewrite"
+            " the line it is judged by"
+        ),
+        fix=(
+            "Move the printing out of the region, or into a second file that"
+            " imports the first. A candidate that sets its own score will"
+            " climb every trial and mean nothing."
         ),
     )
 
