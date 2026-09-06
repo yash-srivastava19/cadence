@@ -21,15 +21,23 @@ from cadence.parsing.metrics import MetricNotReported, read, verifier_broke
 @json_capable
 def check(
     root: Path = typer.Argument(Path(".")),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        metavar="FILE",
+        help="Read the manifest from FILE instead of <root>/.cadence.",
+    ),
+    # Default off, unlike the query commands: check is read by a person.
     json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON for programmatic use"
+        False, "--json/--no-json", help="Output as JSON for programmatic use"
     ),
 ) -> None:
     """Check a project without spending a model call."""
     try:
-        manifest = load(root)
+        manifest = load(config or root)
         code = seed_program(manifest, root)
-        _report(inspect(manifest, root, code))
+        preflight = inspect(manifest, root, code)
+        _report(preflight)
         _objective(manifest)
         execution = _baseline(manifest, root, code)
         readings = _metrics(manifest, execution.stdout)
@@ -40,7 +48,23 @@ def check(
         die(str(error))
     except CadenceError as error:
         die(str(error))
-    note(f"\nready. `cadence run` will spend up to {manifest.budget.trials} trials.")
+    _verdict(preflight, manifest)
+
+
+def _verdict(preflight: Preflight, manifest: Manifest) -> None:
+    """The last line, and the only one most people read.
+
+    It used to promise trials whatever the findings held. Exits 0 either way:
+    a blocked project is not a broken one.
+    """
+    if not preflight.blocked:
+        trials = manifest.budget.trials
+        note(f"\nready. `cadence run` will spend up to {trials} trials.")
+        return
+    for finding in preflight.blocked:
+        note(f"\nnot ready to run: {finding.detail}")
+        if finding.fix:
+            note(f"\n{finding.fix}")
 
 
 def _report(preflight: Preflight) -> None:
@@ -51,7 +75,7 @@ def _report(preflight: Preflight) -> None:
     should be making.
     """
     for finding in preflight.findings:
-        found(finding.about, finding.detail)
+        (absent if finding.blocks else found)(finding.about, finding.detail)
     for finding in preflight.wrong:
         die(finding.detail, finding.fix)
 
