@@ -36,6 +36,7 @@ from cadence.observe.signals import (
     RunFinished,
     RunResumed,
     RunStarted,
+    SeedMeasured,
     TrialAbandoned,
     TrialMeasured,
     TrialRetried,
@@ -72,6 +73,9 @@ class Experiment:
         self.owner = owner
         self.experiment = experiment
         self.spend = Spend()
+        #: What the programs the run started from scored. None until measured,
+        #: and on a resumed run it stays None -- the first run took it.
+        self.baseline: TrialResult | None = None
 
     def run(self) -> Report:
         self.trace = Emitter(run_id=self.run_id)
@@ -81,6 +85,8 @@ class Experiment:
         # below are the only place left that can report them.
         results = self._known()
         try:
+            if not self.resumed:
+                self._measure_the_seeds()
             return self._search(run, results)
         except NoCandidates as error:
             return self._fail(run, str(error), results)
@@ -118,6 +124,43 @@ class Experiment:
             RunResumed, trials=resumed.trials, results=len(resumed.history.results)
         )
         return run
+
+    def _measure_the_seeds(self) -> None:
+        """Score the programs the run started from, before improving on them.
+
+        Without this a run has no measurement of its own starting point.
+        `best` was the best of the children, so every child being worse than
+        the seed still produced a winner -- and `cadence apply` would write
+        that winner over a better program.
+
+        Not a trial: no model call, nothing proposed, and nothing counted
+        against the budget. Only on a fresh run, because a resumed one has
+        these results already.
+
+        A seed that will not score is left out rather than fatal. The run can
+        still improve on a program whose baseline could not be taken; it just
+        cannot claim it did.
+
+        Deliberately NOT appended to history.results. The prompt renders what
+        the run has scored so far, so a seed in there would change trial 0's
+        prompt from "Nobody has scored yet" to a real number -- and recall.py
+        replays a paid-for model call only when the prompt digest matches, so
+        every run recorded before this change would refuse to resume. Telling
+        the model its baseline is worth doing and is a separate decision with
+        that cost attached to it.
+        """
+        for code in self.seeds:
+            measured = self.runner.try_(code)
+            self.trace.emit(
+                SeedMeasured,
+                fingerprint=Candidate(code=code).fingerprint,
+                verdict=measured.verdict,
+                wall_ms=measured.wall_ms,
+                task_hash=self.runner.task_hash,
+                seeds_hash=self.runner.seeds_hash,
+            )
+            if measured.verdict.is_scored:
+                self.baseline = TrialResult(code=code, verdict=measured.verdict)
 
     def _known(self) -> list[TrialResult]:
         return list(self.resumed.history.results) if self.resumed else []
@@ -276,10 +319,35 @@ class Experiment:
                     completion.cost_usd if completion else None,
                 )
 
+    def _winner(self, history: RunHistory) -> TrialResult | None:
+        """The best program the run has, which may be the one it started from.
+
+        The search only ever ranks what it produced, so a run whose every
+        child scored worse than the seed still named a child the winner. That
+        is not a weak result, it is a wrong one: `cadence apply` would write
+        it over a better program and call it an improvement.
+
+        Ranked by the method, on a history built here and used for nothing
+        else. The search decides what "better" means; this only makes sure
+        the program the run started from is one of the things it decides
+        between. Built at report time so the prompt never sees it -- a seed
+        in history.results would change what trial 0 asks, and recall.py
+        replays a paid-for call only when the prompt digest still matches.
+        """
+        if self.baseline is None:
+            return self.method.best(history)
+        return self.method.best(
+            RunHistory(
+                run_id=history.run_id,
+                seeds=history.seeds,
+                results=(*history.results, self.baseline),
+            )
+        )
+
     def _finish(
         self, run: Run, history: RunHistory, scored: int, reason: str | None = None
     ) -> Report:
-        best = self.method.best(history)
+        best = self._winner(history)
         run.finish(best=best.verdict.fingerprint if best else None)
         self.trace.emit(
             RunFinished,
@@ -309,7 +377,7 @@ class Experiment:
         went wrong -- the results do not have to lie about it as well.
         """
         history = self._history(results)
-        best = self.method.best(history)
+        best = self._winner(history)
         run.fail(reason=reason)
         # Assigned rather than transitioned: fail() carries a reason, not a
         # best, and a RunFinished naming a best the entity does not hold

@@ -72,6 +72,8 @@ class TestTheRunIsTraceable:
             an_experiment(IMPROVES).run()
         assert [type(fact).__name__ for fact in tape] == [
             "RunStarted",
+            # What the run started from, before it tries to beat it.
+            "SeedMeasured",
             "TrialStarted",
             "ModelRequested",
             "ModelCalled",
@@ -197,8 +199,14 @@ class TestAFailedRunKeepsWhatItEarned:
             report = an_experiment(IMPROVES, budget=2).run()
         assert tape.of(RunFinished)[0].best == report.best
 
-    def test_a_run_that_earned_nothing_still_names_no_best(self):
-        assert an_experiment(TerminalModelError("401")).run().best is None
+    def test_a_run_that_earned_nothing_names_the_program_it_started_from(self):
+        """It earned nothing, so the best program it knows is the seed. Which
+        is the point: a run whose children are all worse than where it began
+        must not name one of them the winner, or `cadence apply` writes a
+        worse program over a better one and calls it an improvement."""
+        report = an_experiment(TerminalModelError("401")).run()
+        assert report.best is not None
+        assert report.program == BASELINE
 
 
 class TestTheLoopClosesTheFeedbackLoop:
@@ -320,6 +328,7 @@ class TestEveryTransitionIsOnTheTape:
             ProposalReceived,
             RunFinished,
             RunStarted,
+            SeedMeasured,
             TrialMeasured,
             TrialStarted,
         )
@@ -329,6 +338,7 @@ class TestEveryTransitionIsOnTheTape:
         reported = [type(fact) for fact in tape]
         assert reported == [
             RunStarted,
+            SeedMeasured,
             TrialStarted,
             ModelRequested,
             ModelCalled,
@@ -374,11 +384,13 @@ class TestEveryTransitionIsOnTheTape:
         assert tape.of(TrialMeasured)[0].verdict.is_scored
 
     def test_a_failed_run_still_reports_that_it_finished(self):
+        """The best it has is the program it started from -- measured before
+        the first call, so a run that never got one still knows it."""
         from cadence.observe.signals import RunFinished
 
         with cadence.recording() as tape:
             an_experiment(TerminalModelError("401")).run()
-        assert tape.of(RunFinished)[0].best is None
+        assert tape.of(RunFinished)[0].best is not None
 
 
 class TestABrokenVerifierStopsTheRun:
@@ -424,3 +436,37 @@ class TestARunSaysWhatItCost:
 
     def test_nothing_asked_for_is_nothing_spent(self):
         assert an_experiment(budget=0).run().spend.calls == 0
+
+
+class TestARunThatMadeThingsWorseSaysSo:
+    """Found by running cadence against a real problem. Both candidates
+    scored below the program the run started from, and the run named one of
+    them the winner: `best` was the best of the children, and the seed had
+    never been measured at all. `cadence apply` would then have written a
+    worse program over a better one and called it an improvement."""
+
+    WORSE = "Here.\n```python\nprint('value: -5')\n```"
+
+    def test_a_child_worse_than_the_seed_does_not_win(self):
+        report = an_experiment(self.WORSE).run()
+        assert report.metrics == {"value": 0.0}
+        assert report.program == BASELINE
+
+    def test_a_child_better_than_the_seed_still_wins(self):
+        report = an_experiment(IMPROVES).run()
+        assert report.metrics == {"value": 9.0}
+
+    def test_the_seed_is_measured_before_any_trial(self):
+        from cadence.observe.signals import SeedMeasured, TrialStarted
+
+        with cadence.recording() as tape:
+            an_experiment(IMPROVES).run()
+        kinds = [type(fact) for fact in tape]
+        assert kinds.index(SeedMeasured) < kinds.index(TrialStarted)
+
+    def test_measuring_the_seed_costs_no_model_call(self):
+        """It is not a trial. Nothing was asked and nothing was proposed, so
+        it must not come out of the budget the manifest set."""
+        report = an_experiment(self.WORSE).run()
+        assert report.spend.calls == 1
+        assert report.trials == 1

@@ -57,11 +57,25 @@ def _forget(label):
         model_calls,
         runs,
         trials,
+        verdicts,
     )
 
     bound = engine(URL)
     with bound.begin() as connection:
         mine = sa.select(runs.c.id).where(runs.c.experiment == label).scalar_subquery()
+        # Verdicts first, and by fingerprint: they are keyed on what was
+        # measured rather than on a run, so nothing else here reaches them.
+        # Left behind they accumulate, and the journal tests -- which count
+        # the whole table inside a transaction that rolls back -- start
+        # counting somebody else's rows.
+        measured = (
+            sa.select(candidates.c.fingerprint)
+            .where(candidates.c.run_id.in_(mine))
+            .scalar_subquery()
+        )
+        connection.execute(
+            sa.delete(verdicts).where(verdicts.c.candidate_hash.in_(measured))
+        )
         # Children before parents: model_calls points at trials, and
         # trials and candidates both point at runs.
         for table in (model_calls, events, trials, candidates):

@@ -159,7 +159,7 @@ class TestAFailedRunIsStillWrittenDown:
 
     def test_the_verdict_it_earned_is_still_there(self, session, journalled):
         self._ran_out(journalled)
-        assert len(rows(session, verdicts)) == 1
+        assert len(measurements(session)) == 1 + 1  # the seed, and what it scored
 
     def test_the_row_says_why_it_stopped(self, session, journalled):
         self._ran_out(journalled)
@@ -171,6 +171,9 @@ class TestTheTapeIsTheWholeRun:
         journalled(IMPROVES)
         assert [row["type"] for row in rows(session, events, run_id="h1")] == [
             "RunStarted",
+            # Before any trial: what the run started from, so `best` has
+            # something to be better than.
+            "SeedMeasured",
             "TrialStarted",
             "ModelRequested",
             "ModelCalled",
@@ -183,7 +186,7 @@ class TestTheTapeIsTheWholeRun:
     def test_the_tape_is_numbered_from_zero(self, session, journalled):
         journalled(IMPROVES)
         assert [row["seq"] for row in rows(session, events, run_id="h1")] == list(
-            range(8)
+            range(9)
         )
 
     def test_a_fact_carries_what_it_was_about(self, session, journalled):
@@ -247,7 +250,17 @@ class TestTheCandidatesAreThere:
         """Content-addressed. A 500-trial run would otherwise store the same
         program hundreds of times."""
         journalled(IMPROVES, IMPROVES, budget=2)
-        bodies = session.execute(sa.select(blobs.c.body)).scalars().all()
+        # This run's blobs, not the table's: blobs are content-addressed and
+        # shared, so an unscoped select asks whether the whole database
+        # happens to hold a duplicate, which it never does.
+        mine = {
+            row["code_hash"]
+            for row in rows(session, candidates)
+            if row["run_id"] == "h1"
+        }
+        bodies = [row["body"] for row in rows(session, blobs) if row["hash"] in mine]
+        # The seed, and the one program both trials proposed.
+        assert len(bodies) == 2
         assert len(bodies) == len(set(bodies))
 
 
@@ -354,7 +367,7 @@ class TestThePromptTemplateIsKept:
 
     def test_two_calls_from_one_template_store_it_once(self, session, journalled):
         journalled(NONSENSE, IMPROVES)
-        assert len(rows(session, model_calls)) == 2
+        assert len(rows(session, model_calls, run_id="h1")) == 2
         assert len(rows(session, templates)) == 1
 
 
@@ -413,32 +426,65 @@ class TestATrialThatWasGivenUpOn:
         assert children == []
 
 
+def measurements(session, run_id="h1"):
+    """The verdicts this run wrote.
+
+    Not `len(rows(session, verdicts))`: verdicts are keyed on what was
+    measured rather than on a run, so the table holds every other run's rows
+    too and a bare count is really a count of the whole database.
+    """
+    mine = {
+        row["fingerprint"]
+        for row in rows(session, candidates)
+        if row["run_id"] == run_id
+    }
+    return [row for row in rows(session, verdicts) if row["candidate_hash"] in mine]
+
+
+def scored(session, fingerprint):
+    """The verdict for one program.
+
+    By fingerprint rather than by position: a run measures the program it
+    started from as well as the ones it produces, so `verdicts` holds the
+    seed's row too and "the first row" names whichever the database hands
+    back first.
+    """
+    [row] = [r for r in rows(session, verdicts) if r["candidate_hash"] == fingerprint]
+    return row
+
+
 class TestWhatEachCandidateScored:
     def test_the_verdict_is_recorded(self, session, journalled):
+        report = journalled(IMPROVES)
+        assert scored(session, report.best)
+
+    def test_the_seed_is_measured_too(self, session, journalled):
+        """Without it a run has no measurement of what it started from, and
+        `best` was the best of the children however badly they did."""
         journalled(IMPROVES)
-        assert len(rows(session, verdicts)) == 1
+        assert len(measurements(session)) == 2
 
     def test_it_carries_the_metrics(self, session, journalled):
-        journalled(IMPROVES)
-        assert rows(session, verdicts)[0]["metrics"] == {"value": 45.0}
+        report = journalled(IMPROVES)
+        assert scored(session, report.best)["metrics"] == {"value": 45.0}
 
     def test_it_is_keyed_on_the_candidate_that_was_measured(self, session, journalled):
         report = journalled(IMPROVES)
-        assert rows(session, verdicts)[0]["candidate_hash"] == report.best
+        assert scored(session, report.best)["candidate_hash"] == report.best
 
     def test_it_says_which_task_it_was_measured_against(self, session, journalled):
-        journalled(IMPROVES)
-        assert rows(session, verdicts)[0]["task_hash"]
+        report = journalled(IMPROVES)
+        assert scored(session, report.best)["task_hash"]
 
     def test_it_says_which_seeds_it_was_measured_on(self, session, journalled):
-        journalled(IMPROVES)
-        assert rows(session, verdicts)[0]["seeds_hash"]
+        report = journalled(IMPROVES)
+        assert scored(session, report.best)["seeds_hash"]
 
     def test_a_failure_is_recorded_with_its_reason_and_no_metrics(
         self, session, journalled
     ):
         journalled(CRASHES)
-        row = rows(session, verdicts)[0]
+        [row] = [r for r in rows(session, verdicts) if r["outcome"] is Outcome.CRASHED]
         assert (row["outcome"], row["metrics"]) == (Outcome.CRASHED, None)
 
 
@@ -448,11 +494,11 @@ class TestTheSameMeasurementTwice:
         propose the same program against the same task on the same seeds have
         measured the same thing."""
         journalled(IMPROVES, IMPROVES, budget=2)
-        assert len(rows(session, verdicts)) == 1
+        assert len(measurements(session)) == 1 + 1  # the seed, and one program
 
     def test_two_different_programs_are_two_measurements(self, session, journalled):
         journalled(IMPROVES, IMPROVES_MORE, budget=2)
-        assert len(rows(session, verdicts)) == 2
+        assert len(measurements(session)) == 1 + 2  # the seed, and two programs
 
 
 class TestTheCallWeWereAboutToMake:
@@ -517,7 +563,7 @@ class TestTheCallWeWereAboutToMake:
         the same program plus what was wrong with the last reply -- and must
         not replay the answer that already failed to parse."""
         journalled(NONSENSE, IMPROVES)
-        assert len(rows(session, model_calls)) == 2
+        assert len(rows(session, model_calls, run_id="h1")) == 2
 
     def test_the_recipe_is_not_also_on_the_tape(self, session, journalled):
         """It holds the whole parent program, and events is the one table

@@ -177,7 +177,10 @@ class TestItDoesNotPayTwice:
         an_experiment(died_mid_trial, budget=1).run()
         called = (
             died_mid_trial.execute(
-                sa.select(events.c.payload).where(events.c.type == "ModelCalled")
+                sa.select(events.c.payload)
+                .where(events.c.run_id == RUN)
+                .where(events.c.type == "ModelCalled")
+                .order_by(events.c.seq)
             )
             .scalars()
             .all()
@@ -211,7 +214,10 @@ class TestItDoesNotPayTwice:
 
         replayed = (
             session.execute(
-                sa.select(events.c.payload).where(events.c.type == "ModelCalled")
+                sa.select(events.c.payload)
+                .where(events.c.run_id == RUN)
+                .where(events.c.type == "ModelCalled")
+                .order_by(events.c.seq)
             )
             .scalars()
             .all()
