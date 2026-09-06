@@ -8,8 +8,6 @@ description = "LLM-based program evolution framework, similar to AlphaEvolve"
 requires-python = ">=3.11.4,<3.14"
 
 dependencies = [
-  "mkdocs>=1.6.1",
-  "mkdocs-material>=9.6.15",
   "pydantic>=2.5.0",
   "python-statemachine>=3.2.1",
   "blinker>=1.9.0",
@@ -33,20 +31,13 @@ test = [
   "pytest-xdist>=3.3.0",
 ]
 
+# What CI installs, with `pip install -e .[dev,test]`. Ruff is not here: it
+# runs from its own pre-commit hook repo, not from the environment.
 dev = [
-  "isort>=6.0.1",
-  "flake8>=7.3.0",
-  "mypy>=1.5.0",
+  "mypy>=1.16.1",
   "types-PyYAML>=6.0.12",
-  "import-linter>=2.0",
+  "import-linter>=2.13",
   "pre-commit>=4.2.0",
-]
-
-docs = [
-  "sphinx>=7.1.0",
-  "sphinx-rtd-theme>=2.0.0",
-  "myst-parser>=2.0.0",
-  "sphinx-autodoc-typehints>=1.24.0",
 ]
 
 [build-system]
@@ -181,6 +172,13 @@ known_first_party = ["cadence"]
 skip_glob = ["*/migrations/*"]
 
 [dependency-groups]
+# mkdocs builds the site; nothing in cadence imports it. A group rather than
+# an extra so `uv sync --all-groups` still installs it for `mkdocs serve`.
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.6.15",
+]
+
 dev = [
     "import-linter>=2.13",
     "mypy>=1.16.1",
