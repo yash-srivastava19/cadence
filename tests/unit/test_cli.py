@@ -196,11 +196,78 @@ class TestCheckSaysWhatItVerified:
     def test_it_says_when_guidance_is_missing(self, tmp_path):
         assert "no IMPROVE.md" in self._project(tmp_path).output
 
-    def test_findings_go_to_stdout_and_the_verdict_to_stderr(self, tmp_path):
+    def test_findings_go_to_stdout_and_the_verdict_to_stderr(
+        self, tmp_path, monkeypatch
+    ):
         # CliRunner merges the streams, so assert both halves are present.
-        output = self._project(tmp_path).output
+        # A provider is named and keyed, because the verdict is only "ready"
+        # for a project a run could actually start.
+        monkeypatch.setenv("GEMINI_API_KEY", "sk-not-a-real-key")
+        output = self._project(tmp_path, extra="model: {gemini: {}}\n").output
         assert "manifest" in output
         assert "ready." in output
+
+    def test_the_verdict_is_not_ready_when_no_provider_is_named(self, tmp_path):
+        """The bug this replaced: check printed "scripted, which has no
+        answers in it" and then "ready", and the run failed on its first
+        model call. It still exits 0 -- the project is fine, the machine is
+        not configured -- but it no longer promises trials."""
+        result = self._project(tmp_path)
+        assert "not ready to run" in result.output
+        assert "ready. `cadence run` will spend" not in result.output
+        assert result.exit_code == 0
+
+    def test_a_missing_key_also_stops_the_verdict(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        result = self._project(tmp_path, extra="model: {gemini: {}}\n")
+        assert "not ready to run" in result.output
+        assert result.exit_code == 0
+
+
+class TestOneProgramCanHaveSeveralManifests:
+    """An ablation compares the same program under different search settings.
+
+    Without --config that means a directory per arm, four copies of the
+    program, and a benchmark that quietly stops comparing like with like.
+    """
+
+    def _project(self, tmp_path):
+        (tmp_path / "p.py").write_text(MARKED % "print('value: 1')")
+        (tmp_path / ".cadence").write_text(
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
+            "metrics: {value: maximize}\nbudget: {trials: 3}\n"
+        )
+        arm = tmp_path / "greedy.cadence"
+        arm.write_text(
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
+            "metrics: {value: maximize}\nbudget: {trials: 7}\n"
+        )
+        return arm
+
+    def test_the_named_manifest_is_the_one_read(self, tmp_path):
+        arm = self._project(tmp_path)
+        output = runner.invoke(
+            app, ["check", str(tmp_path), "--config", str(arm)]
+        ).output
+        assert "7 trials" in output
+
+    def test_without_it_the_directory_manifest_still_wins(self, tmp_path):
+        self._project(tmp_path)
+        output = runner.invoke(app, ["check", str(tmp_path)]).output
+        assert "3 trials" in output
+
+    def test_run_takes_it_too(self, tmp_path):
+        arm = self._project(tmp_path)
+        result = runner.invoke(app, ["run", str(tmp_path), "--config", str(arm)])
+        assert "Traceback" not in result.output
+
+    def test_a_manifest_that_is_not_there_says_so(self, tmp_path):
+        self._project(tmp_path)
+        result = runner.invoke(
+            app, ["check", str(tmp_path), "--config", str(tmp_path / "nope.cadence")]
+        )
+        assert result.exit_code == 1
+        assert "nope.cadence" in result.output
 
 
 class TestCheckSaysWhichModelWillBeAsked:

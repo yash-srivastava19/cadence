@@ -43,6 +43,12 @@ class Finding(Value):
     about: NonBlank
     detail: NonBlank
     ok: bool = True
+    #: True when the project is fine but a run cannot start on this machine
+    #: as configured -- no provider named, or no key for the one that is.
+    #: Distinct from ok, which says the project itself is wrong: a missing
+    #: key belongs to the machine, and the same project has to pass on a CI
+    #: box with no secrets. What it must not do is let check say "ready".
+    blocks: bool = False
     fix: str | None = None
 
 
@@ -56,6 +62,11 @@ class Preflight(Value):
     @property
     def wrong(self) -> tuple[Finding, ...]:
         return tuple(finding for finding in self.findings if not finding.ok)
+
+    @property
+    def blocked(self) -> tuple[Finding, ...]:
+        """Nothing is wrong, and a run still would not get off the ground."""
+        return tuple(finding for finding in self.findings if finding.blocks)
 
 
 def inspect(manifest: Manifest, root: Path, code: str) -> Preflight:
@@ -139,10 +150,9 @@ def _the_model(manifest: Manifest) -> Finding:
     if name == SCRIPTED:
         return Finding(
             about="model",
-            detail=(
-                "scripted, which has no answers in it."
-                " `cadence run` needs a provider named in .cadence"
-            ),
+            detail="scripted, which has no answers in it",
+            blocks=True,
+            fix="Name a provider in .cadence, for example `model: {gemini: {}}`.",
         )
     try:
         settings = settings_for(name, **manifest.model.options)
@@ -155,6 +165,8 @@ def _the_model(manifest: Manifest) -> Finding:
                 f"{name}, model {settings.model}"
                 f" -- no {' or '.join(settings.key_from)} in this environment"
             ),
+            blocks=True,
+            fix=f"Set {' or '.join(settings.key_from)} before running.",
         )
     return Finding(about="model", detail=f"{name}, model {settings.model}")
 

@@ -96,6 +96,12 @@ def run(
     resume: str | None = typer.Option(
         None, "--resume", metavar="RUN_ID", help="Carry on a run that stopped."
     ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        metavar="FILE",
+        help="Read the manifest from FILE instead of <root>/.cadence.",
+    ),
     as_json_output: bool | None = typer.Option(
         None, "--json/--no-json", help="JSON instead of text. Default off a terminal."
     ),
@@ -105,7 +111,7 @@ def run(
         die("--resume names the run to carry on; --id would name a different one.")
     run_id = resume or run_id or fresh_id()
     try:
-        manifest = load(root)
+        manifest = load(config or root)
         _refuse_a_project_check_would_refuse(manifest, root)
         with _remembering() as session:
             if session is not None:

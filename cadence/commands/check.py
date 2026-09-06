@@ -21,15 +21,22 @@ from cadence.parsing.metrics import MetricNotReported, read, verifier_broke
 @json_capable
 def check(
     root: Path = typer.Argument(Path(".")),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        metavar="FILE",
+        help="Read the manifest from FILE instead of <root>/.cadence.",
+    ),
     json_output: bool = typer.Option(
         False, "--json", help="Output as JSON for programmatic use"
     ),
 ) -> None:
     """Check a project without spending a model call."""
     try:
-        manifest = load(root)
+        manifest = load(config or root)
         code = seed_program(manifest, root)
-        _report(inspect(manifest, root, code))
+        preflight = inspect(manifest, root, code)
+        _report(preflight)
         _objective(manifest)
         execution = _baseline(manifest, root, code)
         readings = _metrics(manifest, execution.stdout)
@@ -40,7 +47,29 @@ def check(
         die(str(error))
     except CadenceError as error:
         die(str(error))
-    note(f"\nready. `cadence run` will spend up to {manifest.budget.trials} trials.")
+    _verdict(preflight, manifest)
+
+
+def _verdict(preflight: Preflight, manifest: Manifest) -> None:
+    """The last line, and the only one most people read.
+
+    It used to say "ready" whatever the findings held, so a project with no
+    provider was told it was ready and then failed on its first model call.
+    A finding that blocks a run is not a broken project -- the same manifest
+    passes on a machine that has the key -- so this does not exit 1. It just
+    refuses to promise trials that will not happen.
+    """
+    if not preflight.blocked:
+        trials = manifest.budget.trials
+        note(f"\nready. `cadence run` will spend up to {trials} trials.")
+        return
+    [first, *rest] = preflight.blocked
+    note(f"\nnot ready to run: {first.detail}")
+    for finding in rest:
+        note(f"                  {finding.detail}")
+    for finding in preflight.blocked:
+        if finding.fix:
+            note(f"\n{finding.fix}")
 
 
 def _report(preflight: Preflight) -> None:
@@ -51,7 +80,10 @@ def _report(preflight: Preflight) -> None:
     should be making.
     """
     for finding in preflight.findings:
-        found(finding.about, finding.detail)
+        # Blocked findings are warnings, not passes: `cadence check --json`
+        # sorts them into "warnings" so a pipe can tell the difference
+        # between a project that is fine and one that cannot start yet.
+        (absent if finding.blocks else found)(finding.about, finding.detail)
     for finding in preflight.wrong:
         die(finding.detail, finding.fix)
 
