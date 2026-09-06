@@ -27,14 +27,10 @@ def check(
         metavar="FILE",
         help="Read the manifest from FILE instead of <root>/.cadence.",
     ),
+    # Both halves, because run and runs list take both. Default stays off:
+    # check is read by a person far more often than by a pipe.
     json_output: bool = typer.Option(
-        # Both halves, because run and runs list take both and a flag that
-        # works on one command and not another is how people stop trusting
-        # flags. The default stays off: unlike the query commands, check is
-        # read by a person far more often than by a pipe.
-        False,
-        "--json/--no-json",
-        help="Output as JSON for programmatic use",
+        False, "--json/--no-json", help="Output as JSON for programmatic use"
     ),
 ) -> None:
     """Check a project without spending a model call."""
@@ -59,21 +55,15 @@ def check(
 def _verdict(preflight: Preflight, manifest: Manifest) -> None:
     """The last line, and the only one most people read.
 
-    It used to say "ready" whatever the findings held, so a project with no
-    provider was told it was ready and then failed on its first model call.
-    A finding that blocks a run is not a broken project -- the same manifest
-    passes on a machine that has the key -- so this does not exit 1. It just
-    refuses to promise trials that will not happen.
+    It used to promise trials whatever the findings held. Exits 0 either way:
+    a blocked project is not a broken one.
     """
     if not preflight.blocked:
         trials = manifest.budget.trials
         note(f"\nready. `cadence run` will spend up to {trials} trials.")
         return
-    [first, *rest] = preflight.blocked
-    note(f"\nnot ready to run: {first.detail}")
-    for finding in rest:
-        note(f"                  {finding.detail}")
     for finding in preflight.blocked:
+        note(f"\nnot ready to run: {finding.detail}")
         if finding.fix:
             note(f"\n{finding.fix}")
 
@@ -86,9 +76,7 @@ def _report(preflight: Preflight) -> None:
     should be making.
     """
     for finding in preflight.findings:
-        # Blocked findings are warnings, not passes: `cadence check --json`
-        # sorts them into "warnings" so a pipe can tell the difference
-        # between a project that is fine and one that cannot start yet.
+        # Blocked findings go to "warnings" in --json, not "findings".
         (absent if finding.blocks else found)(finding.about, finding.detail)
     for finding in preflight.wrong:
         die(finding.detail, finding.fix)

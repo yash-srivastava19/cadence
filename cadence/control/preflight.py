@@ -43,11 +43,9 @@ class Finding(Value):
     about: NonBlank
     detail: NonBlank
     ok: bool = True
-    #: True when the project is fine but a run cannot start on this machine
-    #: as configured -- no provider named, or no key for the one that is.
-    #: Distinct from ok, which says the project itself is wrong: a missing
-    #: key belongs to the machine, and the same project has to pass on a CI
-    #: box with no secrets. What it must not do is let check say "ready".
+    #: The project is fine and a run still cannot start here: no provider
+    #: named, or no key for the one that is. Not ok=False, because a missing
+    #: key belongs to the machine and CI has to pass without secrets.
     blocks: bool = False
     fix: str | None = None
 
