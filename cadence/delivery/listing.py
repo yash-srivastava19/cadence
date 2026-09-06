@@ -14,6 +14,15 @@ __all__ = ["one_as_text", "runs_as_text", "trials_as_text"]
 NOTHING = "-"
 
 
+def _status(row: RunSummary) -> str:
+    """What the listing believes, which is not always what the row says.
+
+    A run whose process was killed leaves RUNNING behind and keeps it, so the
+    one command for "what is happening" reports things that stopped days ago.
+    """
+    return "stalled" if row.stalled else str(row.status)
+
+
 def runs_as_text(rows: Sequence[RunSummary]) -> str:
     if not rows:
         return "no runs"
@@ -22,7 +31,7 @@ def runs_as_text(rows: Sequence[RunSummary]) -> str:
         [
             (
                 row.id,
-                row.status,
+                _status(row),
                 str(row.trials),
                 _short(row.best),
                 row.experiment or NOTHING,

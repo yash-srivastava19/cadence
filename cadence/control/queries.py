@@ -8,11 +8,14 @@ stay cheap enough to run against four hundred rows.
 Returns DTOs, never strings. What the answer looks like is delivery's job.
 """
 
+from datetime import UTC, datetime, timedelta
+
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from cadence.control.storage import candidates, runs, trials, verdicts
+from cadence.control.storage import candidates, events, runs, trials, verdicts
 from cadence.core.dto import RunSummary, TrialSummary
+from cadence.lifecycle.states import RunState
 
 __all__ = ["one_run", "one_trial", "some_runs", "some_trials"]
 
@@ -30,6 +33,28 @@ STARTED = (
     .scalar_subquery()
 )
 
+#: When this run last wrote anything down.
+#:
+#: A run's process can be killed -- Ctrl-C, an OOM, a laptop closing -- and
+#: nothing writes a terminal status, so the row says RUNNING forever. There
+#: were four such rows from a week earlier when this was written.
+#:
+#: The tape is the heartbeat. Every fact with a run id is appended to events,
+#: and ModelRequested is written *before* the call rather than after, so even
+#: a run stuck waiting on a slow provider has touched this recently.
+HEARTBEAT = (
+    sa.select(sa.func.max(events.c.recorded_at))
+    .where(events.c.run_id == runs.c.id)
+    .scalar_subquery()
+)
+
+#: How quiet a running run has to be before the listing stops believing it.
+#:
+# ponytail: one constant, not a per-manifest setting. It has to clear one
+# model call plus one scoring pass; raise it if somebody's verifier is slower
+# than this, and make it configurable only once somebody actually needs it.
+SILENT_FOR = timedelta(minutes=15)
+
 
 def some_runs(
     session: Session,
@@ -40,7 +65,7 @@ def some_runs(
 ) -> list[RunSummary]:
     """Newest first, because the one you want is nearly always the last one."""
     query = (
-        sa.select(runs, STARTED.label("started_trials"))
+        sa.select(runs, STARTED.label("started_trials"), HEARTBEAT.label("last_wrote"))
         .order_by(runs.c.started_at.desc())
         .limit(limit)
     )
@@ -57,7 +82,9 @@ def some_runs(
 def one_run(session: Session, run_id: str) -> RunSummary | None:
     row = (
         session.execute(
-            sa.select(runs, STARTED.label("started_trials")).where(runs.c.id == run_id)
+            sa.select(
+                runs, STARTED.label("started_trials"), HEARTBEAT.label("last_wrote")
+            ).where(runs.c.id == run_id)
         )
         .mappings()
         .first()
@@ -113,10 +140,25 @@ def one_trial(session: Session, trial_id: str) -> TrialSummary | None:
     return None if row is None else _trial(row)
 
 
+def _stalled(status: str, last_wrote: datetime | None) -> bool:
+    """Says RUNNING, has not written anything in a long time.
+
+    Reported rather than stored: a listing that computes this needs no column,
+    no migration and no writer, and a run that comes back to life stops being
+    stalled by itself.
+    """
+    if status != RunState.RUNNING or last_wrote is None:
+        return False
+    if last_wrote.tzinfo is None:
+        last_wrote = last_wrote.replace(tzinfo=UTC)
+    return datetime.now(UTC) - last_wrote > SILENT_FOR
+
+
 def _run(row) -> RunSummary:
     return RunSummary(
         id=row["id"],
         status=row["status"],
+        stalled=_stalled(row["status"], row["last_wrote"]),
         trials=row["started_trials"],
         owner=row["owner"],
         experiment=row["experiment"],

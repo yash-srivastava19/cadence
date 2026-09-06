@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -445,40 +446,50 @@ class TestBothDoorsAgreeOnWhatAValidProjectIs:
 
 class TestARunCanBeReadByAPersonOrAProgram:
     """The same Report, shown two ways. Neither of them is the one the loop
-    knows about, which is the point of having a plane for it."""
+    knows about, which is the point of having a plane for it.
+
+    stdout, not output: `output` merges the streams, and the report shares
+    stdout with nothing while narration goes to stderr. Reading the merged
+    pair would pass whichever stream happened to carry the text.
+    """
 
     WORKS = MARKED % "print('value: 1')"
 
     def test_the_text_report_says_what_happened(self, tmp_path):
         result = runner.invoke(app, ["run", str(a_project(tmp_path, self.WORKS))])
-        assert "scored" in result.output
+        assert "scored" in result.stdout
 
     def test_it_says_what_the_run_cost(self, tmp_path):
         result = runner.invoke(app, ["run", str(a_project(tmp_path, self.WORKS))])
-        assert "tokens" in result.output
+        assert "tokens" in result.stdout
 
     def test_json_is_the_same_facts(self, tmp_path):
-        import json
-
         result = runner.invoke(
             app, ["run", "--json", str(a_project(tmp_path, self.WORKS))]
         )
-        report = json.loads(result.output)
+        report = json.loads(result.stdout)
         assert set(report) >= {"status", "trials", "scored", "spend"}
 
     def test_json_carries_the_spend_a_pipe_would_want(self, tmp_path):
-        import json
-
         result = runner.invoke(
             app, ["run", "--json", str(a_project(tmp_path, self.WORKS))]
         )
-        assert "calls" in json.loads(result.output)["spend"]
+        assert "calls" in json.loads(result.stdout)["spend"]
 
     def test_a_failed_run_still_exits_one(self, tmp_path):
         result = runner.invoke(
             app, ["run", "--json", str(a_project(tmp_path, self.WORKS))]
         )
         assert result.exit_code == 1
+
+    def test_the_report_is_alone_on_stdout_and_the_narration_is_not(self, tmp_path):
+        """A pipe gets the result; a person gets to watch. One command, two
+        channels, no flag to choose between them."""
+        result = runner.invoke(
+            app, ["run", "--json", str(a_project(tmp_path, self.WORKS))]
+        )
+        json.loads(result.stdout)  # raises if anything else landed there
+        assert "trial 1" in result.stderr
 
 
 class TestTheQueryCommandsNeedADatabase:
