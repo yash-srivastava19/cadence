@@ -525,3 +525,88 @@ class TestARunIsNamedOnce:
         )
         assert result.exit_code == 1
         assert "--resume" in result.output
+
+
+class TestCheckSpotsAScorerTheModelCanRewrite:
+    """The mistake a single file makes: markers around "the part to improve"
+    swallow the line that prints the score, and every check downstream passes
+    while the run measures nothing."""
+
+    def _project(self, tmp_path, program):
+        (tmp_path / ".cadence").write_text(
+            "api_version: cadence/v1alpha2\nprogram: p.py\nmetrics: {value: maximize}\n"
+        )
+        (tmp_path / "p.py").write_text(program)
+        return runner.invoke(app, ["check", str(tmp_path)])
+
+    INSIDE = "# CADENCE:BEGIN\nprint('value: 1')\n# CADENCE:END\n"
+    OUTSIDE = "# CADENCE:BEGIN\nx = 1\n# CADENCE:END\nprint(f'value: {x}')\n"
+
+    def test_a_print_of_the_metric_inside_the_region_is_called_out(self, tmp_path):
+        output = self._project(tmp_path, self.INSIDE).output
+        assert "the region prints value" in output
+        assert "Move the printing out of the region" in output
+
+    def test_scoring_from_outside_the_region_is_fine(self, tmp_path):
+        assert (
+            "reported from outside the region"
+            in self._project(tmp_path, self.OUTSIDE).output
+        )
+
+    def test_it_is_advice_and_not_a_refusal(self, tmp_path):
+        """Text matching, not analysis: it misses `print(f"{name}: {v}")`, so
+        it must never be able to stop a project that is fine."""
+        assert self._project(tmp_path, self.INSIDE).exit_code == 0
+
+    def test_a_program_with_no_region_is_left_alone(self, tmp_path):
+        # The region finding already refuses this one; saying it twice would
+        # only bury the sentence that matters.
+        assert "no region" in self._project(tmp_path, "print('value: 1')\n").output
+
+
+class TestCheckSaysWhetherTheRunWillBeRemembered:
+    def _project(self, tmp_path):
+        (tmp_path / ".cadence").write_text(
+            "api_version: cadence/v1alpha2\nprogram: p.py\nmetrics: {value: maximize}\n"
+        )
+        (tmp_path / "p.py").write_text(MARKED % "print('value: 1')")
+        return runner.invoke(app, ["check", str(tmp_path)])
+
+    def test_it_says_when_nothing_will_be_recorded(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        assert "nothing will be recorded" in self._project(tmp_path).output
+
+    def test_it_names_where_and_keeps_the_password_out(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DATABASE_URL", "postgresql://ada:hunter2@db.lab:5432/c")
+        output = self._project(tmp_path).output
+        assert "db.lab:5432/c" in output
+        assert "hunter2" not in output
+
+
+class TestInitWritesAProjectThatChecksOut:
+    def test_it_writes_the_four_files(self, tmp_path):
+        result = runner.invoke(app, ["init", str(tmp_path / "new")])
+        assert result.exit_code == 0
+        written = {p.name for p in (tmp_path / "new").iterdir()}
+        assert written == {".cadence", "solve.py", "score.py", "IMPROVE.md"}
+
+    def test_what_it_writes_passes_check(self, tmp_path, monkeypatch):
+        """The whole point. A template check refuses is worse than none."""
+        monkeypatch.setenv("GEMINI_API_KEY", "sk-not-a-real-key")
+        runner.invoke(app, ["init", str(tmp_path / "new")])
+        result = runner.invoke(app, ["check", str(tmp_path / "new")])
+        assert result.exit_code == 0
+        assert "ready." in result.output
+
+    def test_the_scoring_it_writes_is_outside_the_region(self, tmp_path):
+        runner.invoke(app, ["init", str(tmp_path / "new")])
+        result = runner.invoke(app, ["check", str(tmp_path / "new")])
+        assert "reported from outside the region" in result.output
+
+    def test_it_will_not_write_over_a_project(self, tmp_path):
+        (tmp_path / "solve.py").write_text("mine\n")
+        result = runner.invoke(app, ["init", str(tmp_path)])
+        assert result.exit_code == 1
+        assert "solve.py already there" in result.output
+        assert (tmp_path / "solve.py").read_text() == "mine\n"
+        assert not (tmp_path / ".cadence").exists()

@@ -149,8 +149,12 @@ class MetricReader:
                 break
         missing = [name for name in self.wanted if name not in found]
         if missing:
+            # What it did print, because the usual cause is a name that does
+            # not match the manifest, and "never reported value" sends
+            # somebody hunting for a print that is right there.
+            saw = f" It printed {', '.join(sorted(found))}." if found else ""
             raise MetricNotReported(
-                f"the program never reported {', '.join(missing)}."
+                f"the program never reported {', '.join(missing)}.{saw}"
                 f" Print {self._shapes(missing[0])} on stdout"
             )
         return {name: float(found[name]) for name in self.wanted}

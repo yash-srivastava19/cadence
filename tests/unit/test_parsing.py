@@ -137,3 +137,22 @@ class TestJsonIsTheContract:
 
     def test_lines_are_read_when_there_is_no_json_at_all(self):
         assert read("value: 0.5\n", ["value"]) == {"value": 0.5}
+
+
+class TestASilentProgramIsToldWhatItDidPrint:
+    def test_it_names_what_was_printed_under_another_name(self):
+        from cadence.errors import MetricNotReported
+        from cadence.parsing.metrics import read
+
+        with pytest.raises(MetricNotReported) as raised:
+            read("score: 1\n", ["value"])
+        assert "never reported value" in str(raised.value)
+        assert "It printed score." in str(raised.value)
+
+    def test_a_program_that_printed_nothing_gets_no_such_clause(self):
+        from cadence.errors import MetricNotReported
+        from cadence.parsing.metrics import read
+
+        with pytest.raises(MetricNotReported) as raised:
+            read("", ["value"])
+        assert "It printed" not in str(raised.value)
