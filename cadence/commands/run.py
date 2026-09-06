@@ -19,6 +19,7 @@ from cadence.errors import CadenceError
 from cadence.lifecycle.states import RunState
 from cadence.observe.signals import (
     RunFinished,
+    SeedMeasured,
     TrialMeasured,
     TrialStarted,
     cadence,
@@ -62,7 +63,13 @@ def _narrate(fact) -> None:
     Started and measured only. A line per model call would turn twenty trials
     into a hundred lines nobody reads.
     """
-    if isinstance(fact, TrialStarted):
+    if isinstance(fact, SeedMeasured):
+        if isinstance(fact.verdict, Scored):
+            scores = " ".join(f"{k} {v:g}" for k, v in fact.verdict.metrics.items())
+            note(f"  baseline   {scores}")
+        else:
+            note(f"  baseline   would not score: {fact.verdict.reason}")
+    elif isinstance(fact, TrialStarted):
         note(f"  trial {fact.seq + 1}")
     elif isinstance(fact, TrialMeasured):
         verdict = fact.verdict

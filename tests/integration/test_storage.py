@@ -139,7 +139,11 @@ class TestARunSurvivesARestart:
         run.start()
         owner.add(run)
         owner.commit()
-        stored = owner.execute(sa.select(runs.c.status)).scalar()
+        # By id: the table holds other tests' runs, and an unscoped scalar()
+        # asserts about whichever row the database hands back first.
+        stored = owner.execute(
+            sa.select(runs.c.status).where(runs.c.id == "r1")
+        ).scalar()
         assert stored == "running"
 
 

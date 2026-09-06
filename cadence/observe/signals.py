@@ -171,6 +171,28 @@ class TrialMeasured(Event):
     seeds_hash: NonBlank
 
 
+class SeedMeasured(Event):
+    """What the run started from, scored.
+
+    Not a trial: no model was called and nothing was proposed, so it has no
+    trial_id and does not count against the budget. But without it a run has
+    no measurement of its own starting point -- `best` was the best of the
+    children only, so a run whose every child was worse than the seed still
+    reported a winner, and `cadence apply` would write it over a better
+    program and call that an improvement.
+
+    Same three hashes as TrialMeasured, because it lands in the same table:
+    a verdict is keyed on what was measured and what it was measured
+    against, and being a seed is not part of either.
+    """
+
+    fingerprint: NonBlank
+    verdict: Verdict
+    wall_ms: float = Field(ge=0, allow_inf_nan=False)
+    task_hash: NonBlank
+    seeds_hash: NonBlank
+
+
 class TrialAbandoned(Event):
     trial_id: NonBlank
     reason: NonBlank

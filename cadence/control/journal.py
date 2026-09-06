@@ -52,6 +52,7 @@ from cadence.observe.signals import (
     RunFinished,
     RunResumed,
     RunStarted,
+    SeedMeasured,
     TrialAbandoned,
     TrialMeasured,
     TrialRetried,
@@ -183,7 +184,7 @@ class Journal:
                 .where(trials.c.id == fact.trial_id)
                 .values(candidate_fingerprint=fact.fingerprint)
             )
-        elif isinstance(fact, TrialMeasured):
+        elif isinstance(fact, (TrialMeasured, SeedMeasured)):
             self._measured(fact)
             if fact.verdict.outcome is Outcome.CRASHED:
                 self._crashed(fact.verdict.fingerprint, run_id)
@@ -290,7 +291,7 @@ class Journal:
                 .values(status=CandidateState.QUARANTINED)
             )
 
-    def _measured(self, fact: TrialMeasured) -> None:
+    def _measured(self, fact: "TrialMeasured | SeedMeasured") -> None:
         """What this candidate scored, against this task, on these seeds.
 
         The three together are the primary key, so the row is the record of a
