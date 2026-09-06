@@ -1,6 +1,7 @@
 import typer
 
 from cadence.commands import check, init, run, runs, schema, trials
+from cadence.commands.environment import load_env
 
 app = typer.Typer(
     add_completion=False,
@@ -19,4 +20,7 @@ app.add_typer(trials.app, name="trials")
 
 
 def main() -> None:
+    # Before the app, so every command sees the same environment and no
+    # command has to remember to ask for it.
+    load_env()
     app()
