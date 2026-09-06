@@ -28,7 +28,13 @@ def check(
         help="Read the manifest from FILE instead of <root>/.cadence.",
     ),
     json_output: bool = typer.Option(
-        False, "--json", help="Output as JSON for programmatic use"
+        # Both halves, because run and runs list take both and a flag that
+        # works on one command and not another is how people stop trusting
+        # flags. The default stays off: unlike the query commands, check is
+        # read by a person far more often than by a pipe.
+        False,
+        "--json/--no-json",
+        help="Output as JSON for programmatic use",
     ),
 ) -> None:
     """Check a project without spending a model call."""
