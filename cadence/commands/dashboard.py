@@ -9,7 +9,8 @@ through it.
 import typer
 
 from cadence.commands.reading import reading
-from cadence.commands.report import found, note
+from cadence.commands.report import die, found, note
+from cadence.errors import CadenceError
 from cadence.web import serve
 
 
@@ -23,9 +24,14 @@ def dashboard(
     # rather than in a browser tab after the first fetch.
     with reading():
         pass
-    found("serving", f"http://{host}:{port}")
-    note("ctrl-c to stop")
+
+    def listening() -> None:
+        found("serving", f"http://{host}:{port}")
+        note("ctrl-c to stop")
+
     try:
-        serve(reading, port, host)
+        serve(reading, port, host, ready=listening)
     except KeyboardInterrupt:
         note("stopped")
+    except CadenceError as error:
+        die(str(error), "Another dashboard may already be running. Try --port.")

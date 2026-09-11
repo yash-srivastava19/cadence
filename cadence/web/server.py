@@ -15,6 +15,7 @@ from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from cadence.errors import SetupError
 from cadence.web.api import Answer, answer
 
 __all__ = ["serve"]
@@ -24,9 +25,29 @@ __all__ = ["serve"]
 HOST = "127.0.0.1"
 
 
-def serve(open_session: Callable, port: int = 8787, host: str = HOST) -> None:
-    """Serve until interrupted. Blocks."""
-    server = ThreadingHTTPServer((host, port), _handler(open_session))
+def serve(
+    open_session: Callable,
+    port: int = 8787,
+    host: str = HOST,
+    ready: Callable[[], None] | None = None,
+) -> None:
+    """Serve until interrupted. Blocks.
+
+    `ready` is called once the socket is actually listening, because the
+    caller's job is to print a URL and a URL printed before the bind is a
+    URL that may never work -- which is exactly what happened the first time
+    this met a port somebody was already using.
+    """
+    try:
+        server = ThreadingHTTPServer((host, port), _handler(open_session))
+    except OSError as error:
+        # Rule 5: this crosses into a command as a value. Below here there
+        # are errnos; above here there is one sentence about a port.
+        raise SetupError(
+            f"cannot serve on {host}:{port} -- {error.strerror}"
+        ) from error
+    if ready is not None:
+        ready()
     try:
         server.serve_forever()
     finally:
