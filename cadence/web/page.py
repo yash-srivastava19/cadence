@@ -18,16 +18,19 @@ PAGE_HTML = r"""<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cadence</title>
 <style>
+  /* Five colors and two type sizes. Everything else is spacing.
+     A status that is coloured does not also need a border, and a number
+     that is on its own line does not also need a box around it. */
   :root {
     --bg: #0f1115; --panel: #161920; --line: #262b36; --ink: #d7dae1;
     --dim: #7b8394; --accent: #7aa2f7; --good: #7fd88f; --bad: #f7768e;
-    --warn: #e0af68; --add: #1d3226; --del: #34181d;
+    --add: #1d3226; --del: #34181d;
   }
   @media (prefers-color-scheme: light) {
     :root {
-      --bg: #f7f8fa; --panel: #fff; --line: #e2e5ea; --ink: #1c2030;
+      --bg: #f7f8fa; --panel: #f0f2f5; --line: #e2e5ea; --ink: #1c2030;
       --dim: #6b7280; --accent: #2f5bd8; --good: #197a3d; --bad: #c0334a;
-      --warn: #8a6100; --add: #e3f7e8; --del: #fdeaee;
+      --add: #e3f7e8; --del: #fdeaee;
     }
   }
   * { box-sizing: border-box; }
@@ -36,57 +39,50 @@ PAGE_HTML = r"""<!doctype html>
     font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
   }
   code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  #shell { display: grid; grid-template-columns: 210px 1fr; height: 100vh; }
-  #rail {
-    border-right: 1px solid var(--line); background: var(--panel);
-    overflow-y: auto; padding: 12px 0;
-  }
+  #shell { display: grid; grid-template-columns: 200px 1fr; height: 100vh; }
+  #rail { border-right: 1px solid var(--line); overflow-y: auto; padding: 18px 0; }
   #rail h1 {
-    font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
-    color: var(--dim); margin: 0 14px 10px; font-weight: 600;
+    font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--dim); margin: 0 18px 8px; font-weight: 600;
   }
   .exp {
-    padding: 7px 14px; cursor: pointer; border-left: 2px solid transparent;
+    padding: 6px 18px; cursor: pointer; color: var(--dim);
     display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
   }
-  .exp:hover { background: rgba(122,162,247,.08); }
-  .exp.on { border-left-color: var(--accent); background: rgba(122,162,247,.12); }
-  .exp b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .exp span { color: var(--dim); font-size: 11px; flex: none; }
-  #main { overflow-y: auto; padding: 18px 22px 60px; }
-  h2 { font-size: 15px; margin: 0 0 10px; font-weight: 600; }
-  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .1em;
-       color: var(--dim); margin: 26px 0 8px; font-weight: 600; }
+  .exp:hover { color: var(--ink); }
+  .exp.on { color: var(--ink); box-shadow: inset 2px 0 var(--accent); }
+  .exp b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .exp i { font-style: normal; font-size: 11px; flex: none; }
+  #main { overflow-y: auto; padding: 18px 24px 60px; }
+  h2 { font-size: 15px; margin: 0 0 6px; font-weight: 600; }
+  h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--dim); margin: 30px 0 6px; font-weight: 600;
+  }
+  /* The six boxes this replaces said the same six numbers. */
+  .facts { color: var(--dim); margin: 0 0 18px; }
+  .facts b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .facts span + span::before { content: " · "; color: var(--line); }
   table { width: 100%; border-collapse: collapse; }
   th {
     text-align: left; font-size: 11px; text-transform: uppercase;
     letter-spacing: .08em; color: var(--dim); font-weight: 600;
-    padding: 6px 10px; border-bottom: 1px solid var(--line);
+    padding: 5px 10px; border-bottom: 1px solid var(--line);
   }
-  td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td { padding: 5px 10px; border-bottom: 1px solid var(--line); }
   tbody tr { cursor: pointer; }
-  tbody tr:hover { background: rgba(122,162,247,.07); }
-  tbody tr.on { background: rgba(122,162,247,.14); }
+  tbody tr:hover td { background: rgba(122,162,247,.07); }
+  tbody tr.on td { background: rgba(122,162,247,.13); }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
   .dim { color: var(--dim); }
-  .pill {
-    font-size: 11px; padding: 1px 7px; border-radius: 10px;
-    border: 1px solid var(--line); white-space: nowrap;
-  }
-  .pill.running { color: var(--accent); border-color: var(--accent); }
-  .pill.finished, .pill.scored { color: var(--good); border-color: var(--good); }
-  .pill.failed, .pill.abandoned, .pill.crashed { color: var(--bad); border-color: var(--bad); }
-  .pill.stalled, .pill.retried { color: var(--warn); border-color: var(--warn); }
-  #cards { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 2px; }
-  .card {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
-    padding: 8px 13px; min-width: 96px;
-  }
-  .card .k { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
-  .card .v { font-size: 17px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .bad { color: var(--bad); }
+  .live { color: var(--accent); }
+  /* The winner, marked where the loop's own choice lands rather than
+     inferred from the numbers: the page does not know which way is better. */
+  .won { color: var(--good); font-size: 11px; }
   pre.diff, pre.src {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
-    padding: 0; overflow-x: auto; font-size: 12px; margin: 0;
+    background: var(--panel); border-radius: 6px; padding: 0;
+    overflow-x: auto; font-size: 12px; margin: 0;
   }
   pre.diff div { padding: 0 12px; white-space: pre; }
   pre.src { padding: 12px; white-space: pre; }
@@ -95,9 +91,9 @@ PAGE_HTML = r"""<!doctype html>
   .hunk { color: var(--accent); }
   .meta { color: var(--dim); }
   a { color: var(--accent); cursor: pointer; text-decoration: none; }
-  #crumbs { margin-bottom: 14px; color: var(--dim); }
+  #crumbs { margin-bottom: 16px; color: var(--dim); }
   .empty { color: var(--dim); padding: 14px 0; }
-  details > summary { cursor: pointer; color: var(--dim); margin: 10px 0; }
+  details > summary { cursor: pointer; color: var(--dim); margin: 14px 0 8px; }
 </style>
 </head>
 <body>
@@ -111,6 +107,9 @@ const $ = (id) => document.getElementById(id);
 // again" and there is no second copy of the answer to keep in step.
 let at = { experiment: null, run: null, trial: null };
 let timer = null;
+// Whether what is on screen can still change. Read off the rows rather than
+// off the rendered page, so restyling cannot quietly stop the polling.
+let moving = false;
 
 const get = async (path) => {
   const r = await fetch(path);
@@ -120,11 +119,15 @@ const get = async (path) => {
 };
 
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-// Fingerprints only. A run id starts with its date, so the first eight
-// characters of ten runs from the same day are the same eight characters --
-// truncating one is how a listing becomes ten identical rows.
-const short = (s, n = 12) => s ? esc(String(s).slice(0, n)) : '<span class="dim">–</span>';
-const pill = (s) => `<span class="pill ${esc(s).toLowerCase()}">${esc(s)}</span>`;
+// Colour marks the exception, never the norm. Ten trials that all scored
+// are ten rows of the same word, and painting them green spends the eye's
+// attention on the thing it already expected -- so success is plain, and
+// the only green on the page is the one candidate that won.
+const BAD = ["failed", "stalled", "crashed", "abandoned", "rejected"];
+const state = (s) => {
+  const c = s === "running" ? "live" : BAD.includes(s) ? "bad" : "dim";
+  return `<span class="${c}">${esc(s)}</span>`;
+};
 
 const when = (iso) => {
   if (!iso) return "–";
@@ -148,7 +151,14 @@ const metrics = (m) => m && Object.keys(m).length
     ).join(" &nbsp; ")
   : '<span class="dim">–</span>';
 
-const card = (k, v) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+// Value first, then what it is: "10 trials" reads; "TRIALS / 10" in a box
+// is the same two words with a border drawn round them.
+// A fact nobody recorded is left out rather than printed as a dash: six
+// dashes in a row is not a summary. Callers pass null for those, so the
+// nulls have to go before anything unpacks a pair.
+const facts = (pairs) => `<p class="facts">${
+  pairs.filter(p => p && p[0] !== null && p[0] !== undefined)
+       .map(([v, k]) => `<span><b>${v}</b> ${k}</span>`).join("")}</p>`;
 
 // --- drawing ------------------------------------------------------------
 
@@ -169,15 +179,15 @@ async function drawRuns() {
   const q = at.experiment ? "?experiment=" + encodeURIComponent(at.experiment) : "";
   const rows = await get("/api/runs" + q);
   $("crumbs").innerHTML = at.experiment ? esc(at.experiment) : "All runs";
+  moving = rows.some(r => r.status === "running" && !r.stalled);
   if (!rows.length) { $("body").innerHTML = '<div class="empty">no runs recorded</div>'; return; }
   $("body").innerHTML = `<table><thead><tr>
-      <th>run</th><th>status</th><th class="num">trials</th><th>best</th>
+      <th>run</th><th>status</th><th class="num">trials</th>
       <th>experiment</th><th>owner</th><th>started</th></tr></thead><tbody>${
     rows.map(r => `<tr data-id="${esc(r.id)}">
       <td class="mono">${esc(r.id)}</td>
-      <td>${pill(r.stalled ? "stalled" : r.status)}</td>
+      <td>${state(r.stalled ? "stalled" : r.status)}</td>
       <td class="num">${r.trials}</td>
-      <td class="mono">${short(r.best, 8)}</td>
       <td>${esc(r.experiment || "–")}</td>
       <td class="dim">${esc(r.owner || "–")}</td>
       <td class="dim">${when(r.started_at)}</td></tr>`).join("")}</tbody></table>`;
@@ -191,27 +201,27 @@ async function drawRun() {
     get("/api/runs/" + encodeURIComponent(at.run) + "/trials?limit=500"),
   ]);
   $("crumbs").innerHTML = `<a id="back">← ${esc(run.experiment || "all runs")}</a>`;
+  moving = run.status === "running" && !run.stalled;
   $("body").innerHTML = `
-    <h2 class="mono">${esc(run.id)} &nbsp; ${pill(run.stalled ? "stalled" : run.status)}</h2>
-    <div id="cards">
-      ${card("trials", run.trials)}
-      ${card("scored", run.scored)}
-      ${card("elapsed", dur(run.duration_ms))}
-      ${card("calls", run.spend.calls + (run.spend.replayed ? ` <span class="dim" style="font-size:12px">${run.spend.replayed} replayed</span>` : ""))}
-      ${card("tokens", (run.spend.tokens_in + run.spend.tokens_out).toLocaleString())}
-      ${card("spent", money(run.spend.usd))}
-    </div>
+    <h2 class="mono">${esc(run.id)} &nbsp; ${state(run.stalled ? "stalled" : run.status)}</h2>
+    ${facts([
+      [run.trials, "trials"],
+      [run.scored, "scored"],
+      [dur(run.duration_ms), "elapsed"],
+      [run.spend.calls, "model calls" + (run.spend.replayed ? ` (${run.spend.replayed} replayed)` : "")],
+      [(run.spend.tokens_in + run.spend.tokens_out).toLocaleString(), "tokens"],
+      run.spend.usd == null ? null : [money(run.spend.usd), "spent"],
+    ])}
     ${run.reason ? `<p class="dim">${esc(run.reason)}</p>` : ""}
     <h3>Trials</h3>
     ${trials.length ? `<table><thead><tr>
-      <th class="num">#</th><th>status</th><th>outcome</th><th>metrics</th>
-      <th>candidate</th><th>why</th></tr></thead><tbody>${
+      <th class="num">#</th><th>result</th><th>metrics</th><th>why</th>
+      </tr></thead><tbody>${
       trials.map(t => `<tr data-id="${esc(t.id)}" class="${t.id === at.trial ? "on" : ""}">
         <td class="num">${t.seq}</td>
-        <td>${pill(t.status)}</td>
-        <td>${t.outcome ? pill(t.outcome) : '<span class="dim">–</span>'}</td>
+        <td>${state(t.outcome || t.status)}${
+          t.candidate && t.candidate === run.best ? ' <span class="won">best</span>' : ""}</td>
         <td class="mono">${metrics(t.metrics)}</td>
-        <td class="mono">${short(t.candidate, 8)}</td>
         <td class="dim">${esc(t.reason || "")}</td></tr>`).join("")}</tbody></table>`
       : '<div class="empty">no trials yet</div>'}
     <div id="trial"></div>
@@ -226,14 +236,14 @@ async function drawTrial() {
   const t = await get("/api/trials/" + encodeURIComponent(at.trial));
   $("trial").innerHTML = `
     <h3>Trial ${t.seq}</h3>
-    <div id="cards">
-      ${card("attempts", t.attempts)}
-      ${card("measured", dur(t.wall_ms))}
-      ${card("model latency", dur(t.latency_ms))}
-      ${card("tokens", t.tokens_in == null ? "–" : (t.tokens_in + t.tokens_out).toLocaleString())}
-      ${card("cost", t.model ? money(t.cost_usd) : "–")}
-      ${card("model", `<span style="font-size:12px">${esc(t.model || "–")}</span>`)}
-    </div>
+    ${facts([
+      t.model ? [esc(t.model), "answered"] : null,
+      t.latency_ms == null ? null : [dur(t.latency_ms), "waiting on it"],
+      t.tokens_in == null ? null : [(t.tokens_in + t.tokens_out).toLocaleString(), "tokens"],
+      t.cost_usd == null ? null : [money(t.cost_usd), "spent"],
+      t.wall_ms == null ? null : [dur(t.wall_ms), "measuring"],
+      t.attempts > 1 ? [t.attempts, "attempts"] : null,
+    ])}
     ${diffHtml(t)}
     ${t.response ? `<details><summary>what the model said</summary><pre class="src">${esc(t.response)}</pre></details>` : ""}
     ${t.code ? `<details><summary>the whole program</summary><pre class="src">${esc(t.code)}</pre></details>` : ""}`;
@@ -280,7 +290,7 @@ async function draw() {
   // change, and a dashboard that refetches it every five seconds forever is
   // a dashboard nobody leaves open.
   clearTimeout(timer);
-  if (document.querySelector(".pill.running")) timer = setTimeout(draw, 5000);
+  if (moving) timer = setTimeout(draw, 5000);
 }
 
 draw();
