@@ -85,6 +85,17 @@ PAGE_HTML = r"""<!doctype html>
     overflow-x: auto; font-size: 12px; margin: 0;
   }
   pre.diff div { padding: 0 12px; white-space: pre; }
+  /* Split view. Both sides scroll as one block rather than each having its
+     own bar, and every row is exactly one line tall in both panes, which is
+     what keeps the two columns lined up without measuring anything. */
+  pre.diff.split { display: flex; }
+  pre.diff.split .pane { flex: 1 0 auto; min-width: 50%; }
+  pre.diff.split .pane:first-child { border-right: 1px solid var(--bg); }
+  /* Inside an h3, which is uppercased. The control is a word the reader
+     picks, not a heading. */
+  #how { float: right; font-size: 11px; text-transform: none; letter-spacing: 0; }
+  #how a + a::before { content: " / "; color: var(--line); }
+  #how a.off { color: var(--dim); }
   pre.src { padding: 12px; white-space: pre; }
   .add { background: var(--add); }
   .del { background: var(--del); }
@@ -235,7 +246,7 @@ async function drawRun() {
 async function drawTrial() {
   const t = await get("/api/trials/" + encodeURIComponent(at.trial));
   $("trial").innerHTML = `
-    <h3>Trial ${t.seq}</h3>
+    <h3>${toggle()}Trial ${t.seq}</h3>
     ${facts([
       t.model ? [esc(t.model), "answered"] : null,
       t.latency_ms == null ? null : [dur(t.latency_ms), "waiting on it"],
@@ -252,6 +263,60 @@ async function drawTrial() {
 // Four different things, and the page must not render them the same way:
 // nothing was ever asked, an answer came back that no patch could be made
 // of, a candidate identical to its parent, and an actual change.
+// Split or unified. Remembered, because somebody who prefers one prefers it
+// every time -- and kept in this browser rather than on the run, because it
+// is a fact about the reader and not about what happened.
+let how = "split";
+try { how = localStorage.getItem("cadence.diff") || "split"; } catch (e) {}
+
+function setHow(next) {
+  how = next;
+  try { localStorage.setItem("cadence.diff", next); } catch (e) {}
+  drawTrial();
+}
+
+const toggle = () => `<span id="how">${
+  ["split", "unified"].map(k =>
+    `<a class="${how === k ? "" : "off"}" onclick="setHow('${k}')">${k}</a>`).join("")}</span>`;
+
+// A unified diff into aligned pairs. Runs of removed and added lines are
+// zipped: the first line taken out sits opposite the first line put in, and
+// whichever run is shorter is padded, so the two panes always have the same
+// number of rows and line up without anything being measured.
+function paired(diff) {
+  const rows = [];
+  let gone = [], came = [];
+  const flush = () => {
+    for (let i = 0; i < Math.max(gone.length, came.length); i++) {
+      rows.push({ left: gone[i], right: came[i] });
+    }
+    gone = []; came = [];
+  };
+  for (const l of diff.split("\n")) {
+    if (l.startsWith("---") || l.startsWith("+++")) continue;
+    if (l.startsWith("@@")) { flush(); rows.push({ hunk: l }); continue; }
+    if (l.startsWith("-")) { gone.push(l.slice(1)); continue; }
+    if (l.startsWith("+")) { came.push(l.slice(1)); continue; }
+    flush();
+    rows.push({ left: l.slice(1), right: l.slice(1), same: true });
+  }
+  flush();
+  return rows;
+}
+
+const cell = (text, klass) =>
+  `<div class="${text === undefined ? "" : klass}">${
+    text === undefined || text === "" ? "&nbsp;" : esc(text)}</div>`;
+
+function splitHtml(diff) {
+  const rows = paired(diff);
+  const side = (which, klass) => `<div class="pane">${
+    rows.map(r => r.hunk !== undefined
+      ? `<div class="hunk">${esc(r.hunk)}</div>`
+      : cell(r[which], r.same ? "" : klass)).join("")}</div>`;
+  return `<pre class="diff split">${side("left", "del")}${side("right", "add")}</pre>`;
+}
+
 function diffHtml(t) {
   if (t.diff === null || t.diff === undefined) {
     // Which of the two "no candidate" cases this is, read off what is
@@ -274,7 +339,9 @@ function diffHtml(t) {
       : l.startsWith("-") ? "del" : "";
     return `<div class="${c}">${esc(l) || "&nbsp;"}</div>`;
   };
-  return `<pre class="diff">${t.diff.split("\n").map(line).join("")}</pre>`;
+  return how === "split"
+    ? splitHtml(t.diff)
+    : `<pre class="diff">${t.diff.split("\n").map(line).join("")}</pre>`;
 }
 
 // --- the loop -----------------------------------------------------------
