@@ -194,9 +194,11 @@ class TestARunPageCanAffordMoreThanAListing:
         journalled(IMPROVES, run_id="detail", budget=1)
         assert run_detail(session, "detail").id == one_run(session, "detail").id
 
-    def test_it_counts_what_was_bought(self, session, journalled):
+    def test_it_counts_the_work_the_run_asked_for(self, session, journalled):
         journalled(IMPROVES, run_id="bought", budget=1)
-        assert run_detail(session, "bought").spend.calls == 1
+        spend = run_detail(session, "bought").spend
+        assert (spend.calls, spend.replayed) == (1, 0)
+        assert spend.tokens_in > 0
 
     def test_an_unpriced_provider_spends_nothing_nameable(self, session, journalled):
         """None, not zero. Nobody declared a price for the scripted backend,
@@ -216,6 +218,25 @@ class TestARunPageCanAffordMoreThanAListing:
         killed process would never have written one anyway."""
         journalled(IMPROVES, run_id="timed", budget=1)
         assert run_detail(session, "timed").duration_ms >= 0
+
+    def test_a_replay_is_work_but_not_a_bill(self, session, journalled):
+        """Spend says these two count differently and they have to keep
+        doing it: reproducing the run means making the call again, and a
+        reply read back out of the database was not bought twice."""
+        import sqlalchemy as sa
+
+        from cadence.control.storage import events
+
+        journalled(IMPROVES, run_id="replaying", budget=1)
+        session.execute(
+            sa.update(events)
+            .where(
+                sa.and_(events.c.run_id == "replaying", events.c.type == "ModelCalled")
+            )
+            .values(payload=events.c.payload.concat({"replayed": True}))
+        )
+        spend = run_detail(session, "replaying").spend
+        assert (spend.calls, spend.replayed) == (1, 1)
 
     def test_it_carries_the_manifest_it_was_started_from(self, session, journalled):
         """The point of a run page is "what was I even trying", and a hash
@@ -254,10 +275,53 @@ class TestATrialPageShowsWhatChanged:
         wanted = some_trials(session, "billed")[0]
         assert trial_detail(session, wanted.id).model
 
+    def test_it_carries_what_the_model_actually_said(self, session, journalled):
+        """The diff can only show what survived parsing. When a patch would
+        not apply, this is the only place that says why."""
+        journalled(NONSENSE, run_id="prose", budget=1)
+        wanted = some_trials(session, "prose")[0]
+        assert trial_detail(session, wanted.id).response
+
     def test_it_says_how_long_measuring_took(self, session, journalled):
         journalled(IMPROVES, run_id="measured", budget=1)
         wanted = some_trials(session, "measured")[0]
         assert trial_detail(session, wanted.id).wall_ms >= 0
+
+    def test_a_retry_that_never_came_back_does_not_hide_the_answer(
+        self, session, journalled
+    ):
+        """A trial written before a call and killed mid-request leaves an
+        unanswered row that sorts last. Joining to it would report a trial as
+        having said nothing, with the reply it used in the row before."""
+        import sqlalchemy as sa
+
+        from cadence.control.storage import model_calls
+
+        journalled(IMPROVES, run_id="interrupted", budget=1)
+        wanted = some_trials(session, "interrupted")[0]
+        answered = trial_detail(session, wanted.id)
+        # Written the way the journal writes one: before the call, with
+        # nothing back yet, and sorting after the call that was answered.
+        was = (
+            session.execute(
+                sa.select(model_calls).where(model_calls.c.trial_id == wanted.id)
+            )
+            .mappings()
+            .first()
+        )
+        session.execute(
+            sa.insert(model_calls).values(
+                {
+                    **was,
+                    "id": was["id"] + "#never",
+                    "status": "in_flight",
+                    "response": None,
+                    "model": None,
+                    "occurred_at": sa.func.now(),
+                }
+            )
+        )
+        assert trial_detail(session, wanted.id).response == answered.response
 
     def test_a_trial_nobody_recorded_is_none(self, session):
         assert trial_detail(session, "never-existed") is None

@@ -191,14 +191,13 @@ async function drawRun() {
     get("/api/runs/" + encodeURIComponent(at.run) + "/trials?limit=500"),
   ]);
   $("crumbs").innerHTML = `<a id="back">← ${esc(run.experiment || "all runs")}</a>`;
-  const capped = run.cap_trials ? ` <span class="dim">/ ${run.cap_trials}</span>` : "";
   $("body").innerHTML = `
     <h2 class="mono">${esc(run.id)} &nbsp; ${pill(run.stalled ? "stalled" : run.status)}</h2>
     <div id="cards">
-      ${card("trials", run.trials + capped)}
+      ${card("trials", run.trials)}
       ${card("scored", run.scored)}
       ${card("elapsed", dur(run.duration_ms))}
-      ${card("calls", run.spend.calls)}
+      ${card("calls", run.spend.calls + (run.spend.replayed ? ` <span class="dim" style="font-size:12px">${run.spend.replayed} replayed</span>` : ""))}
       ${card("tokens", (run.spend.tokens_in + run.spend.tokens_out).toLocaleString())}
       ${card("spent", money(run.spend.usd))}
     </div>
@@ -232,18 +231,28 @@ async function drawTrial() {
       ${card("measured", dur(t.wall_ms))}
       ${card("model latency", dur(t.latency_ms))}
       ${card("tokens", t.tokens_in == null ? "–" : (t.tokens_in + t.tokens_out).toLocaleString())}
-      ${card("cost", money(t.cost_usd))}
+      ${card("cost", t.model ? money(t.cost_usd) : "–")}
       ${card("model", `<span style="font-size:12px">${esc(t.model || "–")}</span>`)}
     </div>
-    ${diffHtml(t)}`;
+    ${diffHtml(t)}
+    ${t.response ? `<details><summary>what the model said</summary><pre class="src">${esc(t.response)}</pre></details>` : ""}
+    ${t.code ? `<details><summary>the whole program</summary><pre class="src">${esc(t.code)}</pre></details>` : ""}`;
 }
 
-// Three different things, and the page must not render them the same way:
-// no candidate at all (the patch never applied), a candidate identical to
-// its parent, and an actual change.
+// Four different things, and the page must not render them the same way:
+// nothing was ever asked, an answer came back that no patch could be made
+// of, a candidate identical to its parent, and an actual change.
 function diffHtml(t) {
   if (t.diff === null || t.diff === undefined) {
-    return `<p class="empty">No candidate. ${esc(t.reason || "The patch never applied, so there is nothing to compare.")}</p>`;
+    // Which of the two "no candidate" cases this is, read off what is
+    // there rather than guessed at. A trial that never got an answer and a
+    // trial whose patch would not apply both have no candidate, and
+    // telling somebody the patch was rejected when no call ever came back
+    // sends them to read a diff that was never proposed.
+    const why = t.response
+      ? "The reply came back, but no patch could be made of it."
+      : "No answer came back, so nothing was ever built.";
+    return `<p class="empty">No candidate. ${esc(t.reason || why)}</p>`;
   }
   if (!t.diff.trim()) {
     return '<p class="empty">The candidate is identical to its parent.</p>';

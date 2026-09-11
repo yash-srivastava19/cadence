@@ -380,8 +380,6 @@ class RunDetail(RunSummary):
     #: killed process writes no terminal row, and the tape is the only clock
     #: that agrees with what actually happened.
     duration_ms: float | None = None
-    cap_trials: int | None = None
-    cap_usd: float | None = None
     #: The .cadence this run was started from, verbatim. The point of a run
     #: page is to answer "what was I even trying", and the hash cannot.
     manifest: str | None = None
@@ -406,6 +404,10 @@ class TrialDetail(TrialSummary):
     #: trial changed nothing, the other produced nothing to compare.
     diff: str | None = None
     code: str | None = None
+    #: What the model actually said, before anything was made of it. The one
+    #: place to look when a patch would not apply: the diff panel can only
+    #: ever show what survived parsing, and this is what was parsed.
+    response: str | None = None
 
 
 class ExperimentSummary(Value):

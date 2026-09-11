@@ -12,11 +12,11 @@ import difflib
 from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import Session
 
 from cadence.control.storage import (
     blobs,
-    budget,
     candidates,
     events,
     manifests,
@@ -213,15 +213,42 @@ def _trial(row) -> TrialSummary:
 
 # --- one page's worth: the joins a fifty-row listing will not pay for ------
 
-#: What a run actually bought. Replays are not in here at all: a reply read
-#: back out of the database never became a model_calls row, so counting these
-#: counts calls that were paid for, which is the number on the bill.
-SPENT = (
+
+#: The work a run asked for, replays included. Off the tape, because the
+#: tape is the only place that says which calls were replays: `ModelCalled`
+#: carries `replayed`, and a replayed answer read back out of the database
+#: never became a model_calls row of its own.
+#:
+#: Spend says what these two numbers mean and they have to keep meaning it:
+#: `calls` and `tokens` are what it takes to reproduce the run, so a replay
+#: counts. A Report built by the loop and a RunDetail built by this query
+#: are about the same run, and the page would print whichever disagreed.
+def _said(field: str):
+    return sa.cast(events.c.payload[field].astext, sa.Integer)
+
+
+WORKED = (
+    sa.select(
+        events.c.run_id,
+        sa.func.count().label("calls"),
+        sa.func.count()
+        .filter(events.c.payload["replayed"].astext == "true")
+        .label("replayed"),
+        sa.func.coalesce(sa.func.sum(_said("tokens_in")), 0).label("tokens_in"),
+        sa.func.coalesce(sa.func.sum(_said("tokens_out")), 0).label("tokens_out"),
+    )
+    .where(events.c.type == "ModelCalled")
+    .group_by(events.c.run_id)
+    .subquery()
+)
+
+#: And the bill, which is the other half of Spend and counts differently:
+#: replays excluded, because an answer read back out of the database was not
+#: bought again. The price is not on the tape -- only model_calls records it
+#: -- and a replay never gets a row here, so this is already replay-free.
+BILLED = (
     sa.select(
         model_calls.c.run_id,
-        sa.func.count().label("calls"),
-        sa.func.coalesce(sa.func.sum(model_calls.c.tokens_in), 0).label("tokens_in"),
-        sa.func.coalesce(sa.func.sum(model_calls.c.tokens_out), 0).label("tokens_out"),
         sa.func.sum(model_calls.c.cost_usd).label("usd"),
     )
     .where(model_calls.c.status == "done")
@@ -259,17 +286,16 @@ def run_detail(session: Session, run_id: str) -> RunDetail | None:
                 HEARTBEAT.label("last_wrote"),
                 FIRST_WROTE.label("first_wrote"),
                 SCORED_TRIALS.label("scored"),
-                SPENT.c.calls,
-                SPENT.c.tokens_in,
-                SPENT.c.tokens_out,
-                SPENT.c.usd,
-                budget.c.cap_trials,
-                budget.c.cap_usd,
+                WORKED.c.calls,
+                WORKED.c.replayed,
+                WORKED.c.tokens_in,
+                WORKED.c.tokens_out,
+                BILLED.c.usd,
                 manifests.c.source.label("manifest"),
             )
             .select_from(
-                runs.outerjoin(SPENT, SPENT.c.run_id == runs.c.id)
-                .outerjoin(budget, budget.c.run_id == runs.c.id)
+                runs.outerjoin(WORKED, WORKED.c.run_id == runs.c.id)
+                .outerjoin(BILLED, BILLED.c.run_id == runs.c.id)
                 .outerjoin(manifests, manifests.c.hash == runs.c.manifest_hash)
             )
             .where(runs.c.id == run_id)
@@ -284,13 +310,12 @@ def run_detail(session: Session, run_id: str) -> RunDetail | None:
         scored=row["scored"] or 0,
         spend=Spend(
             calls=row["calls"] or 0,
+            replayed=row["replayed"] or 0,
             tokens_in=row["tokens_in"] or 0,
             tokens_out=row["tokens_out"] or 0,
             usd=None if row["usd"] is None else float(row["usd"]),
         ),
         duration_ms=_elapsed(row["first_wrote"], row["last_wrote"]),
-        cap_trials=row["cap_trials"],
-        cap_usd=None if row["cap_usd"] is None else float(row["cap_usd"]),
         manifest=row["manifest"],
     )
 
@@ -321,7 +346,21 @@ DETAILED = (
         ),
     )
     .outerjoin(PARENT_CODE, PARENT_CODE.c.hash == THEIRS.c.code_hash)
-    .outerjoin(model_calls, model_calls.c.trial_id == trials.c.id)
+    # The calls that came back. A trial that was retried has more than one,
+    # and the last of them can be one that was written before the call and
+    # never answered -- a run killed mid-request leaves exactly that. Joining
+    # to it would report a trial as having no model, no tokens and nothing
+    # said, when the answer it used is sitting in the row before.
+    #
+    # In the ON clause rather than a WHERE, or the outer join stops being one
+    # and a trial that never got as far as asking vanishes from its own page.
+    .outerjoin(
+        model_calls,
+        sa.and_(
+            model_calls.c.trial_id == trials.c.id,
+            model_calls.c.status == "done",
+        ),
+    )
 )
 
 DETAIL_COLUMNS = (
@@ -336,6 +375,7 @@ DETAIL_COLUMNS = (
     model_calls.c.tokens_out,
     model_calls.c.latency_ms,
     model_calls.c.cost_usd,
+    model_calls.c.response,
 )
 
 
@@ -352,8 +392,8 @@ def trial_detail(session: Session, trial_id: str) -> TrialDetail | None:
             sa.select(*DETAIL_COLUMNS)
             .select_from(DETAILED)
             .where(trials.c.id == trial_id)
-            # A retried trial has more than one model call. The last one is
-            # the one that produced the candidate being shown.
+            # The most recent answered call: the one whose reply became the
+            # candidate on this page.
             .order_by(model_calls.c.occurred_at.desc())
         )
         .mappings()
@@ -371,6 +411,7 @@ def trial_detail(session: Session, trial_id: str) -> TrialDetail | None:
         cost_usd=None if row["cost_usd"] is None else float(row["cost_usd"]),
         code=row["code"],
         diff=_diff(row["parent_code"], row["code"]),
+        response=row["response"],
     )
 
 
@@ -391,6 +432,17 @@ def some_experiments(session: Session, limit: int = PAGE) -> list[ExperimentSumm
                 "running"
             ),
             sa.func.max(runs.c.started_at).label("last_activity"),
+            # The best of the most recent run that has one. Most recent
+            # rather than highest scoring: which of two metrics is better is
+            # the manifest's business, and a rollup that has not read a
+            # manifest is not entitled to an opinion about it.
+            #
+            # In the GROUP BY rather than a lookup per row -- this list is
+            # refetched every few seconds while anything is running, and a
+            # query per experiment is a query per experiment per poll.
+            sa.func.array_agg(aggregate_order_by(runs.c.best, runs.c.started_at.desc()))
+            .filter(runs.c.best.isnot(None))[1]
+            .label("best"),
         )
         .where(runs.c.experiment.isnot(None))
         .group_by(runs.c.experiment)
@@ -402,26 +454,11 @@ def some_experiments(session: Session, limit: int = PAGE) -> list[ExperimentSumm
             name=row["experiment"],
             runs=row["runs"],
             running=row["running"],
-            best=_best_of(session, row["experiment"]),
+            best=row["best"],
             last_activity=row["last_activity"],
         )
         for row in rows
     ]
-
-
-def _best_of(session: Session, experiment: str) -> str | None:
-    """The most recent run of this experiment that has a best to show.
-
-    Most recent rather than highest scoring: which of two metrics is better
-    is the manifest's business, and a rollup that has not read a manifest is
-    not entitled to an opinion about it.
-    """
-    return session.execute(
-        sa.select(runs.c.best)
-        .where(sa.and_(runs.c.experiment == experiment, runs.c.best.isnot(None)))
-        .order_by(runs.c.started_at.desc())
-        .limit(1)
-    ).scalar()
 
 
 def _elapsed(first: datetime | None, last: datetime | None) -> float | None:
