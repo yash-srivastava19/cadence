@@ -25,7 +25,7 @@ from cadence.control.queries import (
     trial_detail,
 )
 from cadence.delivery import as_json
-from cadence.web.page import PAGE_HTML
+from cadence.web.page import page
 
 __all__ = ["Answer", "answer"]
 
@@ -50,7 +50,7 @@ def answer(path: str, params: Mapping[str, str], open_session: Callable) -> Answ
     opening a database would be a second place for them to drift apart.
     """
     if path in ("/", "/index.html"):
-        return Answer(200, PAGE_HTML, HTML)
+        return Answer(200, page(), HTML)
     if not path.startswith("/api/"):
         return _missing(path)
     # Split first, unquote second. A trial id is "<run id>/<seq>", so the
