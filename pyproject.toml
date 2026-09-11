@@ -109,6 +109,9 @@ name = "The planes are layered"
 type = "layers"
 layers = [
   "cadence.commands",
+  # The web plane is an entry point like commands, but commands owns the
+  # `cadence dashboard` verb that starts it, so it sits between the two.
+  "cadence.web",
   "cadence.delivery",
   "cadence.control",
   "cadence.execution",
@@ -145,6 +148,12 @@ ignore = [
     # typer's documented idiom is a call in the default: Argument(), Option().
     "B008",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# One long string of HTML, CSS and JavaScript. Python's line limit is about
+# Python being readable; wrapping a stylesheet to fit it makes the stylesheet
+# worse, and the en dashes are the character the page is supposed to show.
+"cadence/web/page.py" = ["E501", "RUF001"]
 
 # isort configuration
 [tool.isort]

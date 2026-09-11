@@ -28,17 +28,20 @@ from cadence.lifecycle.states import RunState, TrialState
 __all__ = [
     "Completion",
     "Directive",
+    "ExperimentSummary",
     "Measurement",
     "Proposal",
     "Recalled",
     "RecordedManifest",
     "Report",
     "Request",
+    "RunDetail",
     "RunHistory",
     "RunSummary",
     "Spend",
     "Suggestion",
     "TrialBudget",
+    "TrialDetail",
     "TrialResult",
     "TrialSummary",
 ]
@@ -360,3 +363,61 @@ class TrialSummary(Value):
     metrics: Mapping[str, float] | None = None
     reason: str | None = None
     started_at: datetime | None = None
+
+
+class RunDetail(RunSummary):
+    """One run, with the numbers a listing cannot afford to carry.
+
+    A subclass rather than a sibling: everything the listing says about a run
+    is still true on its own page, and a reader who has learned one shape has
+    learned both. What it adds is the two joins a fifty-row listing will not
+    pay for -- what the run spent, and how long it took.
+    """
+
+    scored: int = Field(default=0, ge=0)
+    spend: Spend = Spend()
+    #: From the first fact to the last, because runs have no finished_at: a
+    #: killed process writes no terminal row, and the tape is the only clock
+    #: that agrees with what actually happened.
+    duration_ms: float | None = None
+    cap_trials: int | None = None
+    cap_usd: float | None = None
+    #: The .cadence this run was started from, verbatim. The point of a run
+    #: page is to answer "what was I even trying", and the hash cannot.
+    manifest: str | None = None
+
+
+class TrialDetail(TrialSummary):
+    """One trial, with what it cost and what it changed.
+
+    The diff is assembled here rather than stored: both programs are already
+    in blobs, keyed by content, and a diff computed on the way out is one
+    that can never disagree with the two blobs it came from.
+    """
+
+    wall_ms: float | None = None
+    model: str | None = None
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    latency_ms: float | None = None
+    cost_usd: float | None = None
+    #: Parent source against candidate source, unified. None when the patch
+    #: never applied, which is a different answer from an empty diff: one
+    #: trial changed nothing, the other produced nothing to compare.
+    diff: str | None = None
+    code: str | None = None
+
+
+class ExperimentSummary(Value):
+    """Every run that named the same experiment, rolled up.
+
+    Derived, not stored. There is no experiments table -- `experiment` is a
+    column runs copy off their manifest -- so this is a GROUP BY with a name,
+    and it can only ever say what its runs say.
+    """
+
+    name: str
+    runs: int = Field(ge=0)
+    running: int = Field(default=0, ge=0)
+    best: str | None = None
+    last_activity: datetime | None = None

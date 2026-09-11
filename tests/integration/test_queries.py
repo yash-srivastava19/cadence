@@ -16,8 +16,11 @@ if not os.environ.get("TEST_DATABASE_URL"):
 from cadence.control.queries import (
     one_run,
     one_trial,
+    run_detail,
+    some_experiments,
     some_runs,
     some_trials,
+    trial_detail,
 )
 from cadence.lifecycle.states import RunState, TrialState
 from tests.integration.test_journal import (
@@ -181,3 +184,106 @@ class TestATrialCarriesItsScore:
         journalled(IMPROVES, run_id="scored", budget=1)
         wanted = some_trials(session, "scored")[0]
         assert one_trial(session, wanted.id).metrics == wanted.metrics
+
+
+class TestARunPageCanAffordMoreThanAListing:
+    """What a fifty-row listing will not pay for: what the run spent, how
+    long it took, and what it was started from."""
+
+    def test_it_is_still_a_run_summary(self, session, journalled):
+        journalled(IMPROVES, run_id="detail", budget=1)
+        assert run_detail(session, "detail").id == one_run(session, "detail").id
+
+    def test_it_counts_what_was_bought(self, session, journalled):
+        journalled(IMPROVES, run_id="bought", budget=1)
+        assert run_detail(session, "bought").spend.calls == 1
+
+    def test_an_unpriced_provider_spends_nothing_nameable(self, session, journalled):
+        """None, not zero. Nobody declared a price for the scripted backend,
+        and $0.00 would be a lie with a decimal point on it."""
+        journalled(IMPROVES, run_id="unpriced", budget=1)
+        assert run_detail(session, "unpriced").spend.usd is None
+
+    def test_it_counts_the_trials_that_came_back_with_a_score(
+        self, session, journalled
+    ):
+        journalled(CRASHES, IMPROVES, run_id="some-scored", budget=2)
+        found = run_detail(session, "some-scored")
+        assert (found.trials, found.scored) == (2, 1)
+
+    def test_it_took_some_time(self, session, journalled):
+        """From the first fact to the last. runs has no finished_at, and a
+        killed process would never have written one anyway."""
+        journalled(IMPROVES, run_id="timed", budget=1)
+        assert run_detail(session, "timed").duration_ms >= 0
+
+    def test_it_carries_the_manifest_it_was_started_from(self, session, journalled):
+        """The point of a run page is "what was I even trying", and a hash
+        cannot answer that."""
+        journalled(IMPROVES, run_id="configured", budget=1)
+        assert run_detail(session, "configured").manifest
+
+    def test_a_run_nobody_recorded_is_none(self, session):
+        assert run_detail(session, "never-existed") is None
+
+
+class TestATrialPageShowsWhatChanged:
+    def test_it_is_still_a_trial_summary(self, session, journalled):
+        journalled(IMPROVES, run_id="one-trial", budget=1)
+        wanted = some_trials(session, "one-trial")[0]
+        assert trial_detail(session, wanted.id).seq == wanted.seq
+
+    def test_the_diff_is_against_the_parent(self, session, journalled):
+        journalled(IMPROVES, run_id="changed", budget=1)
+        wanted = some_trials(session, "changed")[0]
+        diff = trial_detail(session, wanted.id).diff
+        assert diff.startswith("--- parent")
+        assert any(line.startswith("+") for line in diff.splitlines())
+
+    def test_a_trial_that_made_nothing_has_no_diff_rather_than_an_empty_one(
+        self, session, journalled
+    ):
+        """None and "" are different answers: one trial produced nothing to
+        compare, the other produced something identical to its parent."""
+        journalled(NONSENSE, run_id="made-nothing", budget=1)
+        wanted = some_trials(session, "made-nothing")[0]
+        assert trial_detail(session, wanted.id).diff is None
+
+    def test_it_says_what_the_model_call_cost(self, session, journalled):
+        journalled(IMPROVES, run_id="billed", budget=1)
+        wanted = some_trials(session, "billed")[0]
+        assert trial_detail(session, wanted.id).model
+
+    def test_it_says_how_long_measuring_took(self, session, journalled):
+        journalled(IMPROVES, run_id="measured", budget=1)
+        wanted = some_trials(session, "measured")[0]
+        assert trial_detail(session, wanted.id).wall_ms >= 0
+
+    def test_a_trial_nobody_recorded_is_none(self, session):
+        assert trial_detail(session, "never-existed") is None
+
+
+class TestExperimentsAreDerivedNotStored:
+    """There is no experiments table. `experiment` is a column runs copy off
+    their manifest, so this is a GROUP BY with a name."""
+
+    def test_runs_are_gathered_under_their_name(self, session, three_runs):
+        found = {e.name: e for e in some_experiments(session)}
+        assert found["packing"].runs == 2
+        assert found["caching"].runs == 1
+
+    def test_a_run_that_named_nothing_is_left_out(self, session, journalled):
+        """ "" is not an experiment, it is the absence of one, and a row for
+        it would sort into the middle of a list of real ones."""
+        journalled(IMPROVES, run_id="anonymous", budget=1)
+        assert all(e.name for e in some_experiments(session))
+
+    def test_it_shows_the_most_recent_best(self, session, three_runs):
+        found = {e.name: e for e in some_experiments(session)}
+        assert found["packing"].best
+
+    def test_the_busiest_experiment_is_not_the_first_one(self, session, three_runs):
+        """Ordered by when it last did something. An experiment nobody has
+        touched in a month does not belong at the top."""
+        found = some_experiments(session)
+        assert found == sorted(found, key=lambda e: e.last_activity, reverse=True)

@@ -8,16 +8,43 @@ stay cheap enough to run against four hundred rows.
 Returns DTOs, never strings. What the answer looks like is delivery's job.
 """
 
+import difflib
 from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from cadence.control.storage import candidates, events, runs, trials, verdicts
-from cadence.core.dto import RunSummary, TrialSummary
+from cadence.control.storage import (
+    blobs,
+    budget,
+    candidates,
+    events,
+    manifests,
+    model_calls,
+    runs,
+    trials,
+    verdicts,
+)
+from cadence.core.dto import (
+    ExperimentSummary,
+    RunDetail,
+    RunSummary,
+    Spend,
+    TrialDetail,
+    TrialSummary,
+)
+from cadence.core.verdict import Outcome
 from cadence.lifecycle.states import RunState
 
-__all__ = ["one_run", "one_trial", "some_runs", "some_trials"]
+__all__ = [
+    "one_run",
+    "one_trial",
+    "run_detail",
+    "some_experiments",
+    "some_runs",
+    "some_trials",
+    "trial_detail",
+]
 
 #: Enough to browse, few enough that nobody waits. --limit raises it.
 PAGE = 50
@@ -181,4 +208,243 @@ def _trial(row) -> TrialSummary:
         metrics=row["metrics"],
         reason=row["reason"],
         started_at=row["started_at"],
+    )
+
+
+# --- one page's worth: the joins a fifty-row listing will not pay for ------
+
+#: What a run actually bought. Replays are not in here at all: a reply read
+#: back out of the database never became a model_calls row, so counting these
+#: counts calls that were paid for, which is the number on the bill.
+SPENT = (
+    sa.select(
+        model_calls.c.run_id,
+        sa.func.count().label("calls"),
+        sa.func.coalesce(sa.func.sum(model_calls.c.tokens_in), 0).label("tokens_in"),
+        sa.func.coalesce(sa.func.sum(model_calls.c.tokens_out), 0).label("tokens_out"),
+        sa.func.sum(model_calls.c.cost_usd).label("usd"),
+    )
+    .where(model_calls.c.status == "done")
+    .group_by(model_calls.c.run_id)
+    .subquery()
+)
+
+#: The first fact this run wrote. runs.started_at is set when the row is
+#: inserted and the tape starts at the same moment, but a resumed run keeps
+#: its original started_at -- so the pair below measures elapsed wall time,
+#: not time spent working, and the run page says so.
+FIRST_WROTE = (
+    sa.select(sa.func.min(events.c.recorded_at))
+    .where(events.c.run_id == runs.c.id)
+    .scalar_subquery()
+)
+
+#: How many of this run's trials came back with a score. The rest crashed,
+#: timed out, or never produced a candidate at all.
+SCORED_TRIALS = (
+    sa.select(sa.func.count())
+    .select_from(SCORED)
+    .where(sa.and_(trials.c.run_id == runs.c.id, verdicts.c.outcome == Outcome.SCORED))
+    .scalar_subquery()
+)
+
+
+def run_detail(session: Session, run_id: str) -> RunDetail | None:
+    """One run, with what it spent and what it was started from."""
+    row = (
+        session.execute(
+            sa.select(
+                runs,
+                STARTED.label("started_trials"),
+                HEARTBEAT.label("last_wrote"),
+                FIRST_WROTE.label("first_wrote"),
+                SCORED_TRIALS.label("scored"),
+                SPENT.c.calls,
+                SPENT.c.tokens_in,
+                SPENT.c.tokens_out,
+                SPENT.c.usd,
+                budget.c.cap_trials,
+                budget.c.cap_usd,
+                manifests.c.source.label("manifest"),
+            )
+            .select_from(
+                runs.outerjoin(SPENT, SPENT.c.run_id == runs.c.id)
+                .outerjoin(budget, budget.c.run_id == runs.c.id)
+                .outerjoin(manifests, manifests.c.hash == runs.c.manifest_hash)
+            )
+            .where(runs.c.id == run_id)
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        return None
+    return RunDetail(
+        **_run(row).model_dump(),
+        scored=row["scored"] or 0,
+        spend=Spend(
+            calls=row["calls"] or 0,
+            tokens_in=row["tokens_in"] or 0,
+            tokens_out=row["tokens_out"] or 0,
+            usd=None if row["usd"] is None else float(row["usd"]),
+        ),
+        duration_ms=_elapsed(row["first_wrote"], row["last_wrote"]),
+        cap_trials=row["cap_trials"],
+        cap_usd=None if row["cap_usd"] is None else float(row["cap_usd"]),
+        manifest=row["manifest"],
+    )
+
+
+#: The candidate this trial produced, and the one it was made from. Both
+#: reached through blobs, which is where the source actually lives -- the
+#: trial row holds fingerprints and nothing else.
+MINE = candidates.alias("mine")
+THEIRS = candidates.alias("theirs")
+CODE = blobs.alias("code")
+PARENT_CODE = blobs.alias("parent_code")
+
+DETAILED = (
+    trials.outerjoin(
+        MINE,
+        sa.and_(
+            MINE.c.run_id == trials.c.run_id,
+            MINE.c.fingerprint == trials.c.candidate_fingerprint,
+        ),
+    )
+    .outerjoin(verdicts, verdicts.c.candidate_hash == MINE.c.fingerprint)
+    .outerjoin(CODE, CODE.c.hash == MINE.c.code_hash)
+    .outerjoin(
+        THEIRS,
+        sa.and_(
+            THEIRS.c.run_id == trials.c.run_id,
+            THEIRS.c.fingerprint == trials.c.parent_fingerprint,
+        ),
+    )
+    .outerjoin(PARENT_CODE, PARENT_CODE.c.hash == THEIRS.c.code_hash)
+    .outerjoin(model_calls, model_calls.c.trial_id == trials.c.id)
+)
+
+DETAIL_COLUMNS = (
+    trials,
+    verdicts.c.outcome,
+    verdicts.c.metrics,
+    verdicts.c.wall_ms,
+    CODE.c.body.label("code"),
+    PARENT_CODE.c.body.label("parent_code"),
+    model_calls.c.model,
+    model_calls.c.tokens_in,
+    model_calls.c.tokens_out,
+    model_calls.c.latency_ms,
+    model_calls.c.cost_usd,
+)
+
+
+def trial_detail(session: Session, trial_id: str) -> TrialDetail | None:
+    """One trial, with what it cost and what it changed.
+
+    The diff is computed here rather than stored. Both programs are already
+    in blobs, keyed by content, so a diff made on the way out is one that
+    cannot disagree with the two blobs it came from -- and there is no column
+    to migrate and nobody to keep it up to date.
+    """
+    row = (
+        session.execute(
+            sa.select(*DETAIL_COLUMNS)
+            .select_from(DETAILED)
+            .where(trials.c.id == trial_id)
+            # A retried trial has more than one model call. The last one is
+            # the one that produced the candidate being shown.
+            .order_by(model_calls.c.occurred_at.desc())
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        return None
+    return TrialDetail(
+        **_trial(row).model_dump(),
+        wall_ms=row["wall_ms"],
+        model=row["model"],
+        tokens_in=row["tokens_in"],
+        tokens_out=row["tokens_out"],
+        latency_ms=row["latency_ms"],
+        cost_usd=None if row["cost_usd"] is None else float(row["cost_usd"]),
+        code=row["code"],
+        diff=_diff(row["parent_code"], row["code"]),
+    )
+
+
+def some_experiments(session: Session, limit: int = PAGE) -> list[ExperimentSummary]:
+    """Runs grouped by the name they were started under.
+
+    Derived, because there is no experiments table to read: `experiment` is a
+    column each run copies off its manifest. Runs that named nothing are left
+    out rather than collected under a blank -- "" is not an experiment, it is
+    the absence of one, and a row for it would sort into the middle of a list
+    of real ones.
+    """
+    rows = session.execute(
+        sa.select(
+            runs.c.experiment,
+            sa.func.count().label("runs"),
+            sa.func.count(sa.case((runs.c.status == RunState.RUNNING, 1))).label(
+                "running"
+            ),
+            sa.func.max(runs.c.started_at).label("last_activity"),
+        )
+        .where(runs.c.experiment.isnot(None))
+        .group_by(runs.c.experiment)
+        .order_by(sa.func.max(runs.c.started_at).desc())
+        .limit(limit)
+    ).mappings()
+    return [
+        ExperimentSummary(
+            name=row["experiment"],
+            runs=row["runs"],
+            running=row["running"],
+            best=_best_of(session, row["experiment"]),
+            last_activity=row["last_activity"],
+        )
+        for row in rows
+    ]
+
+
+def _best_of(session: Session, experiment: str) -> str | None:
+    """The most recent run of this experiment that has a best to show.
+
+    Most recent rather than highest scoring: which of two metrics is better
+    is the manifest's business, and a rollup that has not read a manifest is
+    not entitled to an opinion about it.
+    """
+    return session.execute(
+        sa.select(runs.c.best)
+        .where(sa.and_(runs.c.experiment == experiment, runs.c.best.isnot(None)))
+        .order_by(runs.c.started_at.desc())
+        .limit(1)
+    ).scalar()
+
+
+def _elapsed(first: datetime | None, last: datetime | None) -> float | None:
+    if first is None or last is None:
+        return None
+    return (last - first).total_seconds() * 1000
+
+
+def _diff(parent: str | None, code: str | None) -> str | None:
+    """What changed, or None when there is nothing to compare.
+
+    None and "" are different answers and the page says so differently: a
+    trial whose patch was rejected produced no candidate at all, and a trial
+    that produced one identical to its parent changed nothing. Only the
+    second of those is an empty diff.
+    """
+    if code is None:
+        return None
+    return "".join(
+        difflib.unified_diff(
+            (parent or "").splitlines(keepends=True),
+            code.splitlines(keepends=True),
+            fromfile="parent",
+            tofile="candidate",
+        )
     )
