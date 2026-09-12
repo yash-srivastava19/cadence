@@ -14,10 +14,15 @@ which is why there is exactly one place where a shape is decided and it is
 
 from pathlib import Path
 
-__all__ = ["page"]
+__all__ = ["VENDOR", "page"]
 
-#: Beside this module, so it ships in the wheel the way providers.yml does.
+#: Beside this module, so they ship in the wheel the way providers.yml does.
 HERE = Path(__file__).parent / "page.html"
+
+#: diff2html, vendored rather than fetched from a CDN. A dashboard for
+#: watching a run on your own machine should not stop rendering diffs
+#: because the machine is offline, and 94KB checked in is the price of that.
+VENDOR = Path(__file__).parent / "vendor"
 
 
 def page() -> str:

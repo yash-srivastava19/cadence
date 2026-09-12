@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cadence</title>
+<link rel="stylesheet" href="/vendor/diff2html.min.css">
+<script src="/vendor/diff2html.min.js"></script>
 <style>
   /* Five colors and two type sizes. Everything else is spacing.
      A status that is coloured does not also need a border, and a number
@@ -11,13 +13,11 @@
   :root {
     --bg: #0f1115; --panel: #161920; --line: #262b36; --ink: #d7dae1;
     --dim: #7b8394; --accent: #7aa2f7; --good: #7fd88f; --bad: #f7768e;
-    --add: #1d3226; --del: #34181d;
   }
   @media (prefers-color-scheme: light) {
     :root {
       --bg: #f7f8fa; --panel: #f0f2f5; --line: #e2e5ea; --ink: #1c2030;
       --dim: #6b7280; --accent: #2f5bd8; --good: #197a3d; --bad: #c0334a;
-      --add: #e3f7e8; --del: #fdeaee;
     }
   }
   * { box-sizing: border-box; }
@@ -50,16 +50,21 @@
   .facts { color: var(--dim); margin: 0 0 18px; }
   .facts b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
   .facts span + span::before { content: " · "; color: var(--line); }
-  table { width: 100%; border-collapse: collapse; }
-  th {
+  /* Scoped to this page's own tables, because diff2html draws its diff as
+     a table too. Bare `td` rules reached into it and put 10px of padding on
+     cells whose line numbers are absolutely positioned -- which threw the
+     whole gutter hundreds of pixels out of line and made the library look
+     broken when the page was the one breaking it. */
+  table.list { width: 100%; border-collapse: collapse; }
+  table.list th {
     text-align: left; font-size: 11px; text-transform: uppercase;
     letter-spacing: .08em; color: var(--dim); font-weight: 600;
     padding: 5px 10px; border-bottom: 1px solid var(--line);
   }
-  td { padding: 5px 10px; border-bottom: 1px solid var(--line); }
-  tbody tr { cursor: pointer; }
-  tbody tr:hover td { background: rgba(122,162,247,.07); }
-  tbody tr.on td { background: rgba(122,162,247,.13); }
+  table.list td { padding: 5px 10px; border-bottom: 1px solid var(--line); }
+  table.list tbody tr { cursor: pointer; }
+  table.list tbody tr:hover td { background: rgba(122,162,247,.07); }
+  table.list tbody tr.on td { background: rgba(122,162,247,.13); }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
   .dim { color: var(--dim); }
   .bad { color: var(--bad); }
@@ -67,17 +72,26 @@
   /* The winner, marked where the loop's own choice lands rather than
      inferred from the numbers: the page does not know which way is better. */
   .won { color: var(--good); font-size: 11px; }
-  pre.diff, pre.src {
+  /* diff2html's own stylesheet, left alone. Its default is what a diff is
+     expected to look like, and every attempt to repaint it in this page's
+     five colours came out worse than the thing it was replacing. The only
+     rules here are the ones that sit it in the page: room around it, and no
+     file header, because the heading two lines up already says which trial
+     this is and the diff is always one file called "candidate". */
+  .d2h-wrapper { margin-top: 8px; }
+  .d2h-file-header { display: none; }
+  /* diff2html pins each line number with `position: absolute` and no offsets,
+     so it lands at its static position -- but only if some ancestor is
+     positioned. Its own stylesheet contains no `position: relative` at all,
+     and this page's content scrolls inside #main, so the numbers resolved
+     against the page and stayed put while the rows scrolled away from them.
+     One line, on the library's own wrapper rather than on our layout. */
+  .d2h-code-wrapper { position: relative; }
+
+  pre.src {
     background: var(--panel); border-radius: 6px; padding: 0;
     overflow-x: auto; font-size: 12px; margin: 0;
   }
-  pre.diff div { padding: 0 12px; white-space: pre; }
-  /* Split view. Both sides scroll as one block rather than each having its
-     own bar, and every row is exactly one line tall in both panes, which is
-     what keeps the two columns lined up without measuring anything. */
-  pre.diff.split { display: flex; }
-  pre.diff.split .pane { flex: 1 0 auto; min-width: 50%; }
-  pre.diff.split .pane:first-child { border-right: 1px solid var(--bg); }
   /* Beside the heading, not floated off to the window's right edge: a
      control the width of the screen away from what it controls is one
      nobody finds. Inside an h3, which is uppercased, so it opts out. */
@@ -85,10 +99,6 @@
   #how a + a::before { content: " / "; color: var(--line); }
   #how a.off { color: var(--dim); }
   pre.src { padding: 12px; white-space: pre; }
-  .add { background: var(--add); }
-  .del { background: var(--del); }
-  .hunk { color: var(--accent); }
-  .meta { color: var(--dim); }
   a { color: var(--accent); cursor: pointer; text-decoration: none; }
   #crumbs { margin-bottom: 16px; color: var(--dim); }
   .empty { color: var(--dim); padding: 14px 0; }
@@ -180,7 +190,7 @@ async function drawRuns() {
   $("crumbs").innerHTML = at.experiment ? esc(at.experiment) : "All runs";
   moving = rows.some(r => r.status === "running" && !r.stalled);
   if (!rows.length) { $("body").innerHTML = '<div class="empty">no runs recorded</div>'; return; }
-  $("body").innerHTML = `<table><thead><tr>
+  $("body").innerHTML = `<table class="list"><thead><tr>
       <th>run</th><th>status</th><th class="num">trials</th>
       <th>experiment</th><th>owner</th><th>started</th></tr></thead><tbody>${
     rows.map(r => `<tr data-id="${esc(r.id)}">
@@ -213,7 +223,7 @@ async function drawRun() {
     ])}
     ${run.reason ? `<p class="dim">${esc(run.reason)}</p>` : ""}
     <h3>Trials</h3>
-    ${trials.length ? `<table><thead><tr>
+    ${trials.length ? `<table class="list"><thead><tr>
       <th class="num">#</th><th>result</th><th>metrics</th><th>why</th>
       </tr></thead><tbody>${
       trials.map(t => `<tr data-id="${esc(t.id)}" class="${t.id === at.trial ? "on" : ""}">
@@ -269,44 +279,6 @@ const toggle = () => `<span id="how">${
   ["split", "unified"].map(k =>
     `<a class="${how === k ? "" : "off"}" onclick="setHow('${k}')">${k}</a>`).join("")}</span>`;
 
-// A unified diff into aligned pairs. Runs of removed and added lines are
-// zipped: the first line taken out sits opposite the first line put in, and
-// whichever run is shorter is padded, so the two panes always have the same
-// number of rows and line up without anything being measured.
-function paired(diff) {
-  const rows = [];
-  let gone = [], came = [];
-  const flush = () => {
-    for (let i = 0; i < Math.max(gone.length, came.length); i++) {
-      rows.push({ left: gone[i], right: came[i] });
-    }
-    gone = []; came = [];
-  };
-  for (const l of diff.split("\n")) {
-    if (l.startsWith("---") || l.startsWith("+++")) continue;
-    if (l.startsWith("@@")) { flush(); rows.push({ hunk: l }); continue; }
-    if (l.startsWith("-")) { gone.push(l.slice(1)); continue; }
-    if (l.startsWith("+")) { came.push(l.slice(1)); continue; }
-    flush();
-    rows.push({ left: l.slice(1), right: l.slice(1), same: true });
-  }
-  flush();
-  return rows;
-}
-
-const cell = (text, klass) =>
-  `<div class="${text === undefined ? "" : klass}">${
-    text === undefined || text === "" ? "&nbsp;" : esc(text)}</div>`;
-
-function splitHtml(diff) {
-  const rows = paired(diff);
-  const side = (which, klass) => `<div class="pane">${
-    rows.map(r => r.hunk !== undefined
-      ? `<div class="hunk">${esc(r.hunk)}</div>`
-      : cell(r[which], r.same ? "" : klass)).join("")}</div>`;
-  return `<pre class="diff split">${side("left", "del")}${side("right", "add")}</pre>`;
-}
-
 function diffHtml(t) {
   if (t.diff === null || t.diff === undefined) {
     // Which of the two "no candidate" cases this is, read off what is
@@ -322,16 +294,19 @@ function diffHtml(t) {
   if (!t.diff.trim()) {
     return '<p class="empty">The candidate is identical to its parent.</p>';
   }
-  const line = (l) => {
-    const c = l.startsWith("+++") || l.startsWith("---") ? "meta"
-      : l.startsWith("@@") ? "hunk"
-      : l.startsWith("+") ? "add"
-      : l.startsWith("-") ? "del" : "";
-    return `<div class="${c}">${esc(l) || "&nbsp;"}</div>`;
-  };
-  return how === "split"
-    ? splitHtml(t.diff)
-    : `<pre class="diff">${t.diff.split("\n").map(line).join("")}</pre>`;
+  // diff2html from the same unified diff the API already returns. Its two
+  // output formats are the two this page offers, so the toggle did not have
+  // to change -- only what draws underneath it.
+  //
+  // What it adds over the forty lines it replaces is the part that was
+  // actually hard: the changed *words* inside a changed line, so a one
+  // character edit no longer paints the whole line red and green.
+  return Diff2Html.html(t.diff, {
+    outputFormat: how === "split" ? "side-by-side" : "line-by-line",
+    drawFileList: false,
+    matching: "words",
+    colorScheme: "auto",
+  });
 }
 
 // --- the loop -----------------------------------------------------------

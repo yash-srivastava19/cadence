@@ -25,12 +25,23 @@ from cadence.control.queries import (
     trial_detail,
 )
 from cadence.delivery import as_json
-from cadence.web.page import page
+from cadence.web.page import VENDOR, page
 
 __all__ = ["Answer", "answer"]
 
 JSON = "application/json"
 HTML = "text/html; charset=utf-8"
+
+#: What may be served out of vendor/, by name and by type.
+#:
+#: An allowlist rather than a path joined onto a directory. Nothing here is
+#: dynamic -- two files ship in the wheel and neither name comes from a
+#: request -- so the way to be sure a URL cannot reach outside the folder is
+#: to never build a path out of one.
+VENDORED = {
+    "diff2html.min.js": "text/javascript; charset=utf-8",
+    "diff2html.min.css": "text/css; charset=utf-8",
+}
 
 
 @dataclass(frozen=True)
@@ -51,6 +62,8 @@ def answer(path: str, params: Mapping[str, str], open_session: Callable) -> Answ
     """
     if path in ("/", "/index.html"):
         return Answer(200, page(), HTML)
+    if path.startswith("/vendor/"):
+        return _vendored(path[len("/vendor/") :])
     if not path.startswith("/api/"):
         return _missing(path)
     # Split first, unquote second. A trial id is "<run id>/<seq>", so the
@@ -59,6 +72,12 @@ def answer(path: str, params: Mapping[str, str], open_session: Callable) -> Answ
     rest = [unquote(part) for part in path[len("/api/") :].strip("/").split("/")]
     with open_session() as session:
         return _dispatch(rest, params, session)
+
+
+def _vendored(name: str) -> Answer:
+    if name not in VENDORED:
+        return _missing("/vendor/" + name)
+    return Answer(200, (VENDOR / name).read_text(encoding="utf-8"), VENDORED[name])
 
 
 def _dispatch(rest: list[str], params: Mapping[str, str], session: Session) -> Answer:
