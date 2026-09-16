@@ -19,9 +19,6 @@ def dashboard(
     host: str = typer.Option("127.0.0.1", "--host", help="Localhost by default."),
 ) -> None:
     """Browse experiments, runs and trials in a browser."""
-    # `reading` dies with a sentence when DATABASE_URL is missing or the
-    # schema is stale. Calling it once here means the user finds out now,
-    # rather than in a browser tab after the first fetch.
     with reading():
         pass
 

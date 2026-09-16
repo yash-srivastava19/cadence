@@ -1,7 +1,3 @@
-# Vendored third-party code. Kept byte for byte as it was published, so
-# that checking it against upstream is a diff of nothing -- a whitespace
-# hook "fixing" someone else's minified bundle makes that impossible to
-# verify and is not a fix.
 exclude: '^cadence/web/vendor/'
 
 repos:

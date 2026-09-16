@@ -17,13 +17,6 @@ from cadence.delivery import as_json
 __all__ = ["reading", "show", "wanted_json"]
 
 
-#: One engine per database, however many times this is called.
-#:
-#: A command calls `reading` once and exits, so building an engine inside it
-#: cost nothing and nobody noticed that every call makes a fresh connection
-#: pool and checks the schema down a connection of its own. The dashboard
-#: calls it once per request, several times every few seconds -- which is a
-#: pool per fetch, and Postgres backends that pile up until it falls over.
 @functools.cache
 def _factory(url: str) -> sessionmaker[Session]:
     return sessions(url)

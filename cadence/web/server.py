@@ -20,8 +20,6 @@ from cadence.web.api import Answer, answer
 
 __all__ = ["serve"]
 
-#: Localhost, spelled out. "" would bind every interface, which on a laptop
-#: on a shared network publishes someone's source code to it.
 HOST = "127.0.0.1"
 
 
@@ -41,8 +39,6 @@ def serve(
     try:
         server = ThreadingHTTPServer((host, port), _handler(open_session))
     except OSError as error:
-        # Rule 5: this crosses into a command as a value. Below here there
-        # are errnos; above here there is one sentence about a port.
         raise SetupError(
             f"cannot serve on {host}:{port} -- {error.strerror}"
         ) from error
@@ -56,17 +52,12 @@ def serve(
 
 def _handler(open_session: Callable) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
-        # Only GET is defined, so every other verb gets a 501 from the base
-        # class. That is the read-only promise enforced rather than stated.
         def do_GET(self) -> None:  # the name is the base class's, not ours
             parsed = urlparse(self.path)
             params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
             try:
                 said = answer(parsed.path, params, open_session)
             except Exception as error:
-                # A 500 should never happen, and when it does the person
-                # looking at it is the person who can fix it: say what broke
-                # rather than dropping the connection on them.
                 said = _broke(error)
             self._send(said)
 

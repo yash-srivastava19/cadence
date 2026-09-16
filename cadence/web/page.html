@@ -7,9 +7,6 @@
 <link rel="stylesheet" href="/vendor/diff2html.min.css">
 <script src="/vendor/diff2html.min.js"></script>
 <style>
-  /* Five colors and two type sizes. Everything else is spacing.
-     A status that is coloured does not also need a border, and a number
-     that is on its own line does not also need a box around it. */
   :root {
     --bg: #0f1115; --panel: #161920; --line: #262b36; --ink: #d7dae1;
     --dim: #7b8394; --accent: #7aa2f7; --good: #7fd88f; --bad: #f7768e;
@@ -50,11 +47,6 @@
   .facts { color: var(--dim); margin: 0 0 18px; }
   .facts b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
   .facts span + span::before { content: " · "; color: var(--line); }
-  /* Scoped to this page's own tables, because diff2html draws its diff as
-     a table too. Bare `td` rules reached into it and put 10px of padding on
-     cells whose line numbers are absolutely positioned -- which threw the
-     whole gutter hundreds of pixels out of line and made the library look
-     broken when the page was the one breaking it. */
   table.list { width: 100%; border-collapse: collapse; }
   table.list th {
     text-align: left; font-size: 11px; text-transform: uppercase;
@@ -69,32 +61,15 @@
   .dim { color: var(--dim); }
   .bad { color: var(--bad); }
   .live { color: var(--accent); }
-  /* The winner, marked where the loop's own choice lands rather than
-     inferred from the numbers: the page does not know which way is better. */
   .won { color: var(--good); font-size: 11px; }
-  /* diff2html's own stylesheet, left alone. Its default is what a diff is
-     expected to look like, and every attempt to repaint it in this page's
-     five colours came out worse than the thing it was replacing. The only
-     rules here are the ones that sit it in the page: room around it, and no
-     file header, because the heading two lines up already says which trial
-     this is and the diff is always one file called "candidate". */
   .d2h-wrapper { margin-top: 8px; }
   .d2h-file-header { display: none; }
-  /* diff2html pins each line number with `position: absolute` and no offsets,
-     so it lands at its static position -- but only if some ancestor is
-     positioned. Its own stylesheet contains no `position: relative` at all,
-     and this page's content scrolls inside #main, so the numbers resolved
-     against the page and stayed put while the rows scrolled away from them.
-     One line, on the library's own wrapper rather than on our layout. */
   .d2h-code-wrapper { position: relative; }
 
   pre.src {
     background: var(--panel); border-radius: 6px; padding: 0;
     overflow-x: auto; font-size: 12px; margin: 0;
   }
-  /* Beside the heading, not floated off to the window's right edge: a
-     control the width of the screen away from what it controls is one
-     nobody finds. Inside an h3, which is uppercased, so it opts out. */
   #how { margin-left: 14px; text-transform: none; letter-spacing: 0; }
   #how a + a::before { content: " / "; color: var(--line); }
   #how a.off { color: var(--dim); }
@@ -112,12 +87,8 @@
 </div>
 <script>
 const $ = (id) => document.getElementById(id);
-// What the page is looking at. One object, so a refresh is just "draw this
-// again" and there is no second copy of the answer to keep in step.
 let at = { experiment: null, run: null, trial: null };
 let timer = null;
-// Whether what is on screen can still change. Read off the rows rather than
-// off the rendered page, so restyling cannot quietly stop the polling.
 let moving = false;
 
 const get = async (path) => {
@@ -128,10 +99,6 @@ const get = async (path) => {
 };
 
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-// Colour marks the exception, never the norm. Ten trials that all scored
-// are ten rows of the same word, and painting them green spends the eye's
-// attention on the thing it already expected -- so success is plain, and
-// the only green on the page is the one candidate that won.
 const BAD = ["failed", "stalled", "crashed", "abandoned", "rejected"];
 const state = (s) => {
   const c = s === "running" ? "live" : BAD.includes(s) ? "bad" : "dim";
@@ -160,16 +127,10 @@ const metrics = (m) => m && Object.keys(m).length
     ).join(" &nbsp; ")
   : '<span class="dim">–</span>';
 
-// Value first, then what it is: "10 trials" reads; "TRIALS / 10" in a box
-// is the same two words with a border drawn round them.
-// A fact nobody recorded is left out rather than printed as a dash: six
-// dashes in a row is not a summary. Callers pass null for those, so the
-// nulls have to go before anything unpacks a pair.
 const facts = (pairs) => `<p class="facts">${
   pairs.filter(p => p && p[0] !== null && p[0] !== undefined)
        .map(([v, k]) => `<span><b>${v}</b> ${k}</span>`).join("")}</p>`;
 
-// --- drawing ------------------------------------------------------------
 
 async function drawExperiments() {
   const rows = await get("/api/experiments");
@@ -258,12 +219,6 @@ async function drawTrial() {
     ${t.code ? `<details><summary>the whole program</summary><pre class="src">${esc(t.code)}</pre></details>` : ""}`;
 }
 
-// Four different things, and the page must not render them the same way:
-// nothing was ever asked, an answer came back that no patch could be made
-// of, a candidate identical to its parent, and an actual change.
-// Split or unified. Remembered, because somebody who prefers one prefers it
-// every time -- and kept in this browser rather than on the run, because it
-// is a fact about the reader and not about what happened.
 let how = "split";
 try { how = localStorage.getItem("cadence.diff") || "split"; } catch (e) {}
 
@@ -273,19 +228,12 @@ function setHow(next) {
   drawTrial();
 }
 
-// Only drawn where there is a diff to read. A control that changes nothing
-// is worse than no control: it says the page has a mode when it has none.
 const toggle = () => `<span id="how">${
   ["split", "unified"].map(k =>
     `<a class="${how === k ? "" : "off"}" onclick="setHow('${k}')">${k}</a>`).join("")}</span>`;
 
 function diffHtml(t) {
   if (t.diff === null || t.diff === undefined) {
-    // Which of the two "no candidate" cases this is, read off what is
-    // there rather than guessed at. A trial that never got an answer and a
-    // trial whose patch would not apply both have no candidate, and
-    // telling somebody the patch was rejected when no call ever came back
-    // sends them to read a diff that was never proposed.
     const why = t.response
       ? "The reply came back, but no patch could be made of it."
       : "No answer came back, so nothing was ever built.";
@@ -294,13 +242,6 @@ function diffHtml(t) {
   if (!t.diff.trim()) {
     return '<p class="empty">The candidate is identical to its parent.</p>';
   }
-  // diff2html from the same unified diff the API already returns. Its two
-  // output formats are the two this page offers, so the toggle did not have
-  // to change -- only what draws underneath it.
-  //
-  // What it adds over the forty lines it replaces is the part that was
-  // actually hard: the changed *words* inside a changed line, so a one
-  // character edit no longer paints the whole line red and green.
   return Diff2Html.html(t.diff, {
     outputFormat: how === "split" ? "side-by-side" : "line-by-line",
     drawFileList: false,
@@ -309,7 +250,6 @@ function diffHtml(t) {
   });
 }
 
-// --- the loop -----------------------------------------------------------
 
 async function draw() {
   try {
@@ -318,9 +258,6 @@ async function draw() {
   } catch (e) {
     $("body").innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   }
-  // Poll only while something is actually moving. A finished run does not
-  // change, and a dashboard that refetches it every five seconds forever is
-  // a dashboard nobody leaves open.
   clearTimeout(timer);
   if (moving) timer = setTimeout(draw, 5000);
 }

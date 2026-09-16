@@ -376,12 +376,7 @@ class RunDetail(RunSummary):
 
     scored: int = Field(default=0, ge=0)
     spend: Spend = Spend()
-    #: From the first fact to the last, because runs have no finished_at: a
-    #: killed process writes no terminal row, and the tape is the only clock
-    #: that agrees with what actually happened.
     duration_ms: float | None = None
-    #: The .cadence this run was started from, verbatim. The point of a run
-    #: page is to answer "what was I even trying", and the hash cannot.
     manifest: str | None = None
 
 
@@ -399,14 +394,8 @@ class TrialDetail(TrialSummary):
     tokens_out: int | None = None
     latency_ms: float | None = None
     cost_usd: float | None = None
-    #: Parent source against candidate source, unified. None when the patch
-    #: never applied, which is a different answer from an empty diff: one
-    #: trial changed nothing, the other produced nothing to compare.
     diff: str | None = None
     code: str | None = None
-    #: What the model actually said, before anything was made of it. The one
-    #: place to look when a patch would not apply: the diff panel can only
-    #: ever show what survived parsing, and this is what was parsed.
     response: str | None = None
 
 
