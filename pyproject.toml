@@ -23,23 +23,6 @@ dependencies = [
 [project.scripts]
 cadence = "cadence.commands:main"
 
-[project.optional-dependencies]
-test = [
-  "pytest>=8.4.1",
-  "pytest-cov>=6.2.1",
-  "pytest-mock>=3.10.0",
-  "pytest-xdist>=3.3.0",
-]
-
-# What CI installs, with `pip install -e .[dev,test]`. Ruff is not here: it
-# runs from its own pre-commit hook repo, not from the environment.
-dev = [
-  "mypy>=1.16.1",
-  "types-PyYAML>=6.0.12",
-  "import-linter>=2.13",
-  "pre-commit>=4.2.0",
-]
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -179,6 +162,9 @@ docs = [
     "mkdocs-material>=9.6.15",
 ]
 
+# The one environment: groups, not extras. CI runs `uv sync --all-groups`,
+# make install runs the same through uv, and there is no second list to
+# drift out of step.
 dev = [
     "import-linter>=2.13",
     "mypy>=1.16.1",

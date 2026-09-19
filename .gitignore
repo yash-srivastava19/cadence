@@ -1,5 +1,15 @@
 *.pyc
 __pycache__/
+
+# Tool caches uv and friends create next to the project
+.venv/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
 .env
 .vscode/
 .idea/
