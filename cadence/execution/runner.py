@@ -84,6 +84,18 @@ class TrialRunner:
         verdict = self._verdict(code)
         return Measurement(verdict=verdict, wall_ms=(time.monotonic() - started) * 1000)
 
+    def once(self, code: str) -> Measurement:
+        """One run of one program, on the first seed.
+
+        try_ scores a candidate the way a trial will: every seed, averaged.
+        A rehearsal has no business paying for the other seeds -- it exists to
+        say whether the scoring command works at all and roughly how long it
+        takes, and one run answers both.
+        """
+        started = time.monotonic()
+        verdict = self._one(code, self.seeds[0])
+        return Measurement(verdict=verdict, wall_ms=(time.monotonic() - started) * 1000)
+
     def _verdict(self, code: str) -> Verdict:
         readings: list[Metrics] = []
         for seed in self.seeds:

@@ -1,5 +1,4 @@
 import os
-import shlex
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -12,11 +11,13 @@ from cadence.control.preflight import named as _named
 from cadence.control.registry import (
     guidance,
     objective_for,
+    runner_for,
     seed_program,
 )
+from cadence.core.dto import Measurement
+from cadence.core.verdict import Outcome, Scored
 from cadence.errors import CadenceError
-from cadence.execution.sandboxes.subprocess import Job, Subprocess
-from cadence.parsing.metrics import MetricNotReported, read, verifier_broke
+from cadence.execution.runner import TrialRunner
 
 
 @json_capable
@@ -40,14 +41,13 @@ def check(
         preflight = inspect(manifest, root, code)
         _report(preflight)
         _objective(manifest)
-        execution = _baseline(manifest, root, code)
-        readings = _metrics(manifest, execution.stdout)
-        _repeats(manifest, root, code, readings)
-        _affordable(manifest, execution)
+        runner = runner_for(manifest, root)
+        baseline = _baseline(manifest, runner, code)
+        readings = _metrics(manifest, baseline)
+        _repeats(manifest, runner, code, readings)
+        _affordable(manifest, baseline)
         _guidance(manifest, root)
         _recording()
-    except MetricNotReported as error:
-        die(str(error))
     except CadenceError as error:
         die(str(error))
     _verdict(preflight, manifest)
@@ -96,45 +96,43 @@ def _goals(manifest: Manifest) -> str:
     return ", ".join(f"{name} to {goal}" for name, goal in manifest.metrics.items())
 
 
-def _score_once(manifest: Manifest, root: Path, code: str):
-    return Subprocess().run(
-        Job(
-            code=code,
-            program=manifest.program,
-            command=tuple(shlex.split(manifest.command)),
-            workspace=str(root),
-            seed=manifest.sandbox.seeds[0],
-            seconds=manifest.sandbox.seconds,
-            memory_mb=manifest.sandbox.memory_mb,
+def _baseline(manifest: Manifest, runner: TrialRunner, code: str) -> Measurement:
+    """Score the unmodified program once, through the runner a run would use.
+
+    What running a candidate produced is the runner's verdict to give; check
+    only decides what to do about it, which is the one thing the two doors
+    should differ on. The runner's reasons are the ones a run reports, so the
+    same sentence means the same failure here and there.
+    """
+    measured = runner.once(code)
+    verdict = measured.verdict
+    if isinstance(verdict, Scored):
+        found(
+            "baseline",
+            f"`{manifest.command}` exited 0 in {measured.wall_ms:.0f}ms",
         )
-    )
-
-
-def _baseline(manifest: Manifest, root: Path, code: str):
-    execution = _score_once(manifest, root, code)
-    broke = verifier_broke(execution.stdout)
-    if broke is not None:
+        return measured
+    if verdict.escalates:
         die(
-            f"`{manifest.command}` reported a fault of its own: {broke}",
+            verdict.reason,
             "A scoring command already broken before a run starts would score"
             " every candidate the same way, and the run would report success.",
         )
-    if not execution.ok:
-        die(
-            f"`{manifest.command}` failed on your unmodified program:\n\n"
-            f"{execution.stderr.strip()[-400:]}",
-            "Cadence scores every candidate with this command, so it must"
-            " pass before a run is worth starting.",
-        )
-    found(
-        "baseline",
-        f"`{manifest.command}` exited 0 in {execution.duration_ms:.0f}ms",
+    if verdict.outcome is Outcome.INVALID:
+        die(verdict.reason)
+    die(
+        f"`{manifest.command}` failed on your unmodified program:\n\n{verdict.reason}",
+        "Cadence scores every candidate with this command, so it must"
+        " pass before a run is worth starting.",
     )
-    return execution
+    raise AssertionError  # die() exits; keeps the return reachable for mypy
 
 
-def _metrics(manifest: Manifest, stdout: str) -> Mapping[str, float]:
-    readings = read(stdout, manifest.metrics)
+def _metrics(manifest: Manifest, baseline: Measurement) -> Mapping[str, float]:
+    verdict = baseline.verdict
+    # _baseline returned it, so this holds; the assert is for the checker.
+    assert isinstance(verdict, Scored)
+    readings = dict(verdict.metrics)
     for name, value in readings.items():
         found("metric", f"{name} = {value:g}, and {manifest.metrics[name]} is better")
     seeds = len(manifest.sandbox.seeds)
@@ -146,7 +144,9 @@ def _metrics(manifest: Manifest, stdout: str) -> Mapping[str, float]:
     return readings
 
 
-def _repeats(manifest: Manifest, root: Path, code: str, first: Mapping[str, float]):
+def _repeats(
+    manifest: Manifest, runner: TrialRunner, code: str, first: Mapping[str, float]
+) -> None:
     """Score the unmodified program a second time and compare.
 
     A scoring rule that answers differently each time makes the search chase
@@ -159,14 +159,18 @@ def _repeats(manifest: Manifest, root: Path, code: str, first: Mapping[str, floa
     in the last places without being meaningfully non-deterministic, and the
     manifest is where a project says how much of that it has.
     """
-    again = _score_once(manifest, root, code)
-    if not again.ok:
+    again = runner.once(code)
+    verdict = again.verdict
+    if not isinstance(verdict, Scored):
+        if verdict.outcome is Outcome.INVALID:
+            die(verdict.reason)
         die(
             f"`{manifest.command}` passed once and failed the second time.",
             "Cadence runs it once per seed per trial. One that fails"
             " intermittently cannot rank anything.",
         )
-    second = read(again.stdout, manifest.metrics)
+        raise AssertionError  # die() exits
+    second = verdict.metrics
     tolerance = manifest.verifier.tolerance
     drifted = {
         name: (first[name], second[name])
@@ -200,19 +204,19 @@ def _repeats(manifest: Manifest, root: Path, code: str, first: Mapping[str, floa
     )
 
 
-def _affordable(manifest: Manifest, execution) -> None:
+def _affordable(manifest: Manifest, baseline: Measurement) -> None:
     """What the run will spend scoring, at this speed.
 
     One run is quick and five hundred are not. Projecting it costs nothing and
     is the difference between finding out now and finding out in six hours.
     """
     seeds = len(manifest.sandbox.seeds)
-    total = execution.duration_ms * seeds * manifest.budget.trials / 1000
+    total = baseline.wall_ms * seeds * manifest.budget.trials / 1000
     spent = f"{total / 60:.0f} minutes" if total >= 90 else f"{total:.0f}s"
     found(
         "cost",
         f"{manifest.budget.trials} trials x {seeds} seeds x"
-        f" {execution.duration_ms:.0f}ms is about {spent} of scoring",
+        f" {baseline.wall_ms:.0f}ms is about {spent} of scoring",
     )
     if total >= 3600:
         note(

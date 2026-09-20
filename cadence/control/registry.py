@@ -17,7 +17,7 @@ from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
 from cadence.parsing.metrics import direction
 
-__all__ = ["BACKENDS", "METHODS", "OBJECTIVES", "build", "seed_program"]
+__all__ = ["BACKENDS", "METHODS", "OBJECTIVES", "build", "runner_for", "seed_program"]
 
 
 def _provider(name: str):
@@ -111,6 +111,26 @@ def guidance(manifest: Manifest, root: Path) -> str | None:
     return path.read_text() if path.exists() else None
 
 
+def runner_for(manifest: Manifest, root: Path) -> TrialRunner:
+    """The measuring stick this manifest describes, as one object.
+
+    The one place a manifest becomes a sandbox job: program, command, limits
+    and seeds are copied here, and both `build` and `cadence check` measure
+    through the result. A new sandbox setting has one reader to change, not
+    two assemblies that can drift.
+    """
+    return TrialRunner(
+        program=manifest.program,
+        command=shlex.split(manifest.command),
+        metrics=manifest.metrics,
+        sandbox=Subprocess(),
+        workspace=str(root),
+        seeds=manifest.sandbox.seeds,
+        seconds=manifest.sandbox.seconds,
+        memory_mb=manifest.sandbox.memory_mb,
+    )
+
+
 def build(
     manifest: Manifest,
     root: Path,
@@ -144,16 +164,7 @@ def build(
             goals=manifest.metrics,
             calls=Recorded(session, run_id) if session is not None else None,
         ),
-        runner=TrialRunner(
-            program=manifest.program,
-            command=shlex.split(manifest.command),
-            metrics=manifest.metrics,
-            sandbox=Subprocess(),
-            workspace=str(root),
-            seeds=manifest.sandbox.seeds,
-            seconds=manifest.sandbox.seconds,
-            memory_mb=manifest.sandbox.memory_mb,
-        ),
+        runner=runner_for(manifest, root),
         seeds=[seed_program(manifest, root)],
         budget=manifest.budget.trials,
         cap_usd=manifest.budget.usd,
