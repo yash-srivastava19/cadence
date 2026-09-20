@@ -267,14 +267,11 @@ class Model:
             raw_response=completion.text,
         )
 
-    def send(self, request: Request, code: str) -> Suggestion:
-        completion, replayed = self.ask(request)
-        proposal = self.read(request, completion, code)
-        return Suggestion(proposal, completion, replayed, request.key)
-
     def propose(self, directive: Directive, key: str | None = None) -> Suggestion:
-        """prepare then send, for a caller with nothing to write down."""
-        return self.send(self.prepare(directive, key or ""), directive.code)
+        """prepare, ask, read -- for a caller with nothing to write down."""
+        request = self.prepare(directive, key or "")
+        completion, replayed = self.ask(request)
+        return Suggestion(self.read(request, completion, directive.code), replayed)
 
     def _patch(self, before: str, answer: str) -> tuple[str, ...]:
         if self.template not in WHOLE:

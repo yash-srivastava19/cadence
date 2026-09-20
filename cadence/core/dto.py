@@ -136,20 +136,17 @@ class Request(Value):
 
 
 class Suggestion(NamedTuple):
-    """What the model layer hands back: the proposal, and what it cost.
+    """What the model layer hands back: the proposal, and whether the answer
+    was read back out of the replay store rather than bought.
 
-    A tuple rather than a Value because `Model.send` and `Model.propose`
-    unpack all of it, and because `replayed` is a fact about this call rather
-    than about the proposal -- the same proposal replayed is the same
-    proposal. Experiment takes only the proposal: it reports the call where
-    the answer arrives, which is before there is a Suggestion to report from.
+    A tuple rather than a Value because the caller unpacks it. Only the
+    proposal and `replayed` are ever read: Experiment reports the call where
+    the answer arrives, before there is a Suggestion to report from, and the
+    completion it holds is the caller's already.
     """
 
     proposal: Proposal
-    completion: Completion
     replayed: bool = False
-    #: Which request this answers. Empty when nobody asked for one by key.
-    key: str = ""
 
 
 class Recalled(Value):
@@ -244,23 +241,40 @@ class Spend(Value):
     def tokens(self) -> int:
         return self.tokens_in + self.tokens_out
 
-    def and_also(
+    def called(self) -> "Spend":
+        """One more ask, not yet answered.
+
+        Counted at ModelRequested, before the call: a request the provider
+        never answered was still made, and that is what `calls` counts. It
+        takes this many prompts to reproduce the run however they ended.
+        """
+        return self.model_copy(update={"calls": self.calls + 1})
+
+    def answered(
         self,
         tokens_in: int,
         tokens_out: int,
         replayed: bool,
         usd: float | None = None,
     ) -> "Spend":
-        return Spend(
-            calls=self.calls + 1,
-            replayed=self.replayed + int(replayed),
-            tokens_in=self.tokens_in + tokens_in,
-            tokens_out=self.tokens_out + tokens_out,
-            # None rather than 0.0 for a replay: adding a zero would turn
-            # "nothing was bought" into a stated bill of $0.00, and a run
-            # that replayed everything did not buy nothing for free -- it
-            # did not buy.
-            usd=self._plus(None if replayed else usd),
+        """The bill from an answer. Never counts another ask: the ask was
+        already counted at ModelRequested.
+
+        None rather than 0.0 for a replayed answer: adding a zero would turn
+        "nothing was bought" into a stated bill of $0.00, and a run that
+        replayed everything did not buy nothing for free -- it did not buy.
+        """
+        return self.model_copy(
+            update={
+                "replayed": self.replayed + int(replayed),
+                "tokens_in": self.tokens_in + tokens_in,
+                "tokens_out": self.tokens_out + tokens_out,
+                # None until something priced arrives, rather than zero, because a
+                # run against a provider nobody priced has not spent nothing -- it
+                # has spent an amount cadence cannot name, and saying $0.00 would
+                # be a lie with a decimal point on it.
+                "usd": self._plus(None if replayed else usd),
+            }
         )
 
     def _plus(self, usd: float | None) -> float | None:
