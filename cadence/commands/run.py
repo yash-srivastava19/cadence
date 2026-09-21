@@ -167,6 +167,7 @@ def run(
                 session=session,
                 owner=owner(),
                 resume=resume is not None,
+                source=config or root,
             )
             if session is not None:
                 note(_what_it_remembers(experiment, run_id))

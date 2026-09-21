@@ -79,15 +79,18 @@ def _reject_unknown_options(kind: str, plugin: Plugin, factory, extra: dict) -> 
         )
 
 
-def recorded(manifest: Manifest, root: Path) -> RecordedManifest:
+def recorded(manifest: Manifest, source: Path) -> RecordedManifest:
     """The manifest as it will be written down, text and all.
 
     The file is read again rather than carried along by load(), so that
-    Manifest stays a parse of the document and nothing else.
+    Manifest stays a parse of the document and nothing else. `source` is what
+    load() was given -- a project directory or, under --config, another file;
+    reading <root>/.cadence regardless recorded a manifest the run never used.
     """
+    path = source / FILENAME if source.is_dir() else source
     return RecordedManifest(
         hash=manifest.hash,
-        source=(root / FILENAME).read_text(),
+        source=path.read_text(),
         api_version=manifest.api_version,
     )
 
@@ -139,6 +142,7 @@ def build(
     session=None,
     owner: str | None = None,
     resume: bool = False,
+    source: Path | None = None,
 ) -> Experiment:
     """Assemble a run.
 
@@ -152,7 +156,7 @@ def build(
     """
     return Experiment(
         run_id=run_id,
-        manifest=recorded(manifest, root),
+        manifest=recorded(manifest, source or root),
         method=resolve(
             "method", METHODS, manifest.method, objective=objective_for(manifest)
         ),
