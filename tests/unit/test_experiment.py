@@ -260,7 +260,7 @@ class TestARunStopsAtItsCap:
     def _capped(self, cap, spent):
         experiment = an_experiment(*self.CLIMBS, budget=3)
         experiment.cap_usd = cap
-        experiment.spend = Spend(calls=1, tokens_in=10, tokens_out=10, usd=spent)
+        experiment.spent.total = Spend(calls=1, tokens_in=10, tokens_out=10, usd=spent)
         return experiment.run()
 
     def test_it_stops_once_the_cap_is_reached(self):

@@ -7,11 +7,11 @@ from cadence.control.recall import key_for
 from cadence.control.restore import Resumption
 from cadence.core.dto import (
     Directive,
+    Proposal,
     RecordedManifest,
     Report,
     RunHistory,
     Spend,
-    Suggestion,
     TrialBudget,
     TrialResult,
 )
@@ -26,7 +26,7 @@ from cadence.errors import (
 )
 from cadence.execution.runner import TrialRunner
 from cadence.lifecycle.states import RunState
-from cadence.observe.channel import Emitter
+from cadence.observe.channel import Emitter, Fact
 from cadence.observe.signals import (
     CandidateBuilt,
     ModelCalled,
@@ -41,6 +41,7 @@ from cadence.observe.signals import (
     TrialMeasured,
     TrialRetried,
     TrialStarted,
+    cadence,
 )
 
 __all__ = ["Experiment"]
@@ -72,13 +73,21 @@ class Experiment:
         self.cap_usd = cap_usd
         self.owner = owner
         self.experiment = experiment
-        self.spend = Spend()
+        #: What the run has spent, counted from its own facts by `Spent`.
+        self.spent = Spent(self.run_id)
         #: What the programs the run started from scored. None until measured,
         #: and on a resumed run it stays None -- the first run took it.
         self.baseline: TrialResult | None = None
 
     def run(self) -> Report:
         self.trace = Emitter(run_id=self.run_id)
+        counting = cadence.subscribe(self.spent.on)
+        try:
+            return self._go()
+        finally:
+            counting()
+
+    def _go(self) -> Report:
         run = self._pick_up() if self.resumed else self._begin()
         # Bound here rather than passed inline, because _search appends to it:
         # a run that dies at trial 400 still has 399 results, and the handlers
@@ -183,7 +192,7 @@ class Experiment:
                     scored,
                     reason=(
                         f"stopped at the ${self.cap_usd:.2f} cap,"
-                        f" having spent ${self.spend.usd:.4f}"
+                        f" having spent ${self.spent.total.usd:.4f}"
                     ),
                 )
             reply = self._one(run, directive)
@@ -202,9 +211,9 @@ class Experiment:
         None then, and a cap cannot be enforced against a number nobody gave
         us. Saying so beats stopping a run on an imagined total.
         """
-        if self.cap_usd is None or self.spend.usd is None:
+        if self.cap_usd is None or self.spent.total.usd is None:
             return False
-        return self.spend.usd >= self.cap_usd
+        return self.spent.total.usd >= self.cap_usd
 
     def _history(self, results: list[TrialResult]) -> RunHistory:
         return RunHistory(run_id=self.run_id, seeds=self.seeds, results=tuple(results))
@@ -219,10 +228,9 @@ class Experiment:
         trace.emit(TrialStarted, seq=trial.seq, parent=directive.parent)
 
         trial.prompt()
-        suggestion = self._propose(run, trial, trace, directive)
-        if suggestion is None:
+        proposal = self._propose(run, trial, trace, directive)
+        if proposal is None:
             return None
-        proposal = suggestion.proposal
 
         trial.generate(proposal=proposal)
         trace.emit(ProposalReceived, files_changed=proposal.files_changed)
@@ -254,7 +262,9 @@ class Experiment:
         )
         return TrialResult(code=code, verdict=verdict)
 
-    def _propose(self, run: Run, trial: Trial, trace, directive: Directive):
+    def _propose(
+        self, run: Run, trial: Trial, trace, directive: Directive
+    ) -> Proposal | None:
         # An unparseable reply is worth asking again for: it costs a model call,
         # not a trial. Only once the retry budget is gone is the trial lost.
         problem: str | None = None
@@ -278,7 +288,6 @@ class Experiment:
                 template=self.model.template,
                 template_hash=request.template_hash,
             )
-            completion, replayed = None, False
             try:
                 completion, replayed = self.model.ask(request)
                 # Emitted here, before the reply is read, because this is the
@@ -296,8 +305,7 @@ class Experiment:
                     replayed=replayed,
                     **completion.cost,
                 )
-                proposal = self.model.read(request, completion, directive.code)
-                return Suggestion(proposal, completion, replayed, request.key)
+                return self.model.read(request, completion, directive.code)
             except UnusableReply as error:
                 if trial.may_retry:
                     trial.retry()
@@ -307,17 +315,6 @@ class Experiment:
                 trial.abandon(reason=str(error))
                 trace.emit(TrialAbandoned, reason=str(error))
                 return None
-            finally:
-                # In a finally because the call is billed whether or not we
-                # could use what came back. A provider that answers with
-                # nothing charged for it, and a run that undercounts its
-                # retries reports a price nobody was asked to pay.
-                self.spend = self.spend.and_also(
-                    completion.tokens_in if completion else 0,
-                    completion.tokens_out if completion else 0,
-                    replayed,
-                    completion.cost_usd if completion else None,
-                )
 
     def _winner(self, history: RunHistory) -> TrialResult | None:
         """The best program the run has, which may be the one it started from.
@@ -361,7 +358,7 @@ class Experiment:
             status=run.status,
             trials=run.trials,
             scored=scored,
-            spend=self.spend,
+            spend=self.spent.total,
             best=run.best,
             program=best.code if best else None,
             metrics=best.metrics if best else None,
@@ -395,9 +392,43 @@ class Experiment:
             status=run.status,
             trials=run.trials,
             scored=sum(1 for result in results if result.verdict.is_scored),
-            spend=self.spend,
+            spend=self.spent.total,
             best=run.best,
             program=best.code if best else None,
             metrics=best.metrics if best else None,
             reason=reason,
         )
+
+
+class Spent:
+    """What a run has spent so far, counted from its own facts.
+
+    A subscriber to the same channel the journal records, not a bookkeeping
+    line inside the loop: the loop should not know what a token is, and the
+    facts already carry the bill. Two facts count two different things.
+
+        ModelRequested  the ask, written before the call -- so a request the
+                        provider never answered is still an ask, which is the
+                        whole point of it being written first.
+        ModelCalled     the answer: tokens always, and the price only when the
+                        answer was bought this run, never when it was replayed.
+
+    Subscribers are best effort by the channel's rule, which is acceptable
+    here: a counting mistake can only under-report, and the same facts are on
+    the tape for anyone to recount. The facts are delivered synchronously, so
+    the total is current when the loop asks it before the next dispatch.
+    """
+
+    def __init__(self, run_id: str) -> None:
+        self.run_id = run_id
+        self.total = Spend()
+
+    def on(self, fact: Fact) -> None:
+        if getattr(fact, "run_id", None) != self.run_id:
+            return  # not this run's fact; one counter per run
+        if isinstance(fact, ModelRequested):
+            self.total = self.total.called()
+        elif isinstance(fact, ModelCalled):
+            self.total = self.total.answered(
+                fact.tokens_in, fact.tokens_out, fact.replayed, fact.cost_usd
+            )
