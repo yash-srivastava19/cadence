@@ -207,7 +207,7 @@ def test_referenced_scripts_exist(doc: Path) -> None:
 
 def _source_text() -> str:
     parts = []
-    for pattern in ("cadence/**/*.py", "*.py"):
+    for pattern in ("cadence/**/*.py", "cadence/**/*.yml", "*.py"):
         for f in REPO.glob(pattern):
             if ".venv" in f.parts or "venv" in f.parts:
                 continue
