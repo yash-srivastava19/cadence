@@ -69,6 +69,7 @@ a zero.
 | Keep the model away from how it is judged | The region markers, and a scoring command outside them |
 | Run candidates with limits | A sandbox per trial: wall clock, memory, output size, a clean environment |
 | Use your own model, or a hosted one | Gemini, OpenAI, Anthropic or Ollama, set in `.cadence`. The key comes from the environment, never from a file |
+| See what happened, step by step | A JSON log of every step in `cadence-runs/`, with or without a database |
 | Stop today and carry on tomorrow | Recorded runs resume from the database, and calls already paid for are replayed, not repeated |
 | Keep the winner | `cadence apply` writes a run's best program over yours |
 
@@ -172,6 +173,9 @@ result.json`) or read it on the terminal.
 
 Without a database, that output is the only copy of the winner. Keep it, or
 set up recording first.
+
+Every run also writes a log of each step to `cadence-runs/`, with or without
+a database. See [Logs](#logs).
 
 ### 6. Keep runs, resume them, apply the winner
 
@@ -309,6 +313,51 @@ cadence schema                       # the manifest's JSON Schema
 
 `check`, `run`, `runs` and `trials` take `--json`. It is the default when
 output is not a terminal.
+
+## Logs
+
+Every `cadence run` writes one file, one JSON object per line, one line per
+step:
+
+```text
+cadence-runs/
+├── .gitignore            # "*": the folder ignores itself, so logs are never committed
+└── development/          # the environment, from CADENCE_ENV (default: development)
+    └── <run-id>.jsonl
+```
+
+The run prints the path when it ends. A line looks like this:
+
+```json
+{"ts":"2026-09-21T12:50:41.380Z","level":"info","run":"20260921-124926-4dfc96","trial":"20260921-124926-4dfc96/0","span":"model_call","phase":"end","status":"ok","message":"model replied: gemma3:4b, 850 in / 49 out, 74.3s","id":"20260921-124926-4dfc96/0/call-1","parent":"20260921-124926-4dfc96/0","trace_id":"…","span_id":"…","parent_span_id":"…","duration_ms":74341.1,"attrs":{"tokens_in":850,"tokens_out":49,"response_hash":"00c824a847b25b65"}}
+```
+
+| Field | What it is |
+|---|---|
+| `level` | `info`; `warn` when something cost a call and bought nothing (an unusable reply, a rejected patch); `error` when the run cannot go on |
+| `span` | The step: `run`, `baseline`, `trial`, `model_call`, `read_reply`, `apply_patch` or `measure` |
+| `phase` | `start` and `end` of a step, or `event` for a single moment |
+| `status` | How the step ended: `ok`, `scored`, `failed:crashed`, `unusable`, `abandoned`… |
+| `message` | The line as a sentence |
+| `trace_id`, `span_id`, `parent_span_id` | OTEL-shaped IDs: one trace per trial, one span per step. They're derived from the run and trial IDs, so they stay the same across a resume |
+| `attrs` | The step's own numbers and identifiers |
+
+Your code, the model's replies and the prompts are never written to the
+log, only their hashes. The text of a crash (the last lines of stderr) is
+kept, because the file stays on your machine.
+
+```bash
+L=$(ls -t cadence-runs/development/*.jsonl | head -1)
+
+jq -r '.message' $L                                     # the run as sentences
+tail -f $L | jq .                                       # follow a run live
+grep '"level":"warn"' $L                                # what cost something and bought nothing
+jq -r 'select(.span=="trial" and .phase=="end") | "\(.trial) \(.status) \(.duration_ms)ms"' $L
+jq -s 'map(select(.span=="model_call" and .phase=="end")) | map(.attrs.tokens_in + .attrs.tokens_out) | add' $L
+```
+
+To keep runs from different setups apart, set the environment:
+`CADENCE_ENV=staging cadence run` writes to `cadence-runs/staging/`.
 
 ## Try it without a key
 
