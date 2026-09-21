@@ -15,6 +15,7 @@ from cadence.control.registry import build, seed_program
 from cadence.control.restore import status_of
 from cadence.core.verdict import Scored
 from cadence.delivery import as_json, as_text
+from cadence.delivery.runlog import RunLog
 from cadence.errors import CadenceError
 from cadence.lifecycle.states import RunState
 from cadence.observe.signals import (
@@ -157,6 +158,8 @@ def run(
         # require a database. That is what made the example more legible
         # than the product.
         watching = cadence.subscribe(_narrate)
+        log = RunLog(root)
+        logging = cadence.subscribe(log)
         with _remembering() as session:
             if session is not None:
                 _refuse_to_overwrite(session, run_id, resume)
@@ -167,6 +170,7 @@ def run(
                 session=session,
                 owner=owner(),
                 resume=resume is not None,
+                source=config or root,
             )
             if session is not None:
                 note(_what_it_remembers(experiment, run_id))
@@ -174,6 +178,10 @@ def run(
                 report = experiment.run()
             finally:
                 watching()
+                logging()
+                log.close()
+                if log.path is not None:
+                    note(f"  log        {log.path}")
     except CadenceError as error:
         die(str(error))
         raise  # unreachable; die() exits. keeps `report` definitely bound.
