@@ -179,13 +179,23 @@ a database. See [Logs](#logs).
 
 ### 6. Keep runs, resume them, apply the winner
 
-Recording needs Postgres and the migrations from this repository:
+Recording needs a Postgres. Point cadence at any one you have, and let it
+create its own schema:
 
 ```bash
-git clone https://github.com/yash-srivastava19/cadence && cd cadence
-docker compose up -d                                  # Postgres on localhost:5433
+export DATABASE_URL=postgresql://user:password@host:5432/cadence
+cadence db status                # what is there, and what a run would make of it
+cadence db upgrade               # create or update the schema; once per database
+```
+
+If you have no Postgres to hand, one container is enough:
+
+```bash
+docker run -d --name cadence-pg -p 5433:5432 \
+  -e POSTGRES_USER=cadence -e POSTGRES_PASSWORD=cadence -e POSTGRES_DB=cadence \
+  postgres:18-alpine
 export DATABASE_URL=postgresql://cadence:cadence@localhost:5433/cadence
-uv run alembic upgrade head                           # once per database
+cadence db upgrade
 ```
 
 Then, from your project, with `DATABASE_URL` still set:
@@ -200,6 +210,11 @@ cadence apply RUN_ID             # write the best program over yours
 ```
 
 `apply` overwrites your program and keeps no backup. Commit first.
+
+Where the schema is owned by one role and runs connect as another, give the
+migration its own URL and leave `DATABASE_URL` alone:
+`cadence db upgrade --url postgresql://owner:...`. `cadence db rollback`
+undoes a migration, and asks first because it can drop tables.
 
 Cadence also reads a `.env` file in the current directory. Variables that
 are already set in the environment take precedence.
@@ -309,6 +324,9 @@ cadence trials list --run RUN_ID     # the trials of a run
 cadence trials show TRIAL_ID         # one trial in full
 cadence apply RUN_ID [DIR]           # write the winner over your program
 cadence schema                       # the manifest's JSON Schema
+cadence db status                    # the database, and whether its schema is current
+cadence db upgrade                   # apply the migrations this cadence needs
+cadence db rollback --to -1          # undo the last one; asks first
 ```
 
 `check`, `run`, `runs` and `trials` take `--json`. It is the default when

@@ -1,6 +1,6 @@
 import typer
 
-from cadence.commands import apply, check, init, run, runs, schema, trials
+from cadence.commands import apply, check, db, init, run, runs, schema, trials
 from cadence.commands.environment import load_env
 
 app = typer.Typer(
@@ -16,6 +16,7 @@ app.command()(check.check)
 app.command()(run.run)
 app.command()(apply.apply)
 app.command()(schema.schema)
+app.add_typer(db.app, name="db")
 app.add_typer(runs.app, name="runs")
 app.add_typer(trials.app, name="trials")
 

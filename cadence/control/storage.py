@@ -231,6 +231,10 @@ def engine(url: str | None = None, **kwargs) -> Engine:
     return sa.create_engine(dsn(url), **kwargs)
 
 
+#: The role a run connects as where one exists. The migrations grant it what
+#: each table allows; a database without it runs as its owner instead.
+APP_ROLE = "cadence_app"
+
 #: The migration this code writes against. A test reads alembic's head and
 #: asserts they match, so adding a migration without updating this constant
 #: fails in CI rather than at somebody's first run.
@@ -266,12 +270,12 @@ def demand_current_schema(bound: Engine) -> None:
     if found is None:
         raise SchemaOutOfDate(
             "the database has no cadence schema in it."
-            " Run 'alembic upgrade head' against DATABASE_URL,"
+            " Run 'cadence db upgrade',"
             " or unset DATABASE_URL to run without recording anything"
         )
     raise SchemaOutOfDate(
         f"the database is at migration {found} and this cadence writes"
-        f" {EXPECTED_REVISION}. Run 'alembic upgrade head' against DATABASE_URL"
+        f" {EXPECTED_REVISION}. Run 'cadence db upgrade'"
     )
 
 

@@ -67,6 +67,22 @@ class Completion(Value):
         }
 
 
+class SchemaState(Value):
+    """What a database is, as far as cadence is concerned."""
+
+    #: host:port/database. Printed, so never the password.
+    where: NonBlank
+    at: str | None
+    head: NonBlank
+    expected: NonBlank
+    pending: tuple[str, ...] = ()
+    app_role: bool = False
+
+    @property
+    def is_current(self) -> bool:
+        return self.at == self.expected
+
+
 class RecordedManifest(Value):
     """The configuration a run was started from, as it will be written down.
 
