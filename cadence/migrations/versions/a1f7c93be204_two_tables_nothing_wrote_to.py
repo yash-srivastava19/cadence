@@ -32,7 +32,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-from migrations.grants import ADVANCES, SWEEPABLE, grant
+from cadence.migrations.grants import ADVANCES, SWEEPABLE, grant
 
 # revision identifiers, used by Alembic.
 revision: str = "a1f7c93be204"

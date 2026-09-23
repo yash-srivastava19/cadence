@@ -54,7 +54,7 @@ class TestADatabaseIsCheckedBeforeItIsUsed:
             demand_current_schema(a_database())
 
     def test_it_says_how_to_fix_an_empty_one(self):
-        with pytest.raises(SchemaOutOfDate, match="alembic upgrade head"):
+        with pytest.raises(SchemaOutOfDate, match="cadence db upgrade"):
             demand_current_schema(a_database())
 
     def test_it_offers_the_other_way_out_of_an_empty_one(self):

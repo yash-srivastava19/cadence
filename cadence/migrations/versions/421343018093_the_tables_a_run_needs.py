@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-from migrations.grants import ADVANCES, APPEND_ONLY, SWEEPABLE, grant
+from cadence.migrations.grants import ADVANCES, APPEND_ONLY, SWEEPABLE, grant
 
 # revision identifiers, used by Alembic.
 revision: str = "421343018093"
