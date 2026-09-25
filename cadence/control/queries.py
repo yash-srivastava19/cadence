@@ -9,7 +9,8 @@ Returns DTOs, never strings. What the answer looks like is delivery's job.
 """
 
 import difflib
-from collections.abc import Mapping
+import re
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
@@ -28,10 +29,13 @@ from cadence.control.storage import (
     verdicts,
 )
 from cadence.core.dto import (
+    Comparison,
     ExperimentSummary,
+    MetricReading,
     RunDetail,
     RunSummary,
     Spend,
+    Stoppage,
     TrialDetail,
     TrialSummary,
 )
@@ -144,8 +148,7 @@ def some_trials(
     status: str | None = None,
     limit: int = PAGE,
 ) -> list[TrialSummary]:
-    """In the order they were tried. A trial only means anything next to the
-    one before it."""
+    """In the order they were tried, each set beside what it was patched from."""
     query = (
         sa.select(*TRIAL_COLUMNS)
         .select_from(SCORED)
@@ -155,7 +158,29 @@ def some_trials(
     )
     if status is not None:
         query = query.where(trials.c.status == status)
-    return [_trial(row) for row in session.execute(query).mappings()]
+    found = [_trial(row) for row in session.execute(query).mappings()]
+    declared = session.execute(
+        sa.select(manifests.c.source)
+        .select_from(runs.join(manifests, manifests.c.hash == runs.c.manifest_hash))
+        .where(runs.c.id == run_id)
+    ).scalar()
+    directions, _ = _declared(declared)
+    return compared(found, directions, _baseline_of(session, run_id))
+
+
+def _baseline_of(session: Session, run_id: str) -> Mapping[str, float] | None:
+    return session.execute(
+        sa.select(events.c.payload["verdict"]["metrics"])
+        .where(
+            sa.and_(
+                events.c.run_id == run_id,
+                events.c.type == "SeedMeasured",
+                events.c.payload["verdict"]["outcome"].astext == Outcome.SCORED.value,
+            )
+        )
+        .order_by(events.c.seq)
+        .limit(1)
+    ).scalar()
 
 
 def one_trial(session: Session, trial_id: str) -> TrialSummary | None:
@@ -325,6 +350,149 @@ def _declared(manifest: str | None) -> tuple[Mapping[str, str], int | None]:
     return directions, trials if isinstance(trials, int) else None
 
 
+ENVIRONMENTAL = re.compile(
+    r"\b(429|503|quota|rate.?limit|unavailable|timed? out|connection|network)\b",
+    re.IGNORECASE,
+)
+
+
+def _improves(now: float, than: float, direction: str | None) -> bool | None:
+    if direction == "minimize":
+        return now < than
+    if direction == "maximize":
+        return now > than
+    return None
+
+
+def _compare(
+    value: float | None, against: float | None, direction: str | None, referent: str
+) -> Comparison | None:
+    if value is None or against is None:
+        return None
+    better = _improves(value, against, direction)
+    judgment = (
+        "same"
+        if value == against
+        else "unknown"
+        if better is None
+        else ("better" if better else "worse")
+    )
+    return Comparison(
+        value=value,
+        against=against,
+        delta=value - against,
+        percent=None if against == 0 else abs((value - against) / against) * 100,
+        judgment=judgment,
+        referent=referent,
+    )
+
+
+def _readings(
+    trials: Sequence[TrialSummary],
+    directions: Mapping[str, str],
+    baseline: Mapping[str, float] | None,
+) -> tuple[MetricReading, ...]:
+    """What each metric did across the run, so nobody scans a column for it."""
+    names: list[str] = []
+    for trial in trials:
+        for name in trial.metrics or {}:
+            if name not in names:
+                names.append(name)
+    out = []
+    for name in names:
+        direction = directions.get(name)
+        best = best_at = latest = latest_at = None
+        scored = records = since = 0
+        for trial in trials:
+            value = (trial.metrics or {}).get(name)
+            if value is None:
+                continue
+            scored += 1
+            latest, latest_at = value, trial.seq
+            if best is None or _improves(value, best, direction):
+                best, best_at, records, since = value, trial.seq, records + 1, 0
+            else:
+                since += 1
+        base = (baseline or {}).get(name)
+        out.append(
+            MetricReading(
+                name=name,
+                direction=direction,
+                best=best,
+                best_at=best_at,
+                latest=latest,
+                latest_at=latest_at,
+                baseline=base,
+                vs_baseline=_compare(best, base, direction, "the baseline"),
+                off_best=None
+                if best is None or latest == best
+                else _compare(latest, best, direction, "the best"),
+                scored=scored,
+                records=records,
+                since_best=since,
+            )
+        )
+    return tuple(out)
+
+
+def _stoppage(reason: str | None) -> Stoppage | None:
+    """Whether the search ended or the environment stopped it.
+
+    A reason arrives truncated, so a provider's JSON has an unterminated
+    string and anything requiring a closing quote finds nothing.
+    """
+    if not reason:
+        return None
+    outside = bool(ENVIRONMENTAL.search(reason))
+    detail = reason.split("\n")[0]
+    at = reason.find('"message"')
+    if at != -1:
+        opens = reason.find('"', reason.find(":", at) + 1)
+        if opens != -1:
+            shut = reason.find('"', opens + 1)
+            said = reason[opens + 1 : None if shut == -1 else shut]
+            detail = f"{reason.split(':')[0]} \u2014 {' '.join(said.split())}"
+    return Stoppage(
+        lead="The environment interrupted it" if outside else "The search ended",
+        detail=detail[:190],
+        environmental=outside,
+    )
+
+
+def compared(
+    trials: Sequence[TrialSummary],
+    directions: Mapping[str, str],
+    baseline: Mapping[str, float] | None,
+) -> list[TrialSummary]:
+    """Each trial set beside the one it was patched from.
+
+    The parent, never the row above: trials form a tree, so a delta against
+    the previous row is arithmetically right and about the wrong pair.
+    """
+    scored = {t.candidate: t for t in trials if t.candidate}
+    out = []
+    for trial in trials:
+        was = scored.get(trial.parent) if trial.parent else None
+        referent = f"trial {was.seq}" if was else "the baseline"
+        source = (was.metrics if was else baseline) or {}
+        out.append(
+            trial.model_copy(
+                update={
+                    "compared": {
+                        name: made
+                        for name, value in (trial.metrics or {}).items()
+                        if (
+                            made := _compare(
+                                value, source.get(name), directions.get(name), referent
+                            )
+                        )
+                    }
+                }
+            )
+        )
+    return out
+
+
 def run_detail(session: Session, run_id: str) -> RunDetail | None:
     """One run, with what it spent and what it was started from."""
     row = (
@@ -356,8 +524,9 @@ def run_detail(session: Session, run_id: str) -> RunDetail | None:
     if row is None:
         return None
     directions, cap_trials = _declared(row["manifest"])
+    baseline = row["baseline"]
     return RunDetail(
-        **_run(row).model_dump(),
+        **_run(row).model_dump(exclude={"severity"}),
         scored=row["scored"] or 0,
         spend=Spend(
             calls=row["calls"] or 0,
@@ -369,8 +538,12 @@ def run_detail(session: Session, run_id: str) -> RunDetail | None:
         duration_ms=_elapsed(row["first_wrote"], row["last_wrote"]),
         manifest=row["manifest"],
         directions=directions,
-        baseline=row["baseline"],
+        baseline=baseline,
         cap_trials=cap_trials,
+        readings=_readings(
+            some_trials(session, run_id, limit=10_000), directions, baseline
+        ),
+        stopped=_stoppage(row["reason"]),
     )
 
 
@@ -456,7 +629,7 @@ def trial_detail(session: Session, trial_id: str) -> TrialDetail | None:
     if row is None:
         return None
     return TrialDetail(
-        **_trial(row).model_dump(),
+        **_trial(row).model_dump(exclude={"severity"}),
         wall_ms=row["wall_ms"],
         model=row["model"],
         tokens_in=row["tokens_in"],

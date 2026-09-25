@@ -50,10 +50,18 @@
 
   ::selection { background: var(--caution); color: #241a05; }
   :focus-visible { outline: 2px solid var(--caution); outline-offset: 2px; }
-  * { scrollbar-width: thin; scrollbar-color: var(--rule-bright) transparent; }
-  *::-webkit-scrollbar { width: 10px; height: 10px; }
-  *::-webkit-scrollbar-thumb { background: var(--rule-bright); }
+  * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  *::-webkit-scrollbar { width: 11px; height: 11px; }
   *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background: transparent; border-radius: 6px;
+    border: 3px solid transparent; background-clip: content-box;
+  }
+  *::-webkit-scrollbar-corner { background: transparent; }
+  .pane:hover, .pane:focus-within { scrollbar-color: var(--rule-bright) transparent; }
+  .pane:hover::-webkit-scrollbar-thumb,
+  .pane:focus-within::-webkit-scrollbar-thumb { background: var(--rule-bright); }
+  *::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
 
   .stencil {
     font-size: 11px; font-weight: 600; letter-spacing: .16em;
@@ -297,10 +305,9 @@ const get = async (p) => {
 };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-const LIMIT = ["failed", "crashed", "timed_out", "rejected"];
-const CAUTION = ["stalled", "abandoned", "retried", "running", "started", "prompted"];
-const band = (s) => LIMIT.includes(s) ? "limit" : CAUTION.includes(s) ? "caution" : "nominal";
-const mark = (s, live) => `<span class="mark ${band(s)}${live ? " lamp" : ""}">${esc(String(s).replace(/_/g, " "))}</span>`;
+const mark = (word, severity, live) =>
+  `<span class="mark ${esc(severity || "nominal")}${live ? " lamp" : ""}">${
+    esc(String(word).replace(/_/g, " "))}</span>`;
 
 const when = (iso) => {
   if (!iso) return "–";
@@ -326,98 +333,15 @@ const money = (u) => u == null ? "unpriced" : "$" + Number(u).toFixed(4);
 
 // A run stopped by a 429 says nothing about the search. Reading a red mark
 // as a bad result is the mistake this sentence exists to prevent.
-const ENVIRONMENT = /\b(429|503|quota|rate.?limit|unavailable|timed? out|connection|network)\b/i;
-function cause(run) {
-  if (!run.reason) return null;
-  const raw = String(run.reason);
-  const outside = ENVIRONMENT.test(raw);
-  // The stored reason is truncated, so a provider's JSON arrives with its
-  // last string unterminated. Read to the closing quote or to the end,
-  // whichever comes first; requiring the quote finds nothing.
-  let one = raw.split("\n")[0];
-  const at = raw.indexOf('"message"');
-  if (at !== -1) {
-    const opens = raw.indexOf('"', raw.indexOf(":", at) + 1);
-    if (opens !== -1) {
-      let shut = raw.indexOf('"', opens + 1);
-      if (shut === -1) shut = raw.length;
-      one = raw.slice(0, raw.indexOf(":")) + " \u2014 " +
-        raw.slice(opens + 1, shut).replace(/\\n/g, " ").replace(/\s+/g, " ").trim();
-    }
-  }
-  if (one.length > 190) one = one.slice(0, 190).trimEnd() + "\u2026";
-  return { outside, text: one,
-    lead: outside ? "The environment interrupted it" : "The search ended" };
-}
 
 
-// Everything below is arithmetic the page does so the reader does not.
-// Direction comes from the manifest and is never assumed.
-let DIR = {}, BASE = null;
-const better = (a, b, k) => DIR[k] === "minimize" ? a < b : a > b;
 
-// The sign is arithmetic; the judgment is a word. They are separate fields
-// and do not have to agree: on a maximize metric a positive delta is better,
-// and an arrow carrying goodness would render a down-arrow beside +0.40.
-function delta(now, was, k) {
-  if (typeof now !== "number" || typeof was !== "number") return null;
-  const d = now - was;
-  if (d === 0) return { text: "no change", word: "same", cls: "flat" };
-  const good = better(now, was, k);
-  return {
-    text: (d > 0 ? "+" : "\u2212") + Math.abs(d).toFixed(4).replace(/0+$/, "").replace(/\.$/, ""),
-    word: good ? "better" : "worse",
-    cls: good ? "good" : "bad",
-    pct: was === 0 ? null : Math.abs(d / was) * 100,
-  };
-}
-
-// Strictly better, so a tie is never stamped as a record.
-function records(rows, k) {
-  let best = null, at = null, count = 0, since = 0;
-  rows.forEach(t => {
-    const v = (t.metrics || {})[k];
-    if (typeof v !== "number") return;
-    if (best === null || better(v, best, k)) { best = v; at = t.seq; count++; since = 0; }
-    else since++;
-  });
-  return { best, at, count, since };
-}
-const latestOf = (rows, k) => {
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const v = (rows[i].metrics || {})[k];
-    if (typeof v === "number") return { v, seq: rows[i].seq };
-  }
-  return null;
-};
-// The parent is not the row above: trials form a tree. Map a candidate
-// fingerprint to what it scored, so a row can be compared with what it was
-// actually patched from.
-function byFingerprint(rows) {
-  const m = {};
-  rows.forEach(t => { if (t.candidate) m[t.candidate] = t; });
-  return m;
-}
-const arrow = (k) => DIR[k] === "minimize" ? "\u2193" : DIR[k] === "maximize" ? "\u2191" : "";
-const aim = (k) => DIR[k] === "minimize" ? "lower is better"
-  : DIR[k] === "maximize" ? "higher is better" : "no direction declared";
+let DIR = {};
 const sig = (v) => typeof v === "number"
   ? (Math.abs(v) >= 1000 ? v.toLocaleString() : String(Number(v.toFixed(4)))) : esc(v);
-
 const facts = (pairs, cls) => `<div class="facts ${cls || ""}">${
   pairs.filter(p => p && p[0] !== null && p[0] !== undefined)
        .map(([v, k]) => `<div><b class="stencil">${k}</b><span>${v}</span></div>`).join("")}</div>`;
-
-const keysOf = (rows) => {
-  const seen = [];
-  for (const t of rows) for (const k of Object.keys(t.metrics || {})) if (!seen.includes(k)) seen.push(k);
-  return seen;
-};
-const pick = (rows) => { const k = keysOf(rows); return k.includes(metric) ? metric : k[0] || null; };
-
-// One crashed trial scores 0 while the rest sit near 2.6; taken literally that
-// flattens a whole run into a hairline. The panel's answer is a working band
-// with the excursion drawn leaving it, never a rescale that hides the zero.
 function scaleOf(values) {
   const known = values.filter(v => typeof v === "number").sort((a, b) => a - b);
   if (!known.length) return null;
@@ -426,6 +350,22 @@ function scaleOf(values) {
   const lo = floor < hi ? floor : known[0];
   return { lo, hi, span: (hi - lo) || Math.abs(hi) || 1, offscale: known.filter(v => v < lo) };
 }
+const keysOf = (rows) => {
+  const seen = [];
+  for (const t of rows) for (const k of Object.keys(t.metrics || {})) if (!seen.includes(k)) seen.push(k);
+  return seen;
+};
+const pick = (rows) => { const k = keysOf(rows); return k.includes(metric) ? metric : k[0] || null; };
+const arrow = (k) => DIR[k] === "minimize" ? "\u2193" : DIR[k] === "maximize" ? "\u2191" : "";
+const aim = (k) => DIR[k] === "minimize" ? "lower is better"
+  : DIR[k] === "maximize" ? "higher is better" : "no direction declared";
+const said = (c) => c
+  ? `<span class="${c.judgment === "better" ? "good" : c.judgment === "worse" ? "bad" : "flat"}">${
+      c.delta > 0 ? "+" : c.delta < 0 ? "\u2212" : ""}${Math.abs(c.delta) ? sig(Math.abs(c.delta)) : ""}${
+      c.percent != null && Math.abs(c.delta) ? ` (${c.percent.toFixed(1)}%)` : ""} ${
+      c.judgment === "same" ? "no change" : c.judgment}</span>
+     <span class="ref">than ${esc(c.referent)}</span>`
+  : "";
 
 const tip = $("tip");
 function showTip(e, html) {
@@ -502,13 +442,13 @@ function trajectorySvg(runs, key, H) {
 
 // One chart per metric, the baseline drawn as the line to beat and the best
 // point marked, so the shape of the search reads without touching the table.
-function panels(trials) {
-  const keys = keysOf(trials);
-  if (!keys.length) return "";
-  return `<div class="panels">${keys.map(k => {
-    const r = records(trials, k);
-    if (r.best === null) return "";
-    const base = BASE ? BASE[k] : null;
+function panels(run, trials) {
+  const readings = run.readings || [];
+  if (!readings.length) return "";
+  return `<div class="panels">${readings.map(r => {
+    const k = r.name;
+    if (r.best == null) return "";
+    const base = r.baseline;
     const vals = trials.map(t => (t.metrics || {})[k]);
     const known = vals.filter(v => typeof v === "number");
     const all = base == null ? known : known.concat([base]);
@@ -549,35 +489,26 @@ function panels(trials) {
 
 // Shneiderman's overview, adjoining the detail rather than on its own screen.
 // Every number here is computed; the reader supplies nothing.
-function summary(run, trials) {
-  const keys = keysOf(trials);
-  if (!keys.length) return "";
-  return `<div class="band">${keys.map(k => {
-    const r = records(trials, k), last = latestOf(trials, k);
-    if (r.best === null) return "";
-    const base = BASE ? BASE[k] : null;
-    const vsBase = delta(r.best, base, k);
-    const off = last && last.v !== r.best ? delta(last.v, r.best, k) : null;
-    return `<div class="metric">
-      <div class="mh"><b>${esc(k)}</b> <span class="dirn">${arrow(k)} ${aim(k)}</span></div>
+function summary(run) {
+  const readings = run.readings || [];
+  if (!readings.length) return "";
+  return `<div class="band">${readings.map(r => r.best == null ? "" : `
+    <div class="metric">
+      <div class="mh"><b>${esc(r.name)}</b>
+        <span class="dirn">${arrow(r.name)} ${aim(r.name)}</span></div>
       <div class="line"><i>best</i>
         <b class="num">${sig(r.best)}</b>
-        <span class="at">at trial ${r.at}</span>
-        ${vsBase ? `<span class="${vsBase.cls}">${vsBase.text}${
-            vsBase.pct != null ? ` (${vsBase.pct.toFixed(1)}%)` : ""} ${vsBase.word}</span>
-          <span class="ref">vs baseline ${sig(base)}</span>`
-          : `<span class="ref">no baseline recorded</span>`}</div>
-      ${last && last.v !== r.best ? `<div class="line"><i>latest</i>
-        <b class="num sub2">${sig(last.v)}</b>
-        <span class="at">at trial ${last.seq}</span>
-        ${off ? `<span class="${off.cls}">${off.text} ${off.word} than best</span>` : ""}</div>` : ""}
+        <span class="at">at trial ${r.best_at}</span>
+        ${r.vs_baseline ? said(r.vs_baseline) : `<span class="ref">no baseline recorded</span>`}</div>
+      ${r.off_best ? `<div class="line"><i>latest</i>
+        <b class="num sub2">${sig(r.latest)}</b>
+        <span class="at">at trial ${r.latest_at}</span>
+        ${said(r.off_best)}</div>` : ""}
       <div class="line"><i>records</i>
-        <span class="sub2">${r.count} new best${r.count === 1 ? "" : "s"} in ${
-          trials.filter(t => (t.metrics || {})[k] != null).length} scored</span>
-        <span class="${r.since > 3 ? "bad" : "sub2"}">${r.since} scored trial${
-          r.since === 1 ? "" : "s"} since the last new best</span></div>
-    </div>`;
-  }).join("")}</div>`;
+        <span class="sub2">${r.records} new best${r.records === 1 ? "" : "s"} in ${r.scored} scored</span>
+        <span class="${r.since_best > 3 ? "bad" : "sub2"}">${r.since_best} scored trial${
+          r.since_best === 1 ? "" : "s"} since the last new best</span></div>
+    </div>`).join("")}</div>`;
 }
 
 // --- views ---------------------------------------------------------------
@@ -598,7 +529,7 @@ const runTable = (runs) => `<div class="runs"><table class="strip"><thead><tr>
   <th>owner</th><th>started</th></tr></thead><tbody>${
   runs.map(r => `<tr data-id="${esc(r.id)}">
     <td class="mono">${esc(r.id)}</td>
-    <td>${mark(r.stalled ? "stalled" : r.status, r.status === "running" && !r.stalled)}</td>
+    <td>${mark(r.stalled ? "stalled" : r.status, r.severity, r.status === "running" && !r.stalled)}</td>
     <td class="r num">${r.trials}</td>
     <td>${esc(r.experiment || "—")}</td>
     <td class="from">${esc(r.owner || "—")}</td>
@@ -666,7 +597,7 @@ async function drawRun() {
     get("/api/runs/" + encodeURIComponent(at.run) + "/trials?limit=500"),
   ]);
   if (run.experiment) at.experiment = run.experiment;
-  DIR = run.directions || {}; BASE = run.baseline || null;
+  DIR = run.directions || {};
   moving = run.status === "running" && !run.stalled;
   const state = run.stalled ? "stalled" : run.status;
   const key = pick(trials);
@@ -674,9 +605,8 @@ async function drawRun() {
   $("head").innerHTML = `
     <span class="link" id="back">← ${esc(run.experiment || "all runs")}</span>
     <div class="on-panel">
-      <h1><span class="mono">${esc(run.id)}</span> ${mark(state, moving)}</h1>
-      ${(() => { const c = cause(run); return c
-        ? `<p class="cause"><b>${esc(c.lead)}</b> — ${esc(c.text)}</p>` : ""; })()}
+      <h1><span class="mono">${esc(run.id)}</span> ${mark(state, run.severity, moving)}</h1>
+      ${run.stopped ? `<p class="cause"><b>${esc(run.stopped.lead)}</b> — ${esc(run.stopped.detail)}</p>` : ""}
       ${facts([
         [run.cap_trials ? `${run.trials} <span class="sub2">of ${run.cap_trials}</span>` : run.trials, "trials"],
         [run.scored, "scored"],
@@ -687,10 +617,9 @@ async function drawRun() {
       ], "plan")}
     </div>`;
   $("back").onclick = () => { at.run = null; at.trial = null; draw(); };
-  $("head").insertAdjacentHTML("beforeend", summary(run, trials));
-  $("head").insertAdjacentHTML("beforeend", panels(trials));
-  const seen = byFingerprint(trials);
-  const rec = records(trials, key);
+  $("head").insertAdjacentHTML("beforeend", summary(run));
+  $("head").insertAdjacentHTML("beforeend", panels(run, trials));
+  const top = (run.readings || []).find(r => r.name === key);
   $("work").className = "sortie";
   $("work").innerHTML = `
     <div class="pane left" id="stripPane">${trials.length ? `<div class="stripwrap">
@@ -699,17 +628,13 @@ async function drawRun() {
         <th>vs its parent</th></tr></thead><tbody>${
         trials.map(t => {
           const v = key && t.metrics ? t.metrics[key] : null;
-          const from = t.parent ? seen[t.parent] : null;
-          const was = from && from.metrics ? from.metrics[key] : (t.parent ? null : (BASE || {})[key]);
-          const d = delta(v, was, key);
-          const isBest = v != null && rec.best != null && v === rec.best;
+          const c = (t.compared || {})[key];
+          const isBest = v != null && top && top.best != null && v === top.best;
           return `<tr data-id="${esc(t.id)}" aria-selected="${t.id === at.trial}">
           <td class="r num">${t.seq}</td>
-          <td>${mark(t.outcome || t.status, false)}${isBest ? ' <span class="best">best</span>' : ""}</td>
+          <td>${mark(t.outcome || t.status, t.severity, false)}${isBest ? ' <span class="best">best</span>' : ""}</td>
           <td class="r num">${v != null ? sig(v) : "—"}</td>
-          <td class="cmp">${d
-            ? `<span class="${d.cls}">${d.text} ${d.word}</span>
-               <span class="ref">than ${from ? "trial " + from.seq : "the baseline"}</span>`
+          <td class="cmp">${c ? said(c)
             : `<span class="ref">${t.parent ? "parent not scored" : "no baseline"}</span>`}</td></tr>`;
         }).join("")}</tbody></table>
     </div>` : `<div class="empty" style="padding:22px"><b>No trials yet.</b>
@@ -741,7 +666,7 @@ async function drawTrial() {
   const t = await get("/api/trials/" + encodeURIComponent(at.trial));
   $("record").innerHTML = `<div class="record on-panel">
     <div class="head">
-      <h1>Trial ${t.seq} ${mark(t.outcome || t.status, false)}
+      <h1>Trial ${t.seq} ${mark(t.outcome || t.status, t.severity, false)}
         ${t.diff ? `<span class="swap" style="margin-left:auto">
           <button data-how="split" aria-pressed="${how === "split"}">split</button>
           <button data-how="unified" aria-pressed="${how === "unified"}">unified</button></span>` : ""}</h1>

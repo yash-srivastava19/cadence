@@ -18,18 +18,20 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, NamedTuple
 
-from pydantic import Field
+from pydantic import Field, computed_field
 
 from cadence.core.types import Frozen, Metrics, NonBlank
 from cadence.core.values import Value
 from cadence.core.verdict import Scored, Verdict
-from cadence.lifecycle.states import RunState, TrialState
+from cadence.lifecycle.states import RunState, Severity, TrialState, severity_of
 
 __all__ = [
+    "Comparison",
     "Completion",
     "Directive",
     "ExperimentSummary",
     "Measurement",
+    "MetricReading",
     "Proposal",
     "Recalled",
     "RecordedManifest",
@@ -39,6 +41,7 @@ __all__ = [
     "RunHistory",
     "RunSummary",
     "Spend",
+    "Stoppage",
     "Suggestion",
     "TrialBudget",
     "TrialDetail",
@@ -346,6 +349,62 @@ class RunSummary(Value):
     #: comes back to life stops being stalled without anyone updating it.
     stalled: bool = False
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> Severity:
+        return severity_of("stalled" if self.stalled else self.status)
+
+
+class Comparison(Value):
+    """One measurement set beside another, already worked out.
+
+    The sign and the judgment are separate fields and do not have to agree:
+    on a metric being maximized a positive delta is better, so a single arrow
+    carrying goodness would render pointing down beside +0.40.
+    """
+
+    value: float
+    against: float
+    delta: float
+    percent: float | None = None
+    judgment: str
+    referent: str
+
+
+class MetricReading(Value):
+    """What one metric did across a whole run.
+
+    Everything a reader would otherwise work out by scanning a column: which
+    way is better, the best and when it arrived, the latest, how far the
+    latest is off the best, and how long the search has gone without finding
+    anything.
+    """
+
+    name: NonBlank
+    direction: str | None = None
+    best: float | None = None
+    best_at: int | None = None
+    latest: float | None = None
+    latest_at: int | None = None
+    baseline: float | None = None
+    vs_baseline: Comparison | None = None
+    off_best: Comparison | None = None
+    scored: int = Field(default=0, ge=0)
+    records: int = Field(default=0, ge=0)
+    since_best: int = Field(default=0, ge=0)
+
+
+class Stoppage(Value):
+    """Why a run is not still going, and whether that says anything.
+
+    A run killed by a 429 carries no information about search quality, and a
+    bare red mark invites exactly that misreading.
+    """
+
+    lead: NonBlank
+    detail: str = ""
+    environmental: bool = False
+
 
 class TrialSummary(Value):
     """One trial, as the database remembers it."""
@@ -363,6 +422,12 @@ class TrialSummary(Value):
     metrics: Mapping[str, float] | None = None
     reason: str | None = None
     started_at: datetime | None = None
+    compared: Mapping[str, Comparison] = {}
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> Severity:
+        return severity_of(self.outcome or self.status)
 
 
 class RunDetail(RunSummary):
@@ -378,13 +443,11 @@ class RunDetail(RunSummary):
     spend: Spend = Spend()
     duration_ms: float | None = None
     manifest: str | None = None
-    # A number with no direction cannot be read: 8.26 is good or bad depending
-    # on a fact only the manifest holds.
     directions: Mapping[str, str] = {}
-    # What the seed scored before any trial ran, so a trial can be compared to
-    # where the run started and not only to other trials.
     baseline: Mapping[str, float] | None = None
     cap_trials: int | None = None
+    readings: tuple[MetricReading, ...] = ()
+    stopped: Stoppage | None = None
 
 
 class TrialDetail(TrialSummary):
