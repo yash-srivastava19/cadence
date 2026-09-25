@@ -537,8 +537,6 @@ def run_detail(session: Session, run_id: str) -> RunDetail | None:
         ),
         duration_ms=_elapsed(row["first_wrote"], row["last_wrote"]),
         manifest=row["manifest"],
-        directions=directions,
-        baseline=baseline,
         cap_trials=cap_trials,
         readings=_readings(
             some_trials(session, run_id, limit=10_000), directions, baseline

@@ -354,24 +354,43 @@ class TestExperimentsAreDerivedNotStored:
 
 
 class TestARunKnowsWhatItWasAimingAt:
-    """A number with no baseline cannot be judged, so the run carries the
-    score the seed got before the search touched anything."""
+    """Each metric comes back knowing which way is better and what it started
+    from, so nothing downstream has to work it out or agree with anyone."""
 
-    def test_the_seed_score_is_the_baseline(self, session, journalled):
+    def test_every_metric_scored_gets_a_reading(self, session, journalled):
+        journalled(IMPROVES, run_id="read", budget=1)
+        found = run_detail(session, "read")
+        assert [r.name for r in found.readings] == ["value"]
+
+    def test_the_reading_carries_the_seed_score_as_its_baseline(
+        self, session, journalled
+    ):
         """Read off the tape rather than through candidates: a seed's
         fingerprint and the fingerprint its verdict is keyed on are different
         values, so that join never matches."""
         journalled(IMPROVES, run_id="based", budget=1)
-        found = run_detail(session, "based")
-        assert found.baseline is not None
-        assert "value" in found.baseline
+        [reading] = run_detail(session, "based").readings
+        assert reading.baseline is not None
+        assert reading.vs_baseline is not None
 
-    def test_a_manifest_with_nothing_declared_costs_the_page_nothing(
-        self, session, journalled
-    ):
-        """The run still happened. It renders without the direction rather
-        than failing."""
+    def test_the_best_is_named_with_the_trial_it_arrived_at(self, session, journalled):
+        journalled(IMPROVES, run_id="peaked", budget=1)
+        [reading] = run_detail(session, "peaked").readings
+        assert reading.best is not None
+        assert reading.best_at is not None
+
+    def test_a_manifest_declaring_no_direction_still_reads(self, session, journalled):
+        """The run still happened. It comes back without a direction rather
+        than failing over a manifest that never said."""
         journalled(IMPROVES, run_id="undeclared", budget=1)
         found = run_detail(session, "undeclared")
-        assert found.directions == {}
         assert found.cap_trials is None
+        assert all(r.direction is None for r in found.readings)
+
+    def test_a_trial_is_compared_with_what_it_was_patched_from(
+        self, session, journalled
+    ):
+        journalled(CRASHES, IMPROVES, run_id="lineage", budget=2)
+        scored = [t for t in some_trials(session, "lineage") if t.metrics]
+        assert scored
+        assert all(c.referent for t in scored for c in t.compared.values())

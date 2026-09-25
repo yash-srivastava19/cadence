@@ -443,8 +443,6 @@ class RunDetail(RunSummary):
     spend: Spend = Spend()
     duration_ms: float | None = None
     manifest: str | None = None
-    directions: Mapping[str, str] = {}
-    baseline: Mapping[str, float] | None = None
     cap_trials: int | None = None
     readings: tuple[MetricReading, ...] = ()
     stopped: Stoppage | None = None

@@ -323,12 +323,6 @@ const sig = (v) => typeof v === "number"
 const facts = (pairs, cls) => `<div class="facts ${cls || ""}">${
   pairs.filter(p => p && p[0] !== null && p[0] !== undefined)
        .map(([v, k]) => `<div><b class="stencil">${k}</b><span>${v}</span></div>`).join("")}</div>`;
-const keysOf = (rows) => {
-  const seen = [];
-  for (const t of rows) for (const k of Object.keys(t.metrics || {})) if (!seen.includes(k)) seen.push(k);
-  return seen;
-};
-const pick = (rows) => { const k = keysOf(rows); return k.includes(metric) ? metric : k[0] || null; };
 const arrow = (k) => DIR[k] === "minimize" ? "\u2193" : DIR[k] === "maximize" ? "\u2191" : "";
 const aim = (k) => DIR[k] === "minimize" ? "lower is better"
   : DIR[k] === "maximize" ? "higher is better" : "no direction declared";
@@ -413,10 +407,11 @@ async function drawRun() {
     get("/api/runs/" + encodeURIComponent(at.run) + "/trials?limit=500"),
   ]);
   if (run.experiment) at.experiment = run.experiment;
-  DIR = run.directions || {};
+  DIR = Object.fromEntries((run.readings || []).map(r => [r.name, r.direction]));
   moving = run.status === "running" && !run.stalled;
   const state = run.stalled ? "stalled" : run.status;
-  const key = pick(trials);
+  const shown = run.readings || [];
+  const key = shown.length ? shown[0].name : null;
   const tokens = run.spend.tokens_in + run.spend.tokens_out;
   $("head").innerHTML = `
     <span class="link" id="back">← ${esc(run.experiment || "all runs")}</span>
@@ -437,13 +432,14 @@ async function drawRun() {
     </div>`;
   $("back").onclick = () => { at.run = null; at.trial = null; draw(); };
   $("head").insertAdjacentHTML("beforeend", summary(run));
-  const top = (run.readings || []).find(r => r.name === key);
+  const top = shown[0];
   $("work").className = "sortie";
   $("work").innerHTML = `
     <div class="pane left" id="stripPane">${trials.length ? `<div class="stripwrap">
       <table class="strip"><thead><tr><th class="r">#</th><th>result</th>
-        <th class="r">${esc(key || "metric")} ${arrow(key)}</th>
-        <th>vs its parent</th></tr></thead><tbody>${
+        ${shown.map(r => `<th class="r">${esc(r.name)} ${arrow(r.name)}</th>`).join("")}
+        <th>vs its parent${shown.length > 1 ? ` <span class="ref">(${esc(key)})</span>` : ""}</th>
+      </tr></thead><tbody>${
         trials.map(t => {
           const v = key && t.metrics ? t.metrics[key] : null;
           const c = (t.compared || {})[key];
@@ -451,7 +447,10 @@ async function drawRun() {
           return `<tr data-id="${esc(t.id)}" aria-selected="${t.id === at.trial}">
           <td class="r num">${t.seq}</td>
           <td>${mark(t.outcome || t.status, t.severity, false)}${isBest ? ' <span class="best">best</span>' : ""}</td>
-          <td class="r num">${v != null ? sig(v) : "—"}</td>
+          ${shown.map(r => {
+            const each = (t.metrics || {})[r.name];
+            return `<td class="r num">${each != null ? sig(each) : "—"}</td>`;
+          }).join("")}
           <td class="cmp">${c ? said(c)
             : `<span class="ref">${t.parent ? "parent not scored" : "no baseline"}</span>`}</td></tr>`;
         }).join("")}</tbody></table>
