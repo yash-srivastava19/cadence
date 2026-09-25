@@ -10,7 +10,7 @@ import typer
 from cadence.commands.identity import owner as whoami
 from cadence.commands.reading import reading, show
 from cadence.commands.report import die
-from cadence.control.queries import PAGE, one_run, some_runs
+from cadence.control.queries import PAGE, run_detail, some_runs
 from cadence.delivery import one_as_text, runs_as_text
 
 app = typer.Typer(no_args_is_help=True, help="Runs that were recorded.")
@@ -47,7 +47,7 @@ def show_(
 ) -> None:
     """Everything recorded about one run."""
     with reading() as session:
-        found = one_run(session, run_id)
+        found = run_detail(session, run_id)
     if found is None:
         die(f"no run called {run_id!r}.", "cadence runs list shows what there is.")
     show(found, one_as_text(found), json_)

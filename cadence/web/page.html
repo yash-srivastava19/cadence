@@ -30,9 +30,6 @@
     --ins: #1d4434;
     --ins-word: #2c6a4c;
 
-    --trace-1: #2b9cb8;
-    --trace-2: #8f6ae6;
-    --trace-3: #cf5f8e;
 
     --row: 30px;
     --gutter: 20px;
@@ -85,20 +82,21 @@
   .exp i.live { color: var(--caution); }
 
   #main { display: flex; flex-direction: column; height: 100vh; min-width: 0; overflow: hidden; }
-  #head { padding: 14px var(--gutter) 0; flex: none; }
+  #head { padding: 10px var(--gutter) 8px; flex: none; border-bottom: 1px solid var(--rule); }
   #work { flex: 1; min-height: 0; display: grid; overflow: hidden; }
 
   a, .link { color: var(--ink-soft); cursor: pointer; text-decoration: none; text-underline-offset: 3px; }
   a:hover, .link:hover { color: var(--ink); text-decoration: underline; }
-  h1 { font-size: 20px; font-weight: 500; margin: 6px 0 0; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  h1 { font-size: 17px; font-weight: 500; margin: 3px 0 0; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 
-  .plan {
-    border-top: 1px solid var(--rule-bright); border-bottom: 1px solid var(--rule);
-    padding: 10px 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 0 26px;
-  }
-  .facts { display: flex; flex-wrap: wrap; gap: 0 22px; }
-  .facts > div { display: flex; flex-direction: column; gap: 1px; }
-  .facts span { font-size: 16px; color: var(--ink); }
+  .plan { padding: 2px 0 0; margin: 0; }
+  .facts { display: flex; flex-wrap: wrap; gap: 3px 7px; align-items: baseline;
+           color: var(--ink-soft); font-size: 12.5px; }
+  .facts > div { display: flex; align-items: baseline; gap: 5px; }
+  .facts > div + div::before { content: "·"; color: var(--rule-bright); margin-right: 5px; }
+  .facts .stencil { font-size: 12.5px; letter-spacing: 0; text-transform: none;
+                    font-weight: 400; color: var(--ink-faint); order: 2; }
+  .facts span { font-size: 13px; color: var(--ink); font-weight: 500; }
 
   .mark { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
   .mark.nominal { color: var(--ink-faint); }
@@ -109,20 +107,15 @@
   @media (prefers-reduced-motion: reduce) { .lamp { animation: none } }
 
   /* The summary band: the run's answer, computed, above the rows. */
-  .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
-            gap: 10px; padding: 10px 0 2px; }
-  .panel { background: var(--plane); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px 4px; }
-  .panel figcaption { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font-size: 12.5px; }
-  .panel figcaption b { font-weight: 500; }
-  .band { display: flex; flex-wrap: wrap; gap: 10px 34px; padding: 12px 0 2px; }
-  .metric { min-width: 300px; }
-  .mh { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
-  .mh b { font-weight: 500; font-size: 14px; }
+  .band { padding: 8px 0 0; }
+  .metric { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+            font-size: 12.5px; padding: 3px 0; }
+  .metric > b { font-weight: 500; font-size: 13.5px; }
+  .metric i { font-style: normal; color: var(--ink-faint); font-size: 11.5px; }
+  .metric .num { font-size: 14px; font-weight: 500; }
+  .metric .num.sub2 { font-size: 12.5px; font-weight: 400; }
+  .sep { width: 1px; height: 11px; background: var(--rule-bright); display: inline-block; margin: 0 4px; }
   .dirn { color: var(--ink-faint); font-size: 12px; }
-  .line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
-  .line i { font-style: normal; color: var(--ink-faint); width: 52px; flex: none; font-size: 11.5px; }
-  .line .num { font-size: 15px; font-weight: 500; }
-  .line .num.sub2 { font-size: 13px; font-weight: 400; color: var(--ink-soft); }
   .at, .ref { color: var(--ink-faint); }
   .sub2 { color: var(--ink-soft); }
   /* The sign is arithmetic and the judgment is a word; colour repeats the
@@ -132,14 +125,15 @@
   .flat { color: var(--ink-faint); }
   .best { color: var(--good); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
   .cmp { font-size: 12.5px; }
-  .cause { color: var(--ink-soft); font-size: 12.5px; margin: 6px 0 0; max-width: 92ch; }
+  .cause { color: var(--ink-soft); font-size: 12.5px; margin: 4px 0 0; max-width: 110ch;
+           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cause b { font-weight: 500; color: var(--caution); }
 
   .pane { overflow: auto; min-width: 0; }
   .pane.left { border-right: 1px solid var(--rule); background: var(--plane); }
 
   /* Run tier: strip left, record right. */
-  .sortie { grid-template-columns: minmax(420px, 500px) minmax(0, 1fr); }
+  .sortie { grid-template-columns: minmax(520px, 46%) minmax(0, 1fr); }
   .stripwrap { min-height: 100%; }
   .strip { width: 100%; border-collapse: collapse; }
   .strip th {
@@ -178,21 +172,9 @@
   /* Experiment tier */
   .survey { grid-template-columns: minmax(0, 1fr); }
   .survey .pane { padding: 0 var(--gutter) 30px; }
-  figure { margin: 0; }
-  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; }
-  .legend span { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-soft); }
-  .legend i { width: 10px; height: 10px; border-radius: 50%; }
   .caption { color: var(--ink-faint); font-size: 12px; margin: 6px 0 0; max-width: 90ch; }
   .runs { margin-top: 16px; background: var(--plane); border: 1px solid var(--rule); }
 
-  .tip {
-    position: fixed; pointer-events: none; z-index: 30; opacity: 0;
-    background: var(--panel-raised); border: 1px solid var(--rule-bright);
-    padding: 7px 10px; font-size: 12px; color: var(--ink); max-width: 260px;
-    transition: opacity .1s linear;
-  }
-  .tip b { font-weight: 500; display: block; }
-  .tip em { font-style: normal; color: var(--ink-faint); }
 
   details { margin-top: 14px; }
   summary { cursor: pointer; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); list-style: none; }
@@ -271,7 +253,6 @@
     <div id="work" class="survey"><div class="pane"><div class="empty">Reading the record…</div></div></div>
   </main>
 </div>
-<div class="tip" id="tip" role="status" aria-live="polite"></div>
 <script>
 const $ = (id) => document.getElementById(id);
 let at = { experiment: null, run: null, trial: null };
@@ -342,14 +323,6 @@ const sig = (v) => typeof v === "number"
 const facts = (pairs, cls) => `<div class="facts ${cls || ""}">${
   pairs.filter(p => p && p[0] !== null && p[0] !== undefined)
        .map(([v, k]) => `<div><b class="stencil">${k}</b><span>${v}</span></div>`).join("")}</div>`;
-function scaleOf(values) {
-  const known = values.filter(v => typeof v === "number").sort((a, b) => a - b);
-  if (!known.length) return null;
-  const hi = known[known.length - 1];
-  const floor = known[Math.floor(known.length * 0.1)];
-  const lo = floor < hi ? floor : known[0];
-  return { lo, hi, span: (hi - lo) || Math.abs(hi) || 1, offscale: known.filter(v => v < lo) };
-}
 const keysOf = (rows) => {
   const seen = [];
   for (const t of rows) for (const k of Object.keys(t.metrics || {})) if (!seen.includes(k)) seen.push(k);
@@ -367,125 +340,11 @@ const said = (c) => c
      <span class="ref">than ${esc(c.referent)}</span>`
   : "";
 
-const tip = $("tip");
-function showTip(e, html) {
-  tip.innerHTML = html; tip.style.opacity = "1";
-  const b = tip.getBoundingClientRect();
-  let x = e.clientX + 14, y = e.clientY + 14;
-  if (x + b.width > innerWidth - 8) x = e.clientX - b.width - 14;
-  if (y + b.height > innerHeight - 8) y = e.clientY - b.height - 14;
-  tip.style.left = x + "px"; tip.style.top = y + "px";
-}
-const hideTip = () => { tip.style.opacity = "0"; };
 
-function traceSvg(rows, key) {
-  const vals = rows.map(t => (t.metrics || {})[key]);
-  const s = scaleOf(vals);
-  if (!s) return "";
-  const W = 132, PAD = 18, H = rows.length * ROW;
-  const x = (v) => PAD + Math.max(0, Math.min(1, (v - s.lo) / s.span)) * (W - PAD * 2);
-  const y = (i) => i * ROW + ROW / 2;
-  let d = "", pts = "";
-  rows.forEach((t, i) => {
-    const v = vals[i];
-    if (typeof v !== "number") return;
-    const off = v < s.lo, best = v === s.hi;
-    d += (d ? " L " : "M ") + x(v).toFixed(1) + " " + y(i).toFixed(1);
-    pts += `<circle cx="${x(v).toFixed(1)}" cy="${y(i).toFixed(1)}" r="${best ? 5 : 3.5}"
-      fill="${off ? "var(--plane)" : best ? "var(--caution)" : "var(--trace-1)"}"
-      stroke="${off ? "var(--limit)" : "var(--plane)"}" stroke-width="2"
-      class="pt" data-i="${i}"><title>trial ${t.seq}: ${sig(v)}${off ? " (off scale low)" : ""}</title></circle>`;
-  });
-  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block"
-      role="img" aria-label="${esc(key)} by trial">
-    <line x1="${PAD}" y1="0" x2="${PAD}" y2="${H}" stroke="var(--rule)"/>
-    <path d="${d}" fill="none" stroke="var(--trace-1)" stroke-width="2" stroke-linejoin="round"/>
-    ${pts}</svg>`;
-}
 
-function trajectorySvg(runs, key, H) {
-  const s = scaleOf(runs.flatMap(r => r.points));
-  let maxN = 0;
-  runs.forEach(r => r.points.forEach((v, i) => { if (typeof v === "number") maxN = Math.max(maxN, i + 1); }));
-  if (!s || !maxN) return "";
-  const W = 1000, L = 64, R = 150, T = 18, B = 34;
-  const x = (i) => L + (maxN === 1 ? (W - L - R) / 2 : (i / (maxN - 1)) * (W - L - R));
-  const y = (v) => T + (1 - Math.max(0, Math.min(1, (v - s.lo) / s.span))) * (H - T - B);
-  let body = "";
-  runs.forEach((r, n) => {
-    const c = SERIES[n % SERIES.length];
-    let d = "", last = null;
-    r.points.forEach((v, i) => {
-      if (typeof v !== "number") return;
-      const off = v < s.lo;
-      d += (d ? " L " : "M ") + x(i).toFixed(1) + " " + y(v).toFixed(1);
-      last = { i, v };
-      body += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="4.5"
-        fill="${off ? "var(--panel)" : c}" stroke="${off ? "var(--limit)" : "var(--panel)"}" stroke-width="2"
-        class="jp" data-run="${esc(r.id)}" data-seq="${i}" data-val="${sig(v)}" data-off="${off}"
-        ><title>${esc(r.id)} trial ${i}: ${sig(v)}</title></circle>`;
-    });
-    body = `<path d="${d}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round"/>` + body;
-    if (last) body += `<text x="${(x(last.i) + 12).toFixed(1)}" y="${(y(last.v) + 4).toFixed(1)}"
-      fill="${c}" font-size="12">${esc(r.label)}</text>`;
-  });
-  const grid = [s.hi, s.lo].map(v =>
-    `<line x1="${L}" y1="${y(v).toFixed(1)}" x2="${W - R}" y2="${y(v).toFixed(1)}" stroke="var(--rule)"/>
-     <text x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end" fill="var(--ink-faint)" font-size="12">${sig(v)}</text>`).join("");
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img"
-      aria-label="${esc(key)} by trial for ${runs.length} runs">
-    ${grid}
-    <text x="${L}" y="${H - 10}" fill="var(--ink-faint)" font-size="12">trial 0</text>
-    <text x="${(W - R).toFixed(1)}" y="${H - 10}" text-anchor="end" fill="var(--ink-faint)" font-size="12">trial ${maxN - 1}</text>
-    ${body}</svg>`;
-}
 
 // One chart per metric, the baseline drawn as the line to beat and the best
 // point marked, so the shape of the search reads without touching the table.
-function panels(run, trials) {
-  const readings = run.readings || [];
-  if (!readings.length) return "";
-  return `<div class="panels">${readings.map(r => {
-    const k = r.name;
-    if (r.best == null) return "";
-    const base = r.baseline;
-    const vals = trials.map(t => (t.metrics || {})[k]);
-    const known = vals.filter(v => typeof v === "number");
-    const all = base == null ? known : known.concat([base]);
-    const lo = Math.min(...all), hi = Math.max(...all), span = (hi - lo) || Math.abs(hi) || 1;
-    const W = 520, H = 132, L = 46, R = 12, T = 12, B = 22;
-    const x = (i) => L + (trials.length < 2 ? 0 : i / (trials.length - 1)) * (W - L - R);
-    const y = (v) => T + (1 - (v - lo) / span) * (H - T - B);
-    let d = "", dots = "";
-    trials.forEach((t, i) => {
-      const v = vals[i];
-      if (typeof v !== "number") return;
-      d += (d ? " L " : "M ") + x(i).toFixed(1) + " " + y(v).toFixed(1);
-      const isBest = v === r.best;
-      dots += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${isBest ? 4.5 : 2.4}"
-        fill="${isBest ? "var(--good)" : "var(--trace-1)"}" stroke="var(--panel)" stroke-width="1.5"
-        class="jp" data-run="trial ${t.seq}" data-seq="${t.seq}" data-val="${sig(v)}" data-off="false"/>`;
-    });
-    const baseline = base == null ? "" : `
-      <line x1="${L}" y1="${y(base).toFixed(1)}" x2="${W - R}" y2="${y(base).toFixed(1)}"
-        stroke="var(--caution)" stroke-width="1" stroke-dasharray="4 3"/>
-      <text x="${W - R}" y="${(y(base) - 5).toFixed(1)}" text-anchor="end" fill="var(--caution)"
-        font-size="10.5">baseline ${sig(base)}</text>`;
-    return `<figure class="panel">
-      <figcaption><b>${esc(k)}</b> <span class="dirn">${arrow(k)} ${aim(k)}</span></figcaption>
-      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
-        <line x1="${L}" y1="${y(hi).toFixed(1)}" x2="${W - R}" y2="${y(hi).toFixed(1)}" stroke="var(--rule)"/>
-        <line x1="${L}" y1="${y(lo).toFixed(1)}" x2="${W - R}" y2="${y(lo).toFixed(1)}" stroke="var(--rule)"/>
-        <text x="${L - 6}" y="${(y(hi) + 4).toFixed(1)}" text-anchor="end" fill="var(--ink-faint)" font-size="10.5">${sig(hi)}</text>
-        <text x="${L - 6}" y="${(y(lo) + 4).toFixed(1)}" text-anchor="end" fill="var(--ink-faint)" font-size="10.5">${sig(lo)}</text>
-        ${baseline}
-        <path d="${d}" fill="none" stroke="var(--trace-1)" stroke-width="1.75" stroke-linejoin="round"/>
-        ${dots}
-        <text x="${L}" y="${H - 5}" fill="var(--ink-faint)" font-size="10.5">trial 0</text>
-        <text x="${(W - R).toFixed(1)}" y="${H - 5}" text-anchor="end" fill="var(--ink-faint)" font-size="10.5">trial ${trials[trials.length - 1].seq}</text>
-      </svg></figure>`;
-  }).join("")}</div>`;
-}
 
 // Shneiderman's overview, adjoining the detail rather than on its own screen.
 // Every number here is computed; the reader supplies nothing.
@@ -494,20 +353,15 @@ function summary(run) {
   if (!readings.length) return "";
   return `<div class="band">${readings.map(r => r.best == null ? "" : `
     <div class="metric">
-      <div class="mh"><b>${esc(r.name)}</b>
-        <span class="dirn">${arrow(r.name)} ${aim(r.name)}</span></div>
-      <div class="line"><i>best</i>
-        <b class="num">${sig(r.best)}</b>
-        <span class="at">at trial ${r.best_at}</span>
-        ${r.vs_baseline ? said(r.vs_baseline) : `<span class="ref">no baseline recorded</span>`}</div>
-      ${r.off_best ? `<div class="line"><i>latest</i>
-        <b class="num sub2">${sig(r.latest)}</b>
-        <span class="at">at trial ${r.latest_at}</span>
-        ${said(r.off_best)}</div>` : ""}
-      <div class="line"><i>records</i>
-        <span class="sub2">${r.records} new best${r.records === 1 ? "" : "s"} in ${r.scored} scored</span>
-        <span class="${r.since_best > 3 ? "bad" : "sub2"}">${r.since_best} scored trial${
-          r.since_best === 1 ? "" : "s"} since the last new best</span></div>
+      <b>${esc(r.name)}</b> <span class="dirn">${arrow(r.name)} ${aim(r.name)}</span>
+      <span class="sep"></span>
+      <i>best</i> <b class="num">${sig(r.best)}</b> <span class="at">@${r.best_at}</span>
+      ${r.vs_baseline ? said(r.vs_baseline) : `<span class="ref">no baseline</span>`}
+      ${r.off_best ? `<span class="sep"></span><i>latest</i>
+        <span class="num sub2">${sig(r.latest)}</span> <span class="at">@${r.latest_at}</span>` : ""}
+      <span class="sep"></span>
+      <span class="${r.since_best > 3 ? "bad" : "sub2"}">${r.records} best${
+        r.records === 1 ? "" : "s"}, ${r.since_best} scored since the last</span>
     </div>`).join("")}</div>`;
 }
 
@@ -547,49 +401,11 @@ async function drawRuns() {
       A run records itself when DATABASE_URL is set. Start one with <code>cadence run</code>.</div></div>`;
     return;
   }
-  $("work").innerHTML = `<div class="pane"><div id="chart"></div>${runTable(runs)}</div>`;
+  $("work").innerHTML = `<div class="pane">${runTable(runs)}</div>`;
   $("work").querySelectorAll("tr[data-id]").forEach(tr =>
     tr.onclick = () => { at.run = tr.dataset.id; at.trial = null; metric = null; draw(); });
-  if (at.experiment && runs.length > 1) await drawTrajectory(runs);
 }
 
-async function drawTrajectory(runs) {
-  const shown = runs.slice(0, SERIES.length);
-  const dropped = runs.length - shown.length;
-  const fetched = await Promise.all(shown.map(r =>
-    get("/api/runs/" + encodeURIComponent(r.id) + "/trials?limit=500").catch(() => [])));
-  const keys = keysOf(fetched.flat());
-  const key = keys.includes(metric) ? metric : keys[0];
-  if (!key) return;
-  const series = shown.map((r, i) => ({
-    // Runs of one experiment are often started on the same day, so the date
-    // alone labels two lines identically.
-    id: r.id, label: stampOf(r.started_at), points: fetched[i].map(t => (t.metrics || {})[key])
-  })).filter(s => s.points.some(v => typeof v === "number"));
-  if (series.length < 2) return;
-  const s = scaleOf(series.flatMap(r => r.points));
-  const svg = trajectorySvg(series, key, 300);
-  if (!svg) return;
-  $("chart").innerHTML = `<figure>
-    <figcaption class="swap" style="margin:4px 0 8px">
-      <b class="stencil">${esc(key)} by trial</b>
-      ${keys.length > 1 ? keys.map(k => `<button data-k="${esc(k)}" aria-pressed="${k === key}">${esc(k)}</button>`).join("") : ""}
-    </figcaption>
-    ${svg}
-    <div class="legend">${series.map((s2, n) =>
-      `<span><i style="background:${SERIES[n % SERIES.length]}"></i>${esc(s2.id)}</span>`).join("")}</div>
-    <p class="caption">Straight between measurements, nothing smoothed; a gap is a trial that produced nothing.${
-      s.offscale.length ? ` ${s.offscale.length} point${s.offscale.length > 1 ? "s" : ""} scored below the working band
-      (${s.offscale.map(sig).join(", ")}) and sit hollow on the floor line.` : ""}${
-      dropped ? ` ${dropped} older run${dropped > 1 ? "s are" : " is"} not plotted; ${dropped > 1 ? "they are" : "it is"} in the table below.` : ""}</p>
-  </figure>`;
-  $("chart").querySelectorAll("button[data-k]").forEach(b => b.onclick = () => { metric = b.dataset.k; draw(); });
-  $("chart").querySelectorAll(".jp").forEach(c => {
-    c.onmousemove = (e) => showTip(e, `<b>trial ${c.dataset.seq} · ${c.dataset.val}</b>
-      <em>${esc(c.dataset.run)}${c.dataset.off === "true" ? " · off scale low" : ""}</em>`);
-    c.onmouseleave = hideTip;
-  });
-}
 
 async function drawRun() {
   const [run, trials] = await Promise.all([
@@ -608,7 +424,10 @@ async function drawRun() {
       <h1><span class="mono">${esc(run.id)}</span> ${mark(state, run.severity, moving)}</h1>
       ${run.stopped ? `<p class="cause"><b>${esc(run.stopped.lead)}</b> — ${esc(run.stopped.detail)}</p>` : ""}
       ${facts([
-        [run.cap_trials ? `${run.trials} <span class="sub2">of ${run.cap_trials}</span>` : run.trials, "trials"],
+        [!run.cap_trials ? run.trials
+          : run.trials <= run.cap_trials
+            ? `${run.trials} <span class="sub2">of ${run.cap_trials}</span>`
+            : `${run.trials} <span class="bad">past its ${run.cap_trials} budget</span>`, "trials"],
         [run.scored, "scored"],
         [dur(run.duration_ms), "elapsed"],
         [run.spend.calls + (run.spend.replayed ? ` <em style="font-style:normal;color:var(--ink-faint)">(${run.spend.replayed} replayed)</em>` : ""), "model calls"],
@@ -618,7 +437,6 @@ async function drawRun() {
     </div>`;
   $("back").onclick = () => { at.run = null; at.trial = null; draw(); };
   $("head").insertAdjacentHTML("beforeend", summary(run));
-  $("head").insertAdjacentHTML("beforeend", panels(run, trials));
   const top = (run.readings || []).find(r => r.name === key);
   $("work").className = "sortie";
   $("work").innerHTML = `
@@ -642,13 +460,6 @@ async function drawRun() {
     <div class="pane" id="record"></div>`;
   $("work").querySelectorAll("tr[data-id]").forEach(tr =>
     tr.onclick = () => { at.trial = at.trial === tr.dataset.id ? null : tr.dataset.id; draw(); });
-  $("work").querySelectorAll(".pt").forEach(c => {
-    const t = trials[+c.dataset.i];
-    c.onmousemove = (e) => showTip(e, `<b>trial ${t.seq} · ${sig((t.metrics || {})[key])}</b>
-      <em>${esc(t.outcome || t.status)}</em>`);
-    c.onmouseleave = hideTip;
-    c.onclick = () => { at.trial = t.id; draw(); };
-  });
   if (at.trial) await drawTrial(); else drawPlan(run);
 }
 
@@ -707,7 +518,6 @@ function diffHtml(t) {
 
 // --- the loop ------------------------------------------------------------
 async function draw() {
-  hideTip();
   writeHash();
   // A watched run redraws every few seconds; losing your place in the strip
   // each time would make the live view the one you cannot read.
