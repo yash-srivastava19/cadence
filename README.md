@@ -356,8 +356,7 @@ It works out what a table of numbers leaves to you.
 | Each trial against the trial it was patched from | Trace the tree by hand |
 | Whether the search ended or the provider stopped it | Read a 429 as a bad result |
 
-The same facts reach the terminal: `cadence runs show` prints them, and
-`cadence trials list` carries the comparison.
+![The dashboard](https://github.com/user-attachments/assets/724841cd-ebb9-4fe5-87ea-94e847a13b9b)
 
 ## Logs
 
