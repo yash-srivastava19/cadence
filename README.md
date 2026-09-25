@@ -70,6 +70,7 @@ a zero.
 | Run candidates with limits | A sandbox per trial: wall clock, memory, output size, a clean environment |
 | Use your own model, or a hosted one | Gemini, OpenAI, Anthropic or Ollama, set in `.cadence`. The key comes from the environment, never from a file |
 | See what happened, step by step | A JSON log of every step in `cadence-runs/`, with or without a database |
+| Read a run without reading the database | `cadence dashboard`: every trial, what it changed, and whether the search is still finding anything |
 | Stop today and carry on tomorrow | Recorded runs resume from the database, and calls already paid for are replayed, not repeated |
 | Keep the winner | `cadence apply` writes a run's best program over yours |
 
@@ -207,6 +208,7 @@ cadence runs list                # every recorded run, newest first
 cadence trials list --run RUN_ID # the trials of one run
 cadence run --resume RUN_ID      # carry on a run that stopped
 cadence apply RUN_ID             # write the best program over yours
+cadence dashboard                # read all of it in a browser
 ```
 
 `apply` overwrites your program and keeps no backup. Commit first.
@@ -327,10 +329,43 @@ cadence schema                       # the manifest's JSON Schema
 cadence db status                    # the database, and whether its schema is current
 cadence db upgrade                   # apply the migrations this cadence needs
 cadence db rollback --to -1          # undo the last one; asks first
+cadence dashboard [--port N]         # the recorded runs, in a browser
 ```
 
 `check`, `run`, `runs` and `trials` take `--json`. It is the default when
 output is not a terminal.
+
+## The dashboard
+
+```bash
+cadence dashboard        # http://127.0.0.1:8787
+```
+
+Read-only, localhost, and it reads the same database `cadence runs list`
+does. There is no authentication and every run's manifest and candidate
+source is readable through it, so it binds to the loopback address and stays
+there.
+
+It answers the questions a table of numbers leaves to you:
+
+- **which way is better.** The manifest already declares `minimize` or
+  `maximize`; every metric carries it, so nobody has to remember whether 8.26
+  beats 9.11.
+- **compared to what.** The seed's score is the baseline, drawn beside the
+  best, with the difference and the percentage worked out.
+- **what the best was, and when.** `best 8.2614 at trial 14`, rather than a
+  column you scan.
+- **whether it is still worth running.** `4 scored trials since the last new
+  best` is the number that says a search has stopped finding anything.
+- **what each trial actually did.** Every trial is compared with the trial it
+  was patched from -- its parent, not the row above it, because trials form a
+  tree -- and its diff sits beside the list rather than below it.
+- **why it stopped.** A run killed by a 429 says nothing about search quality,
+  so the dashboard says whether the search ended or the environment
+  interrupted it, instead of leaving a red mark to be misread.
+
+The same facts reach the terminal, from the same types: `cadence runs show`
+prints the readings, and `cadence trials list` carries the comparison.
 
 ## Logs
 
@@ -414,6 +449,7 @@ cadence/
   control/     choose parents, call models, parse replies, apply patches, record
   execution/   run candidates in a sandbox and return what happened
   delivery/    how results are presented
+  web/         the dashboard: read-only, GET only, localhost
   commands/    the CLI
 ```
 
@@ -422,6 +458,12 @@ cadence/
 | `control` | search, prompts, model calls, patches, objectives, the record | how a candidate is run |
 | `execution` | sandboxes, limits, verdicts, metric collection | why a candidate was chosen |
 | `delivery` | how results are shown | how search or sandboxing works |
+| `web` | serving the record to a browser | anything `control` has not already worked out |
+
+`web` is a sibling of `commands`, not a layer under it: both open a session,
+ask `control` what happened, and hand the answer to `delivery`. Neither
+decides anything, which is why the terminal and the browser cannot disagree
+about whether a trial improved.
 
 The layers are enforced by `import-linter` in CI. To add a search method,
 implement the `Method` port. To add a sandbox, implement `Sandbox`. To watch

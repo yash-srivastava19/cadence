@@ -53,19 +53,27 @@ def trials_as_text(rows: Sequence[TrialSummary]) -> str:
     if not rows:
         return "no trials"
     return _table(
-        ("seq", "status", "score", "attempts", "candidate", "reason"),
+        ("seq", "status", "score", "vs its parent", "attempts", "reason"),
         [
             (
                 str(row.seq),
                 row.status,
                 _scores(row.metrics),
+                _against(row),
                 str(row.attempts),
-                _short(row.candidate),
                 _short(row.reason, 40),
             )
             for row in rows
         ],
     )
+
+
+def _against(row: TrialSummary) -> str:
+    """The lead metric only. The score column already lists them all, and a
+    comparison per metric is wider than a terminal."""
+    for one in row.compared.values():
+        return _said(one)
+    return NOTHING
 
 
 #: Rendered here rather than dumped, and rendered the same way the dashboard
@@ -109,11 +117,11 @@ def _aim(direction: str | None) -> str:
 
 def _said(comparison: Comparison) -> str:
     if comparison.judgment == "same":
-        return f"no change against {comparison.referent}"
-    size = f"{comparison.delta:+g}"
+        return f"no change vs {comparison.referent}"
+    size = f"{comparison.delta:+.4g}"
     if comparison.percent is not None:
         size += f" ({comparison.percent:.1f}%)"
-    return f"{size} {comparison.judgment} than {comparison.referent}"
+    return f"{size} {comparison.judgment} vs {comparison.referent}"
 
 
 def _reading(reading: MetricReading) -> list[str]:
