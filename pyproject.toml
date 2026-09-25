@@ -109,6 +109,9 @@ name = "The planes are layered"
 type = "layers"
 layers = [
   "cadence.commands",
+  # The web plane is an entry point like commands, but commands owns the
+  # `cadence dashboard` verb that starts it, so it sits between the two.
+  "cadence.web",
   "cadence.delivery",
   "cadence.control",
   "cadence.execution",

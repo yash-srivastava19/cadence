@@ -16,8 +16,11 @@ if not os.environ.get("TEST_DATABASE_URL"):
 from cadence.control.queries import (
     one_run,
     one_trial,
+    run_detail,
+    some_experiments,
     some_runs,
     some_trials,
+    trial_detail,
 )
 from cadence.lifecycle.states import RunState, TrialState
 from tests.integration.test_journal import (
@@ -181,3 +184,213 @@ class TestATrialCarriesItsScore:
         journalled(IMPROVES, run_id="scored", budget=1)
         wanted = some_trials(session, "scored")[0]
         assert one_trial(session, wanted.id).metrics == wanted.metrics
+
+
+class TestARunPageCanAffordMoreThanAListing:
+    """What a fifty-row listing will not pay for: what the run spent, how
+    long it took, and what it was started from."""
+
+    def test_it_is_still_a_run_summary(self, session, journalled):
+        journalled(IMPROVES, run_id="detail", budget=1)
+        assert run_detail(session, "detail").id == one_run(session, "detail").id
+
+    def test_it_counts_the_work_the_run_asked_for(self, session, journalled):
+        journalled(IMPROVES, run_id="bought", budget=1)
+        spend = run_detail(session, "bought").spend
+        assert (spend.calls, spend.replayed) == (1, 0)
+        assert spend.tokens_in > 0
+
+    def test_an_unpriced_provider_spends_nothing_nameable(self, session, journalled):
+        """None, not zero. Nobody declared a price for the scripted backend,
+        and $0.00 would be a lie with a decimal point on it."""
+        journalled(IMPROVES, run_id="unpriced", budget=1)
+        assert run_detail(session, "unpriced").spend.usd is None
+
+    def test_it_counts_the_trials_that_came_back_with_a_score(
+        self, session, journalled
+    ):
+        journalled(CRASHES, IMPROVES, run_id="some-scored", budget=2)
+        found = run_detail(session, "some-scored")
+        assert (found.trials, found.scored) == (2, 1)
+
+    def test_it_took_some_time(self, session, journalled):
+        """From the first fact to the last. runs has no finished_at, and a
+        killed process would never have written one anyway."""
+        journalled(IMPROVES, run_id="timed", budget=1)
+        assert run_detail(session, "timed").duration_ms >= 0
+
+    def test_a_replay_is_work_but_not_a_bill(self, session, journalled):
+        """Spend says these two count differently and they have to keep
+        doing it: reproducing the run means making the call again, and a
+        reply read back out of the database was not bought twice."""
+        import sqlalchemy as sa
+
+        from cadence.control.storage import events
+
+        journalled(IMPROVES, run_id="replaying", budget=1)
+        session.execute(
+            sa.update(events)
+            .where(
+                sa.and_(events.c.run_id == "replaying", events.c.type == "ModelCalled")
+            )
+            .values(payload=events.c.payload.concat({"replayed": True}))
+        )
+        spend = run_detail(session, "replaying").spend
+        assert (spend.calls, spend.replayed) == (1, 1)
+
+    def test_it_carries_the_manifest_it_was_started_from(self, session, journalled):
+        """The point of a run page is "what was I even trying", and a hash
+        cannot answer that."""
+        journalled(IMPROVES, run_id="configured", budget=1)
+        assert run_detail(session, "configured").manifest
+
+    def test_a_run_nobody_recorded_is_none(self, session):
+        assert run_detail(session, "never-existed") is None
+
+
+class TestATrialPageShowsWhatChanged:
+    def test_it_is_still_a_trial_summary(self, session, journalled):
+        journalled(IMPROVES, run_id="one-trial", budget=1)
+        wanted = some_trials(session, "one-trial")[0]
+        assert trial_detail(session, wanted.id).seq == wanted.seq
+
+    def test_the_diff_is_against_the_parent(self, session, journalled):
+        journalled(IMPROVES, run_id="changed", budget=1)
+        wanted = some_trials(session, "changed")[0]
+        diff = trial_detail(session, wanted.id).diff
+        assert diff.startswith("--- parent")
+        assert any(line.startswith("+") for line in diff.splitlines())
+
+    def test_a_trial_that_made_nothing_has_no_diff_rather_than_an_empty_one(
+        self, session, journalled
+    ):
+        """None and "" are different answers: one trial produced nothing to
+        compare, the other produced something identical to its parent."""
+        journalled(NONSENSE, run_id="made-nothing", budget=1)
+        wanted = some_trials(session, "made-nothing")[0]
+        assert trial_detail(session, wanted.id).diff is None
+
+    def test_it_says_what_the_model_call_cost(self, session, journalled):
+        journalled(IMPROVES, run_id="billed", budget=1)
+        wanted = some_trials(session, "billed")[0]
+        assert trial_detail(session, wanted.id).model
+
+    def test_it_carries_what_the_model_actually_said(self, session, journalled):
+        """The diff can only show what survived parsing. When a patch would
+        not apply, this is the only place that says why."""
+        journalled(NONSENSE, run_id="prose", budget=1)
+        wanted = some_trials(session, "prose")[0]
+        assert trial_detail(session, wanted.id).response
+
+    def test_it_says_how_long_measuring_took(self, session, journalled):
+        journalled(IMPROVES, run_id="measured", budget=1)
+        wanted = some_trials(session, "measured")[0]
+        assert trial_detail(session, wanted.id).wall_ms >= 0
+
+    def test_a_retry_that_never_came_back_does_not_hide_the_answer(
+        self, session, journalled
+    ):
+        """A trial written before a call and killed mid-request leaves an
+        unanswered row that sorts last. Joining to it would report a trial as
+        having said nothing, with the reply it used in the row before."""
+        import sqlalchemy as sa
+
+        from cadence.control.storage import model_calls
+
+        journalled(IMPROVES, run_id="interrupted", budget=1)
+        wanted = some_trials(session, "interrupted")[0]
+        answered = trial_detail(session, wanted.id)
+        # Written the way the journal writes one: before the call, with
+        # nothing back yet, and sorting after the call that was answered.
+        was = (
+            session.execute(
+                sa.select(model_calls).where(model_calls.c.trial_id == wanted.id)
+            )
+            .mappings()
+            .first()
+        )
+        session.execute(
+            sa.insert(model_calls).values(
+                {
+                    **was,
+                    "id": was["id"] + "#never",
+                    "status": "in_flight",
+                    "response": None,
+                    "model": None,
+                    "occurred_at": sa.func.now(),
+                }
+            )
+        )
+        assert trial_detail(session, wanted.id).response == answered.response
+
+    def test_a_trial_nobody_recorded_is_none(self, session):
+        assert trial_detail(session, "never-existed") is None
+
+
+class TestExperimentsAreDerivedNotStored:
+    """There is no experiments table. `experiment` is a column runs copy off
+    their manifest, so this is a GROUP BY with a name."""
+
+    def test_runs_are_gathered_under_their_name(self, session, three_runs):
+        found = {e.name: e for e in some_experiments(session)}
+        assert found["packing"].runs == 2
+        assert found["caching"].runs == 1
+
+    def test_a_run_that_named_nothing_is_left_out(self, session, journalled):
+        """ "" is not an experiment, it is the absence of one, and a row for
+        it would sort into the middle of a list of real ones."""
+        journalled(IMPROVES, run_id="anonymous", budget=1)
+        assert all(e.name for e in some_experiments(session))
+
+    def test_it_shows_the_most_recent_best(self, session, three_runs):
+        found = {e.name: e for e in some_experiments(session)}
+        assert found["packing"].best
+
+    def test_the_busiest_experiment_is_not_the_first_one(self, session, three_runs):
+        """Ordered by when it last did something. An experiment nobody has
+        touched in a month does not belong at the top."""
+        found = some_experiments(session)
+        assert found == sorted(found, key=lambda e: e.last_activity, reverse=True)
+
+
+class TestARunKnowsWhatItWasAimingAt:
+    """Each metric comes back knowing which way is better and what it started
+    from, so nothing downstream has to work it out or agree with anyone."""
+
+    def test_every_metric_scored_gets_a_reading(self, session, journalled):
+        journalled(IMPROVES, run_id="read", budget=1)
+        found = run_detail(session, "read")
+        assert [r.name for r in found.readings] == ["value"]
+
+    def test_the_reading_carries_the_seed_score_as_its_baseline(
+        self, session, journalled
+    ):
+        """Read off the tape rather than through candidates: a seed's
+        fingerprint and the fingerprint its verdict is keyed on are different
+        values, so that join never matches."""
+        journalled(IMPROVES, run_id="based", budget=1)
+        [reading] = run_detail(session, "based").readings
+        assert reading.baseline is not None
+        assert reading.vs_baseline is not None
+
+    def test_the_best_is_named_with_the_trial_it_arrived_at(self, session, journalled):
+        journalled(IMPROVES, run_id="peaked", budget=1)
+        [reading] = run_detail(session, "peaked").readings
+        assert reading.best is not None
+        assert reading.best_at is not None
+
+    def test_a_manifest_declaring_no_direction_still_reads(self, session, journalled):
+        """The run still happened. It comes back without a direction rather
+        than failing over a manifest that never said."""
+        journalled(IMPROVES, run_id="undeclared", budget=1)
+        found = run_detail(session, "undeclared")
+        assert found.cap_trials is None
+        assert all(r.direction is None for r in found.readings)
+
+    def test_a_trial_is_compared_with_what_it_was_patched_from(
+        self, session, journalled
+    ):
+        journalled(CRASHES, IMPROVES, run_id="lineage", budget=2)
+        scored = [t for t in some_trials(session, "lineage") if t.metrics]
+        assert scored
+        assert all(c.referent for t in scored for c in t.compared.values())

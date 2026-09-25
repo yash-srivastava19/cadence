@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cadence</title>
+<link rel="stylesheet" href="/vendor/diff2html.min.css">
+<script src="/vendor/diff2html.min.js"></script>
+<style>
+  /* One material. The record is a raised plane of the same ground, never a
+     foreign sheet laid on it. The ground is blue because the diff is the most
+     important surface on the page and green additions vanish on a green one. */
+  :root {
+    --panel: #142a33;
+    --panel-deep: #0e2028;
+    --plane: #1b343d;
+    --plane-head: #21404a;
+    --rule: #2a4a55;
+    --rule-bright: #3b6272;
+    --ink: #dde6ea;
+    --ink-soft: #a0b4bd;
+    --ink-faint: #8ba1ab;
+
+    --caution: #e8ab45;
+    --limit: #f0776a;
+    --good: #4cb782;
+
+    --del: #43232a;
+    --del-word: #6b3039;
+    --ins: #1d4434;
+    --ins-word: #2c6a4c;
+
+
+    --row: 30px;
+    --gutter: 20px;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  body {
+    margin: 0; height: 100vh; overflow: hidden;
+    background: var(--panel); color: var(--ink);
+    font: 400 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono, code, pre, .num { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  ::selection { background: var(--caution); color: #241a05; }
+  :focus-visible { outline: 2px solid var(--caution); outline-offset: 2px; }
+  * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  *::-webkit-scrollbar { width: 11px; height: 11px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background: transparent; border-radius: 6px;
+    border: 3px solid transparent; background-clip: content-box;
+  }
+  *::-webkit-scrollbar-corner { background: transparent; }
+  .pane:hover, .pane:focus-within { scrollbar-color: var(--rule-bright) transparent; }
+  .pane:hover::-webkit-scrollbar-thumb,
+  .pane:focus-within::-webkit-scrollbar-thumb { background: var(--rule-bright); }
+  *::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
+
+  .stencil {
+    font-size: 11px; font-weight: 600; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+
+  /* Nothing here scrolls the window. Each pane owns its scroll, so the record
+     you opened is never below the list you opened it from. */
+  #shell { display: grid; grid-template-columns: 210px 1fr; height: 100vh; }
+  #rail { background: var(--panel-deep); border-right: 1px solid var(--rule); padding: 18px 0; overflow-y: auto; }
+  #rail .stencil { padding: 0 var(--gutter); margin-bottom: 10px; display: block; }
+  .exp {
+    display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: baseline;
+    padding: 5px var(--gutter); cursor: pointer; color: var(--ink-soft);
+    border-left: 2px solid transparent;
+  }
+  .exp:hover { color: var(--ink); background: #ffffff06; }
+  .exp[aria-current="true"] { color: var(--ink); border-left-color: var(--caution); background: #ffffff09; }
+  .exp b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .exp i { font-style: normal; font-size: 12px; color: var(--ink-faint); }
+  .exp i.live { color: var(--caution); }
+
+  #main { display: flex; flex-direction: column; height: 100vh; min-width: 0; overflow: hidden; }
+  #head { padding: 10px var(--gutter) 8px; flex: none; border-bottom: 1px solid var(--rule); }
+  #work { flex: 1; min-height: 0; display: grid; overflow: hidden; }
+
+  a, .link { color: var(--ink-soft); cursor: pointer; text-decoration: none; text-underline-offset: 3px; }
+  a:hover, .link:hover { color: var(--ink); text-decoration: underline; }
+  h1 { font-size: 17px; font-weight: 500; margin: 3px 0 0; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+
+  .plan { padding: 2px 0 0; margin: 0; }
+  .facts { display: flex; flex-wrap: wrap; gap: 3px 7px; align-items: baseline;
+           color: var(--ink-soft); font-size: 12.5px; }
+  .facts > div { display: flex; align-items: baseline; gap: 5px; }
+  .facts > div + div::before { content: "·"; color: var(--rule-bright); margin-right: 5px; }
+  .facts .stencil { font-size: 12.5px; letter-spacing: 0; text-transform: none;
+                    font-weight: 400; color: var(--ink-faint); order: 2; }
+  .facts span { font-size: 13px; color: var(--ink); font-weight: 500; }
+
+  .mark { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+  .mark.nominal { color: var(--ink-faint); }
+  .mark.caution { color: var(--caution); }
+  .mark.limit   { color: var(--limit); }
+  .lamp { animation: lamp 1.6s steps(1, end) infinite; }
+  @keyframes lamp { 0%, 60% { opacity: 1 } 61%, 100% { opacity: .35 } }
+  @media (prefers-reduced-motion: reduce) { .lamp { animation: none } }
+
+  /* The summary band: the run's answer, computed, above the rows. */
+  .band { padding: 8px 0 0; }
+  .metric { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+            font-size: 12.5px; padding: 3px 0; }
+  .metric > b { font-weight: 500; font-size: 13.5px; }
+  .metric i { font-style: normal; color: var(--ink-faint); font-size: 11.5px; }
+  .metric .num { font-size: 14px; font-weight: 500; }
+  .metric .num.sub2 { font-size: 12.5px; font-weight: 400; }
+  .sep { width: 1px; height: 11px; background: var(--rule-bright); display: inline-block; margin: 0 4px; }
+  .dirn { color: var(--ink-faint); font-size: 12px; }
+  .at, .ref { color: var(--ink-faint); }
+  .sub2 { color: var(--ink-soft); }
+  /* The sign is arithmetic and the judgment is a word; colour repeats the
+     word, it never carries the meaning alone. */
+  .good { color: var(--good); }
+  .bad  { color: var(--limit); }
+  .flat { color: var(--ink-faint); }
+  .best { color: var(--good); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+  .cmp { font-size: 12.5px; }
+  .cause { color: var(--ink-soft); font-size: 12.5px; margin: 4px 0 0; max-width: 110ch;
+           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cause b { font-weight: 500; color: var(--caution); }
+
+  .pane { overflow: auto; min-width: 0; }
+  .pane.left { border-right: 1px solid var(--rule); background: var(--plane); }
+
+  /* Run tier: strip left, record right. */
+  .sortie { grid-template-columns: minmax(520px, 46%) minmax(0, 1fr); }
+  .stripwrap { min-height: 100%; }
+  .strip { width: 100%; border-collapse: collapse; }
+  .strip th {
+    position: sticky; top: 0; z-index: 2;
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase; text-align: left;
+    font-weight: 600; color: var(--ink-faint); background: var(--plane-head);
+    padding: 7px 12px; border-bottom: 1px solid var(--rule);
+  }
+  .strip td { height: var(--row); padding: 0 12px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  .strip tbody tr { cursor: pointer; }
+  .strip tbody tr:hover td { background: #ffffff0a; }
+  .strip tbody tr[aria-selected="true"] td { background: var(--caution); }
+  .strip tbody tr[aria-selected="true"] td { color: #241a05; }
+  .strip tbody tr[aria-selected="true"] .mark,
+  .strip tbody tr[aria-selected="true"] .from { color: #241a05; }
+  .strip .r { text-align: right; }
+  .strip .from { color: var(--ink-faint); font-size: 12px; }
+  .tracecell { border-left: 1px solid var(--rule); }
+  .tracecell .stencil {
+    position: sticky; top: 0; z-index: 2; display: block;
+    background: var(--plane-head); color: var(--ink-faint);
+    padding: 7px 10px; border-bottom: 1px solid var(--rule);
+  }
+
+  .record { padding: 0 var(--gutter) 40px; }
+  .record > .head { position: sticky; top: 0; z-index: 3; background: var(--panel); padding: 14px 0 10px; }
+  .plate { margin-top: 4px; }
+  .swap { display: flex; gap: 12px; align-items: baseline; }
+  .swap button {
+    background: none; border: 0; padding: 0; cursor: pointer; font: inherit;
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint);
+  }
+  .swap button[aria-pressed="true"] { color: var(--caution); }
+  .swap button:hover { color: var(--ink); }
+
+  /* Experiment tier */
+  .survey { grid-template-columns: minmax(0, 1fr); }
+  .survey .pane { padding: 0 var(--gutter) 30px; }
+  .caption { color: var(--ink-faint); font-size: 12px; margin: 6px 0 0; max-width: 90ch; }
+  .runs { margin-top: 16px; background: var(--plane); border: 1px solid var(--rule); }
+
+
+  details { margin-top: 14px; }
+  summary { cursor: pointer; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); list-style: none; }
+  summary:hover { color: var(--ink); }
+  summary::-webkit-details-marker { display: none }
+  summary::before { content: "+ "; }
+  details[open] summary::before { content: "− "; }
+  pre.src {
+    background: var(--plane); color: var(--ink); border: 1px solid var(--rule);
+    margin: 10px 0 0; padding: 12px; overflow-x: auto; font-size: 12.5px; white-space: pre;
+  }
+
+  /* The diff is the same plane as everything else. Both of diff2html's
+     variable families point here, and the surfaces it leaves transparent are
+     given one, or the page shows through behind the code. */
+  .d2h-wrapper {
+    --d2h-bg-color: var(--plane);             --d2h-dark-bg-color: var(--plane);
+    --d2h-color: var(--ink);                  --d2h-dark-color: var(--ink);
+    --d2h-border-color: var(--rule);          --d2h-dark-border-color: var(--rule);
+    --d2h-line-border-color: var(--rule);     --d2h-dark-line-border-color: var(--rule);
+    --d2h-dim-color: var(--ink-faint);        --d2h-dark-dim-color: var(--ink-faint);
+    --d2h-del-bg-color: var(--del);           --d2h-dark-del-bg-color: var(--del);
+    --d2h-ins-bg-color: var(--ins);           --d2h-dark-ins-bg-color: var(--ins);
+    --d2h-del-highlight-bg-color: var(--del-word);
+    --d2h-dark-del-highlight-bg-color: var(--del-word);
+    --d2h-ins-highlight-bg-color: var(--ins-word);
+    --d2h-dark-ins-highlight-bg-color: var(--ins-word);
+    --d2h-empty-placeholder-bg-color: var(--panel);
+    --d2h-dark-empty-placeholder-bg-color: var(--panel);
+    --d2h-empty-placeholder-border-color: var(--rule);
+    --d2h-dark-empty-placeholder-border-color: var(--rule);
+    --d2h-info-bg-color: var(--plane-head);   --d2h-dark-info-bg-color: var(--plane-head);
+    --d2h-info-border-color: var(--rule);     --d2h-dark-info-border-color: var(--rule);
+    --d2h-file-header-bg-color: var(--plane-head);
+    --d2h-dark-file-header-bg-color: var(--plane-head);
+    --d2h-ins-border-color: transparent;      --d2h-dark-ins-border-color: transparent;
+    --d2h-del-border-color: transparent;      --d2h-dark-del-border-color: transparent;
+  }
+  .d2h-file-header { display: none; }
+  .d2h-file-wrapper, .d2h-files-diff, .d2h-file-side-diff,
+  .d2h-file-diff, .d2h-diff-table, .d2h-diff-tbody {
+    background: var(--plane); color: var(--ink);
+  }
+  .d2h-code-linenumber, .d2h-code-side-linenumber {
+    background: var(--plane-head); color: var(--ink-faint);
+  }
+  .d2h-code-wrapper { position: relative; }
+  .d2h-file-wrapper { border: 1px solid var(--rule) !important; border-radius: 0 !important; margin: 0 !important; }
+  .d2h-code-side-line, .d2h-code-line { font-size: 12.5px; }
+
+  .empty { color: var(--ink-faint); padding: 18px 0; max-width: 62ch; }
+  .empty b { color: var(--ink); font-weight: 500; display: block; margin-bottom: 4px; }
+
+  @media (max-width: 1000px) {
+    body { overflow: auto; height: auto; }
+    #shell { grid-template-columns: 1fr; height: auto; }
+    #main { height: auto; overflow: visible; }
+    #work { overflow: visible; }
+    .sortie, .survey { grid-template-columns: minmax(0, 1fr); }
+    .pane { overflow: visible; }
+    .pane.left { border-right: 0; border-bottom: 1px solid var(--rule); }
+    #rail { border-right: 0; border-bottom: 1px solid var(--rule); padding: 8px 0; display: flex; align-items: center; gap: 4px; overflow-x: auto; }
+    #rail .stencil { margin: 0; flex: none; }
+    #exps { display: flex; }
+    .exp { display: flex; gap: 8px; border-left: 0; border-bottom: 2px solid transparent; white-space: nowrap; padding: 4px 12px; }
+    .exp b { overflow: visible; }
+    .exp[aria-current="true"] { border-left-color: transparent; border-bottom-color: var(--caution); }
+  }
+</style>
+</head>
+<body>
+<div id="shell">
+  <nav id="rail"><b class="stencil">Experiments</b><div id="exps"></div></nav>
+  <main id="main">
+    <div id="head"></div>
+    <div id="work" class="survey"><div class="pane"><div class="empty">Reading the record…</div></div></div>
+  </main>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let at = { experiment: null, run: null, trial: null };
+let metric = null, moving = false, timer = null, stamp = null;
+let how = "split";
+try { how = localStorage.getItem("cadence.diff") || "split"; } catch (e) {}
+
+const ROW = 30;
+const SERIES = ["#2b9cb8", "#8f6ae6", "#cf5f8e"];
+
+function readHash() {
+  const raw = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+  const m = raw.match(/^run\/(.+?)(?:\/trial\/(.+))?$/);
+  if (m) return { experiment: at.experiment, run: m[1], trial: m[2] || null };
+  const e = raw.match(/^experiment\/(.+)$/);
+  if (e) return { experiment: e[1], run: null, trial: null };
+  return { experiment: null, run: null, trial: null };
+}
+function writeHash() {
+  const h = at.run
+    ? "#/run/" + encodeURIComponent(at.run) + (at.trial ? "/trial/" + encodeURIComponent(at.trial) : "")
+    : at.experiment ? "#/experiment/" + encodeURIComponent(at.experiment) : "";
+  if ((location.hash || "") !== h) history.replaceState(null, "", h || location.pathname);
+}
+
+const get = async (p) => {
+  const r = await fetch(p);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+};
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+const mark = (word, severity, live) =>
+  `<span class="mark ${esc(severity || "nominal")}${live ? " lamp" : ""}">${
+    esc(String(word).replace(/_/g, " "))}</span>`;
+
+const when = (iso) => {
+  if (!iso) return "–";
+  const d = new Date(iso), m = (Date.now() - d) / 60000;
+  if (m < 1) return "just now";
+  if (m < 60) return Math.round(m) + " min ago";
+  if (m < 1440) return Math.round(m / 60) + " h ago";
+  return d.toLocaleDateString();
+};
+const dur = (ms) => {
+  if (ms == null) return "–";
+  const s = ms / 1000;
+  if (s < 60) return s.toFixed(1) + " s";
+  if (s < 3600) return Math.floor(s / 60) + " m " + String(Math.round(s % 60)).padStart(2, "0") + " s";
+  return (s / 3600).toFixed(1) + " h";
+};
+const stampOf = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+const money = (u) => u == null ? "unpriced" : "$" + Number(u).toFixed(4);
+
+// A run stopped by a 429 says nothing about the search. Reading a red mark
+// as a bad result is the mistake this sentence exists to prevent.
+
+
+
+let DIR = {};
+const sig = (v) => typeof v === "number"
+  ? (Math.abs(v) >= 1000 ? v.toLocaleString() : String(Number(v.toFixed(4)))) : esc(v);
+const facts = (pairs, cls) => `<div class="facts ${cls || ""}">${
+  pairs.filter(p => p && p[0] !== null && p[0] !== undefined)
+       .map(([v, k]) => `<div><b class="stencil">${k}</b><span>${v}</span></div>`).join("")}</div>`;
+const arrow = (k) => DIR[k] === "minimize" ? "\u2193" : DIR[k] === "maximize" ? "\u2191" : "";
+const aim = (k) => DIR[k] === "minimize" ? "lower is better"
+  : DIR[k] === "maximize" ? "higher is better" : "no direction declared";
+const said = (c) => c
+  ? `<span class="${c.judgment === "better" ? "good" : c.judgment === "worse" ? "bad" : "flat"}">${
+      c.delta > 0 ? "+" : c.delta < 0 ? "\u2212" : ""}${Math.abs(c.delta) ? sig(Math.abs(c.delta)) : ""}${
+      c.percent != null && Math.abs(c.delta) ? ` (${c.percent.toFixed(1)}%)` : ""} ${
+      c.judgment === "same" ? "no change" : c.judgment}</span>
+     <span class="ref">than ${esc(c.referent)}</span>`
+  : "";
+
+
+
+
+// One chart per metric, the baseline drawn as the line to beat and the best
+// point marked, so the shape of the search reads without touching the table.
+
+// Shneiderman's overview, adjoining the detail rather than on its own screen.
+// Every number here is computed; the reader supplies nothing.
+function summary(run) {
+  const readings = run.readings || [];
+  if (!readings.length) return "";
+  return `<div class="band">${readings.map(r => r.best == null ? "" : `
+    <div class="metric">
+      <b>${esc(r.name)}</b> <span class="dirn">${arrow(r.name)} ${aim(r.name)}</span>
+      <span class="sep"></span>
+      <i>best</i> <b class="num">${sig(r.best)}</b> <span class="at">@${r.best_at}</span>
+      ${r.vs_baseline ? said(r.vs_baseline) : `<span class="ref">no baseline</span>`}
+      ${r.off_best ? `<span class="sep"></span><i>latest</i>
+        <span class="num sub2">${sig(r.latest)}</span> <span class="at">@${r.latest_at}</span>` : ""}
+      <span class="sep"></span>
+      <span class="${r.since_best > 3 ? "bad" : "sub2"}">${r.records} best${
+        r.records === 1 ? "" : "s"}, ${r.since_best} scored since the last</span>
+    </div>`).join("")}</div>`;
+}
+
+// --- views ---------------------------------------------------------------
+async function drawExperiments() {
+  const rows = await get("/api/experiments");
+  $("exps").innerHTML =
+    `<div class="exp" data-x="" aria-current="${at.experiment === null && !at.run}"><b>All runs</b></div>` +
+    rows.map(e => `<div class="exp" data-x="${esc(e.name)}" aria-current="${at.experiment === e.name}">
+      <b title="${esc(e.name)}">${esc(e.name)}</b>
+      <i class="${e.running ? "live" : ""}">${e.running ? e.running + " live" : e.runs}</i></div>`).join("");
+  $("exps").querySelectorAll(".exp").forEach(el => el.onclick = () => {
+    at = { experiment: el.dataset.x || null, run: null, trial: null }; metric = null; draw();
+  });
+}
+
+const runTable = (runs) => `<div class="runs"><table class="strip"><thead><tr>
+  <th>run</th><th>status</th><th class="r">trials</th><th>experiment</th>
+  <th>owner</th><th>started</th></tr></thead><tbody>${
+  runs.map(r => `<tr data-id="${esc(r.id)}">
+    <td class="mono">${esc(r.id)}</td>
+    <td>${mark(r.stalled ? "stalled" : r.status, r.severity, r.status === "running" && !r.stalled)}</td>
+    <td class="r num">${r.trials}</td>
+    <td>${esc(r.experiment || "—")}</td>
+    <td class="from">${esc(r.owner || "—")}</td>
+    <td class="from">${when(r.started_at)}</td></tr>`).join("")}</tbody></table></div>`;
+
+async function drawRuns() {
+  const q = at.experiment ? "?experiment=" + encodeURIComponent(at.experiment) : "";
+  const runs = await get("/api/runs" + q);
+  moving = runs.some(r => r.status === "running" && !r.stalled);
+  $("head").innerHTML = `<b class="stencil">${at.experiment ? "Experiment" : "All records"}</b>
+    <h1>${esc(at.experiment || "All runs")}</h1>`;
+  $("work").className = "survey";
+  if (!runs.length) {
+    $("work").innerHTML = `<div class="pane"><div class="empty"><b>No runs recorded.</b>
+      A run records itself when DATABASE_URL is set. Start one with <code>cadence run</code>.</div></div>`;
+    return;
+  }
+  $("work").innerHTML = `<div class="pane">${runTable(runs)}</div>`;
+  $("work").querySelectorAll("tr[data-id]").forEach(tr =>
+    tr.onclick = () => { at.run = tr.dataset.id; at.trial = null; metric = null; draw(); });
+}
+
+
+async function drawRun() {
+  const [run, trials] = await Promise.all([
+    get("/api/runs/" + encodeURIComponent(at.run)),
+    get("/api/runs/" + encodeURIComponent(at.run) + "/trials?limit=500"),
+  ]);
+  if (run.experiment) at.experiment = run.experiment;
+  DIR = Object.fromEntries((run.readings || []).map(r => [r.name, r.direction]));
+  moving = run.status === "running" && !run.stalled;
+  const state = run.stalled ? "stalled" : run.status;
+  const shown = run.readings || [];
+  const key = shown.length ? shown[0].name : null;
+  const tokens = run.spend.tokens_in + run.spend.tokens_out;
+  $("head").innerHTML = `
+    <span class="link" id="back">← ${esc(run.experiment || "all runs")}</span>
+    <div class="on-panel">
+      <h1><span class="mono">${esc(run.id)}</span> ${mark(state, run.severity, moving)}</h1>
+      ${run.stopped ? `<p class="cause"><b>${esc(run.stopped.lead)}</b> — ${esc(run.stopped.detail)}</p>` : ""}
+      ${facts([
+        [!run.cap_trials ? run.trials
+          : run.trials <= run.cap_trials
+            ? `${run.trials} <span class="sub2">of ${run.cap_trials}</span>`
+            : `${run.trials} <span class="bad">past its ${run.cap_trials} budget</span>`, "trials"],
+        [run.scored, "scored"],
+        [dur(run.duration_ms), "elapsed"],
+        [run.spend.calls + (run.spend.replayed ? ` <em style="font-style:normal;color:var(--ink-faint)">(${run.spend.replayed} replayed)</em>` : ""), "model calls"],
+        [tokens.toLocaleString(), "tokens"],
+        run.spend.usd == null ? null : [money(run.spend.usd), "spent"],
+      ], "plan")}
+    </div>`;
+  $("back").onclick = () => { at.run = null; at.trial = null; draw(); };
+  $("head").insertAdjacentHTML("beforeend", summary(run));
+  const top = shown[0];
+  $("work").className = "sortie";
+  $("work").innerHTML = `
+    <div class="pane left" id="stripPane">${trials.length ? `<div class="stripwrap">
+      <table class="strip"><thead><tr><th class="r">#</th><th>result</th>
+        ${shown.map(r => `<th class="r">${esc(r.name)} ${arrow(r.name)}</th>`).join("")}
+        <th>vs its parent${shown.length > 1 ? ` <span class="ref">(${esc(key)})</span>` : ""}</th>
+      </tr></thead><tbody>${
+        trials.map(t => {
+          const v = key && t.metrics ? t.metrics[key] : null;
+          const c = (t.compared || {})[key];
+          const isBest = v != null && top && top.best != null && v === top.best;
+          return `<tr data-id="${esc(t.id)}" aria-selected="${t.id === at.trial}">
+          <td class="r num">${t.seq}</td>
+          <td>${mark(t.outcome || t.status, t.severity, false)}${isBest ? ' <span class="best">best</span>' : ""}</td>
+          ${shown.map(r => {
+            const each = (t.metrics || {})[r.name];
+            return `<td class="r num">${each != null ? sig(each) : "—"}</td>`;
+          }).join("")}
+          <td class="cmp">${c ? said(c)
+            : `<span class="ref">${t.parent ? "parent not scored" : "no baseline"}</span>`}</td></tr>`;
+        }).join("")}</tbody></table>
+    </div>` : `<div class="empty" style="padding:22px"><b>No trials yet.</b>
+      The run has started but nothing has been measured.</div>`}</div>
+    <div class="pane" id="record"></div>`;
+  $("work").querySelectorAll("tr[data-id]").forEach(tr =>
+    tr.onclick = () => { at.trial = at.trial === tr.dataset.id ? null : tr.dataset.id; draw(); });
+  if (at.trial) await drawTrial(); else drawPlan(run);
+}
+
+// With nothing selected, the record pane carries what the run was told to do.
+function drawPlan(run) {
+  $("record").innerHTML = `<div class="record">
+    <div class="head"><b class="stencil">Test plan</b></div>
+    ${run.manifest ? `<pre class="src" style="margin-top:0">${esc(run.manifest)}</pre>`
+      : `<div class="empty">No manifest was recorded for this run.</div>`}
+    <p class="caption">Select a trial to read what the model changed.</p>
+  </div>`;
+}
+
+async function drawTrial() {
+  const t = await get("/api/trials/" + encodeURIComponent(at.trial));
+  $("record").innerHTML = `<div class="record on-panel">
+    <div class="head">
+      <h1>Trial ${t.seq} ${mark(t.outcome || t.status, t.severity, false)}
+        ${t.diff ? `<span class="swap" style="margin-left:auto">
+          <button data-how="split" aria-pressed="${how === "split"}">split</button>
+          <button data-how="unified" aria-pressed="${how === "unified"}">unified</button></span>` : ""}</h1>
+      ${facts([
+        t.model ? [esc(t.model), "answered"] : null,
+        t.latency_ms == null ? null : [dur(t.latency_ms), "waiting"],
+        t.tokens_in == null ? null : [(t.tokens_in + t.tokens_out).toLocaleString(), "tokens"],
+        t.cost_usd == null ? null : [money(t.cost_usd), "spent"],
+        t.wall_ms == null ? null : [dur(t.wall_ms), "measuring"],
+        t.attempts > 1 ? [t.attempts, "attempts"] : null,
+        [t.parent ? `<span class="mono">${esc(t.parent.slice(0, 12))}</span>` : "seed", "folded from"],
+      ], "plan")}
+    </div>
+    <div class="plate">${diffHtml(t)}</div>
+    ${t.response ? `<details><summary>What the model said</summary><pre class="src">${esc(t.response)}</pre></details>` : ""}
+    ${t.code ? `<details><summary>The whole program</summary><pre class="src">${esc(t.code)}</pre></details>` : ""}
+  </div>`;
+  $("record").querySelectorAll("button[data-how]").forEach(b => b.onclick = () => {
+    how = b.dataset.how;
+    try { localStorage.setItem("cadence.diff", how); } catch (e) {}
+    drawTrial();
+  });
+}
+
+function diffHtml(t) {
+  if (t.diff === null || t.diff === undefined) {
+    const why = t.response
+      ? "The reply came back, but no patch could be made of it."
+      : "No answer came back, so nothing was ever built.";
+    return `<div class="empty"><b>No candidate.</b>${esc(t.reason || why)}</div>`;
+  }
+  if (!t.diff.trim()) return `<div class="empty"><b>Nothing changed.</b>The candidate is identical to its parent.</div>`;
+  return Diff2Html.html(t.diff, {
+    outputFormat: how === "split" ? "side-by-side" : "line-by-line",
+    drawFileList: false, matching: "words", colorScheme: "dark",
+  });
+}
+
+// --- the loop ------------------------------------------------------------
+async function draw() {
+  writeHash();
+  // A watched run redraws every few seconds; losing your place in the strip
+  // each time would make the live view the one you cannot read.
+  const keep = { left: $("stripPane")?.scrollTop, right: $("record")?.scrollTop };
+  try {
+    await drawExperiments();
+    if (at.run) await drawRun(); else await drawRuns();
+  } catch (e) {
+    $("work").innerHTML = `<div class="pane"><div class="empty">
+      <b>Could not read the record.</b>${esc(e.message)}</div></div>`;
+  }
+  if (keep.left) { const p = $("stripPane"); if (p) p.scrollTop = keep.left; }
+  if (keep.right) { const p = $("record"); if (p) p.scrollTop = keep.right; }
+  clearTimeout(timer);
+  if (moving) timer = setTimeout(draw, 5000);
+}
+
+setInterval(async () => {
+  try {
+    const v = (await get("/api/version")).page;
+    if (stamp === null) stamp = v; else if (v !== stamp) location.reload();
+  } catch (e) {}
+}, 1500);
+
+at = readHash();
+addEventListener("hashchange", () => { at = readHash(); draw(); });
+draw();
+</script>
+</body>
+</html>
