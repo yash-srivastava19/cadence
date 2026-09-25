@@ -70,7 +70,7 @@ a zero.
 | Run candidates with limits | A sandbox per trial: wall clock, memory, output size, a clean environment |
 | Use your own model, or a hosted one | Gemini, OpenAI, Anthropic or Ollama, set in `.cadence`. The key comes from the environment, never from a file |
 | See what happened, step by step | A JSON log of every step in `cadence-runs/`, with or without a database |
-| Read a run without reading the database | `cadence dashboard`: every trial, what it changed, and whether the search is still finding anything |
+| Read a run without reading the database | `cadence dashboard`: every trial, what it changed, and whether the search is still improving |
 | Stop today and carry on tomorrow | Recorded runs resume from the database, and calls already paid for are replayed, not repeated |
 | Keep the winner | `cadence apply` writes a run's best program over yours |
 
@@ -341,31 +341,23 @@ output is not a terminal.
 cadence dashboard        # http://127.0.0.1:8787
 ```
 
-Read-only, localhost, and it reads the same database `cadence runs list`
-does. There is no authentication and every run's manifest and candidate
-source is readable through it, so it binds to the loopback address and stays
-there.
+Reads the same database as `cadence runs list`. Read-only, and bound to
+localhost: there is no authentication, and every manifest and candidate
+program is readable through it.
 
-It answers the questions a table of numbers leaves to you:
+It works out what a table of numbers leaves to you.
 
-- **which way is better.** The manifest already declares `minimize` or
-  `maximize`; every metric carries it, so nobody has to remember whether 8.26
-  beats 9.11.
-- **compared to what.** The seed's score is the baseline, drawn beside the
-  best, with the difference and the percentage worked out.
-- **what the best was, and when.** `best 8.2614 at trial 14`, rather than a
-  column you scan.
-- **whether it is still worth running.** `4 scored trials since the last new
-  best` is the number that says a search has stopped finding anything.
-- **what each trial actually did.** Every trial is compared with the trial it
-  was patched from -- its parent, not the row above it, because trials form a
-  tree -- and its diff sits beside the list rather than below it.
-- **why it stopped.** A run killed by a 429 says nothing about search quality,
-  so the dashboard says whether the search ended or the environment
-  interrupted it, instead of leaving a red mark to be misread.
+| It shows | So you do not have to |
+|---|---|
+| The direction the manifest declared | Remember whether 8.26 beats 9.11 |
+| The best score and the trial it arrived at | Scan the column |
+| The difference from the baseline, with a percentage | Subtract |
+| Scored trials since the last new best | Judge whether the search is still finding anything |
+| Each trial against the trial it was patched from | Trace the tree by hand |
+| Whether the search ended or the provider stopped it | Read a 429 as a bad result |
 
-The same facts reach the terminal, from the same types: `cadence runs show`
-prints the readings, and `cadence trials list` carries the comparison.
+The same facts reach the terminal: `cadence runs show` prints them, and
+`cadence trials list` carries the comparison.
 
 ## Logs
 
@@ -460,10 +452,9 @@ cadence/
 | `delivery` | how results are shown | how search or sandboxing works |
 | `web` | serving the record to a browser | anything `control` has not already worked out |
 
-`web` is a sibling of `commands`, not a layer under it: both open a session,
-ask `control` what happened, and hand the answer to `delivery`. Neither
-decides anything, which is why the terminal and the browser cannot disagree
-about whether a trial improved.
+`web` is a sibling of `commands`, not a layer under it. Both open a session,
+ask `control` what happened, and hand the answer to `delivery`, so the
+terminal and the browser cannot disagree about whether a trial improved.
 
 The layers are enforced by `import-linter` in CI. To add a search method,
 implement the `Method` port. To add a sandbox, implement `Sandbox`. To watch
