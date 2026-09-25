@@ -351,3 +351,27 @@ class TestExperimentsAreDerivedNotStored:
         touched in a month does not belong at the top."""
         found = some_experiments(session)
         assert found == sorted(found, key=lambda e: e.last_activity, reverse=True)
+
+
+class TestARunKnowsWhatItWasAimingAt:
+    """A number with no baseline cannot be judged, so the run carries the
+    score the seed got before the search touched anything."""
+
+    def test_the_seed_score_is_the_baseline(self, session, journalled):
+        """Read off the tape rather than through candidates: a seed's
+        fingerprint and the fingerprint its verdict is keyed on are different
+        values, so that join never matches."""
+        journalled(IMPROVES, run_id="based", budget=1)
+        found = run_detail(session, "based")
+        assert found.baseline is not None
+        assert "value" in found.baseline
+
+    def test_a_manifest_with_nothing_declared_costs_the_page_nothing(
+        self, session, journalled
+    ):
+        """The run still happened. It renders without the direction rather
+        than failing."""
+        journalled(IMPROVES, run_id="undeclared", budget=1)
+        found = run_detail(session, "undeclared")
+        assert found.directions == {}
+        assert found.cap_trials is None

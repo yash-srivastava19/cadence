@@ -9,9 +9,11 @@ Returns DTOs, never strings. What the answer looks like is delivery's job.
 """
 
 import difflib
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
+import yaml
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import Session
 
@@ -276,6 +278,53 @@ SCORED_TRIALS = (
 )
 
 
+# What the seed scored, before the search touched anything.
+#
+# Off the tape, not through candidates: a seed candidate's fingerprint and the
+# fingerprint its verdict is keyed on are different values, so that join never
+# matches. SeedMeasured carries the verdict itself.
+BASELINE = (
+    sa.select(events.c.payload["verdict"]["metrics"])
+    .where(
+        sa.and_(
+            events.c.run_id == runs.c.id,
+            events.c.type == "SeedMeasured",
+            events.c.payload["verdict"]["outcome"].astext == Outcome.SCORED.value,
+        )
+    )
+    .order_by(events.c.seq)
+    .limit(1)
+    .scalar_subquery()
+)
+
+
+def _declared(manifest: str | None) -> tuple[Mapping[str, str], int | None]:
+    """Which way is better, and how many trials were allowed.
+
+    Read here rather than on every surface that shows a number, so the CLI and
+    the browser cannot disagree about which direction a metric improves in. A
+    manifest that will not parse is not an error worth failing a page over:
+    the run still happened, and the page renders without the direction.
+    """
+    if not manifest:
+        return {}, None
+    try:
+        document = yaml.safe_load(manifest) or {}
+    except yaml.YAMLError:
+        return {}, None
+    if not isinstance(document, dict):
+        return {}, None
+    metrics = document.get("metrics")
+    budget = document.get("budget")
+    directions = {
+        str(name): str(way)
+        for name, way in (metrics or {}).items()
+        if isinstance(metrics, dict)
+    }
+    trials = (budget or {}).get("trials") if isinstance(budget, dict) else None
+    return directions, trials if isinstance(trials, int) else None
+
+
 def run_detail(session: Session, run_id: str) -> RunDetail | None:
     """One run, with what it spent and what it was started from."""
     row = (
@@ -292,6 +341,7 @@ def run_detail(session: Session, run_id: str) -> RunDetail | None:
                 WORKED.c.tokens_out,
                 BILLED.c.usd,
                 manifests.c.source.label("manifest"),
+                BASELINE.label("baseline"),
             )
             .select_from(
                 runs.outerjoin(WORKED, WORKED.c.run_id == runs.c.id)
@@ -305,6 +355,7 @@ def run_detail(session: Session, run_id: str) -> RunDetail | None:
     )
     if row is None:
         return None
+    directions, cap_trials = _declared(row["manifest"])
     return RunDetail(
         **_run(row).model_dump(),
         scored=row["scored"] or 0,
@@ -317,6 +368,9 @@ def run_detail(session: Session, run_id: str) -> RunDetail | None:
         ),
         duration_ms=_elapsed(row["first_wrote"], row["last_wrote"]),
         manifest=row["manifest"],
+        directions=directions,
+        baseline=row["baseline"],
+        cap_trials=cap_trials,
     )
 
 

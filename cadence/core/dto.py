@@ -378,6 +378,13 @@ class RunDetail(RunSummary):
     spend: Spend = Spend()
     duration_ms: float | None = None
     manifest: str | None = None
+    # A number with no direction cannot be read: 8.26 is good or bad depending
+    # on a fact only the manifest holds.
+    directions: Mapping[str, str] = {}
+    # What the seed scored before any trial ran, so a trial can be compared to
+    # where the run started and not only to other trials.
+    baseline: Mapping[str, float] | None = None
+    cap_trials: int | None = None
 
 
 class TrialDetail(TrialSummary):

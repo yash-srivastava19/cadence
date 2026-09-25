@@ -23,6 +23,7 @@
 
     --caution: #e8ab45;
     --limit: #f0776a;
+    --good: #4cb782;
 
     --del: #43232a;
     --del-word: #6b3039;
@@ -99,12 +100,39 @@
   @keyframes lamp { 0%, 60% { opacity: 1 } 61%, 100% { opacity: .35 } }
   @media (prefers-reduced-motion: reduce) { .lamp { animation: none } }
 
+  /* The summary band: the run's answer, computed, above the rows. */
+  .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+            gap: 10px; padding: 10px 0 2px; }
+  .panel { background: var(--plane); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px 4px; }
+  .panel figcaption { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font-size: 12.5px; }
+  .panel figcaption b { font-weight: 500; }
+  .band { display: flex; flex-wrap: wrap; gap: 10px 34px; padding: 12px 0 2px; }
+  .metric { min-width: 300px; }
+  .mh { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
+  .mh b { font-weight: 500; font-size: 14px; }
+  .dirn { color: var(--ink-faint); font-size: 12px; }
+  .line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+  .line i { font-style: normal; color: var(--ink-faint); width: 52px; flex: none; font-size: 11.5px; }
+  .line .num { font-size: 15px; font-weight: 500; }
+  .line .num.sub2 { font-size: 13px; font-weight: 400; color: var(--ink-soft); }
+  .at, .ref { color: var(--ink-faint); }
+  .sub2 { color: var(--ink-soft); }
+  /* The sign is arithmetic and the judgment is a word; colour repeats the
+     word, it never carries the meaning alone. */
+  .good { color: var(--good); }
+  .bad  { color: var(--limit); }
+  .flat { color: var(--ink-faint); }
+  .best { color: var(--good); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+  .cmp { font-size: 12.5px; }
+  .cause { color: var(--ink-soft); font-size: 12.5px; margin: 6px 0 0; max-width: 92ch; }
+  .cause b { font-weight: 500; color: var(--caution); }
+
   .pane { overflow: auto; min-width: 0; }
   .pane.left { border-right: 1px solid var(--rule); background: var(--plane); }
 
   /* Run tier: strip left, record right. */
   .sortie { grid-template-columns: minmax(420px, 500px) minmax(0, 1fr); }
-  .stripwrap { display: grid; grid-template-columns: minmax(0, 1fr) 132px; min-height: 100%; }
+  .stripwrap { min-height: 100%; }
   .strip { width: 100%; border-collapse: collapse; }
   .strip th {
     position: sticky; top: 0; z-index: 2;
@@ -295,6 +323,84 @@ const stampOf = (iso) => {
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 const money = (u) => u == null ? "unpriced" : "$" + Number(u).toFixed(4);
+
+// A run stopped by a 429 says nothing about the search. Reading a red mark
+// as a bad result is the mistake this sentence exists to prevent.
+const ENVIRONMENT = /\b(429|503|quota|rate.?limit|unavailable|timed? out|connection|network)\b/i;
+function cause(run) {
+  if (!run.reason) return null;
+  const raw = String(run.reason);
+  const outside = ENVIRONMENT.test(raw);
+  // The stored reason is truncated, so a provider's JSON arrives with its
+  // last string unterminated. Read to the closing quote or to the end,
+  // whichever comes first; requiring the quote finds nothing.
+  let one = raw.split("\n")[0];
+  const at = raw.indexOf('"message"');
+  if (at !== -1) {
+    const opens = raw.indexOf('"', raw.indexOf(":", at) + 1);
+    if (opens !== -1) {
+      let shut = raw.indexOf('"', opens + 1);
+      if (shut === -1) shut = raw.length;
+      one = raw.slice(0, raw.indexOf(":")) + " \u2014 " +
+        raw.slice(opens + 1, shut).replace(/\\n/g, " ").replace(/\s+/g, " ").trim();
+    }
+  }
+  if (one.length > 190) one = one.slice(0, 190).trimEnd() + "\u2026";
+  return { outside, text: one,
+    lead: outside ? "The environment interrupted it" : "The search ended" };
+}
+
+
+// Everything below is arithmetic the page does so the reader does not.
+// Direction comes from the manifest and is never assumed.
+let DIR = {}, BASE = null;
+const better = (a, b, k) => DIR[k] === "minimize" ? a < b : a > b;
+
+// The sign is arithmetic; the judgment is a word. They are separate fields
+// and do not have to agree: on a maximize metric a positive delta is better,
+// and an arrow carrying goodness would render a down-arrow beside +0.40.
+function delta(now, was, k) {
+  if (typeof now !== "number" || typeof was !== "number") return null;
+  const d = now - was;
+  if (d === 0) return { text: "no change", word: "same", cls: "flat" };
+  const good = better(now, was, k);
+  return {
+    text: (d > 0 ? "+" : "\u2212") + Math.abs(d).toFixed(4).replace(/0+$/, "").replace(/\.$/, ""),
+    word: good ? "better" : "worse",
+    cls: good ? "good" : "bad",
+    pct: was === 0 ? null : Math.abs(d / was) * 100,
+  };
+}
+
+// Strictly better, so a tie is never stamped as a record.
+function records(rows, k) {
+  let best = null, at = null, count = 0, since = 0;
+  rows.forEach(t => {
+    const v = (t.metrics || {})[k];
+    if (typeof v !== "number") return;
+    if (best === null || better(v, best, k)) { best = v; at = t.seq; count++; since = 0; }
+    else since++;
+  });
+  return { best, at, count, since };
+}
+const latestOf = (rows, k) => {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const v = (rows[i].metrics || {})[k];
+    if (typeof v === "number") return { v, seq: rows[i].seq };
+  }
+  return null;
+};
+// The parent is not the row above: trials form a tree. Map a candidate
+// fingerprint to what it scored, so a row can be compared with what it was
+// actually patched from.
+function byFingerprint(rows) {
+  const m = {};
+  rows.forEach(t => { if (t.candidate) m[t.candidate] = t; });
+  return m;
+}
+const arrow = (k) => DIR[k] === "minimize" ? "\u2193" : DIR[k] === "maximize" ? "\u2191" : "";
+const aim = (k) => DIR[k] === "minimize" ? "lower is better"
+  : DIR[k] === "maximize" ? "higher is better" : "no direction declared";
 const sig = (v) => typeof v === "number"
   ? (Math.abs(v) >= 1000 ? v.toLocaleString() : String(Number(v.toFixed(4)))) : esc(v);
 
@@ -394,6 +500,86 @@ function trajectorySvg(runs, key, H) {
     ${body}</svg>`;
 }
 
+// One chart per metric, the baseline drawn as the line to beat and the best
+// point marked, so the shape of the search reads without touching the table.
+function panels(trials) {
+  const keys = keysOf(trials);
+  if (!keys.length) return "";
+  return `<div class="panels">${keys.map(k => {
+    const r = records(trials, k);
+    if (r.best === null) return "";
+    const base = BASE ? BASE[k] : null;
+    const vals = trials.map(t => (t.metrics || {})[k]);
+    const known = vals.filter(v => typeof v === "number");
+    const all = base == null ? known : known.concat([base]);
+    const lo = Math.min(...all), hi = Math.max(...all), span = (hi - lo) || Math.abs(hi) || 1;
+    const W = 520, H = 132, L = 46, R = 12, T = 12, B = 22;
+    const x = (i) => L + (trials.length < 2 ? 0 : i / (trials.length - 1)) * (W - L - R);
+    const y = (v) => T + (1 - (v - lo) / span) * (H - T - B);
+    let d = "", dots = "";
+    trials.forEach((t, i) => {
+      const v = vals[i];
+      if (typeof v !== "number") return;
+      d += (d ? " L " : "M ") + x(i).toFixed(1) + " " + y(v).toFixed(1);
+      const isBest = v === r.best;
+      dots += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${isBest ? 4.5 : 2.4}"
+        fill="${isBest ? "var(--good)" : "var(--trace-1)"}" stroke="var(--panel)" stroke-width="1.5"
+        class="jp" data-run="trial ${t.seq}" data-seq="${t.seq}" data-val="${sig(v)}" data-off="false"/>`;
+    });
+    const baseline = base == null ? "" : `
+      <line x1="${L}" y1="${y(base).toFixed(1)}" x2="${W - R}" y2="${y(base).toFixed(1)}"
+        stroke="var(--caution)" stroke-width="1" stroke-dasharray="4 3"/>
+      <text x="${W - R}" y="${(y(base) - 5).toFixed(1)}" text-anchor="end" fill="var(--caution)"
+        font-size="10.5">baseline ${sig(base)}</text>`;
+    return `<figure class="panel">
+      <figcaption><b>${esc(k)}</b> <span class="dirn">${arrow(k)} ${aim(k)}</span></figcaption>
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+        <line x1="${L}" y1="${y(hi).toFixed(1)}" x2="${W - R}" y2="${y(hi).toFixed(1)}" stroke="var(--rule)"/>
+        <line x1="${L}" y1="${y(lo).toFixed(1)}" x2="${W - R}" y2="${y(lo).toFixed(1)}" stroke="var(--rule)"/>
+        <text x="${L - 6}" y="${(y(hi) + 4).toFixed(1)}" text-anchor="end" fill="var(--ink-faint)" font-size="10.5">${sig(hi)}</text>
+        <text x="${L - 6}" y="${(y(lo) + 4).toFixed(1)}" text-anchor="end" fill="var(--ink-faint)" font-size="10.5">${sig(lo)}</text>
+        ${baseline}
+        <path d="${d}" fill="none" stroke="var(--trace-1)" stroke-width="1.75" stroke-linejoin="round"/>
+        ${dots}
+        <text x="${L}" y="${H - 5}" fill="var(--ink-faint)" font-size="10.5">trial 0</text>
+        <text x="${(W - R).toFixed(1)}" y="${H - 5}" text-anchor="end" fill="var(--ink-faint)" font-size="10.5">trial ${trials[trials.length - 1].seq}</text>
+      </svg></figure>`;
+  }).join("")}</div>`;
+}
+
+// Shneiderman's overview, adjoining the detail rather than on its own screen.
+// Every number here is computed; the reader supplies nothing.
+function summary(run, trials) {
+  const keys = keysOf(trials);
+  if (!keys.length) return "";
+  return `<div class="band">${keys.map(k => {
+    const r = records(trials, k), last = latestOf(trials, k);
+    if (r.best === null) return "";
+    const base = BASE ? BASE[k] : null;
+    const vsBase = delta(r.best, base, k);
+    const off = last && last.v !== r.best ? delta(last.v, r.best, k) : null;
+    return `<div class="metric">
+      <div class="mh"><b>${esc(k)}</b> <span class="dirn">${arrow(k)} ${aim(k)}</span></div>
+      <div class="line"><i>best</i>
+        <b class="num">${sig(r.best)}</b>
+        <span class="at">at trial ${r.at}</span>
+        ${vsBase ? `<span class="${vsBase.cls}">${vsBase.text}${
+            vsBase.pct != null ? ` (${vsBase.pct.toFixed(1)}%)` : ""} ${vsBase.word}</span>
+          <span class="ref">vs baseline ${sig(base)}</span>`
+          : `<span class="ref">no baseline recorded</span>`}</div>
+      ${last && last.v !== r.best ? `<div class="line"><i>latest</i>
+        <b class="num sub2">${sig(last.v)}</b>
+        <span class="at">at trial ${last.seq}</span>
+        ${off ? `<span class="${off.cls}">${off.text} ${off.word} than best</span>` : ""}</div>` : ""}
+      <div class="line"><i>records</i>
+        <span class="sub2">${r.count} new best${r.count === 1 ? "" : "s"} in ${
+          trials.filter(t => (t.metrics || {})[k] != null).length} scored</span>
+        <span class="${r.since > 3 ? "bad" : "sub2"}">${r.since} scored trial${
+          r.since === 1 ? "" : "s"} since the last new best</span></div>
+    </div>`;
+  }).join("")}</div>`;
+}
+
 // --- views ---------------------------------------------------------------
 async function drawExperiments() {
   const rows = await get("/api/experiments");
@@ -480,6 +666,7 @@ async function drawRun() {
     get("/api/runs/" + encodeURIComponent(at.run) + "/trials?limit=500"),
   ]);
   if (run.experiment) at.experiment = run.experiment;
+  DIR = run.directions || {}; BASE = run.baseline || null;
   moving = run.status === "running" && !run.stalled;
   const state = run.stalled ? "stalled" : run.status;
   const key = pick(trials);
@@ -488,8 +675,11 @@ async function drawRun() {
     <span class="link" id="back">← ${esc(run.experiment || "all runs")}</span>
     <div class="on-panel">
       <h1><span class="mono">${esc(run.id)}</span> ${mark(state, moving)}</h1>
+      ${(() => { const c = cause(run); return c
+        ? `<p class="cause"><b>${esc(c.lead)}</b> — ${esc(c.text)}</p>` : ""; })()}
       ${facts([
-        [run.trials, "trials flown"], [run.scored, "scored"],
+        [run.cap_trials ? `${run.trials} <span class="sub2">of ${run.cap_trials}</span>` : run.trials, "trials"],
+        [run.scored, "scored"],
         [dur(run.duration_ms), "elapsed"],
         [run.spend.calls + (run.spend.replayed ? ` <em style="font-style:normal;color:var(--ink-faint)">(${run.spend.replayed} replayed)</em>` : ""), "model calls"],
         [tokens.toLocaleString(), "tokens"],
@@ -497,17 +687,31 @@ async function drawRun() {
       ], "plan")}
     </div>`;
   $("back").onclick = () => { at.run = null; at.trial = null; draw(); };
+  $("head").insertAdjacentHTML("beforeend", summary(run, trials));
+  $("head").insertAdjacentHTML("beforeend", panels(trials));
+  const seen = byFingerprint(trials);
+  const rec = records(trials, key);
   $("work").className = "sortie";
   $("work").innerHTML = `
     <div class="pane left" id="stripPane">${trials.length ? `<div class="stripwrap">
-      <table class="strip"><thead><tr><th class="r">#</th><th>disposition</th>
-        <th class="r">${esc(key || "metric")}</th><th>from</th></tr></thead><tbody>${
-        trials.map(t => `<tr data-id="${esc(t.id)}" aria-selected="${t.id === at.trial}">
+      <table class="strip"><thead><tr><th class="r">#</th><th>result</th>
+        <th class="r">${esc(key || "metric")} ${arrow(key)}</th>
+        <th>vs its parent</th></tr></thead><tbody>${
+        trials.map(t => {
+          const v = key && t.metrics ? t.metrics[key] : null;
+          const from = t.parent ? seen[t.parent] : null;
+          const was = from && from.metrics ? from.metrics[key] : (t.parent ? null : (BASE || {})[key]);
+          const d = delta(v, was, key);
+          const isBest = v != null && rec.best != null && v === rec.best;
+          return `<tr data-id="${esc(t.id)}" aria-selected="${t.id === at.trial}">
           <td class="r num">${t.seq}</td>
-          <td>${mark(t.outcome || t.status, false)}</td>
-          <td class="r num">${key && t.metrics && t.metrics[key] != null ? sig(t.metrics[key]) : "—"}</td>
-          <td class="from mono">${t.parent ? esc(t.parent.slice(0, 8)) : "seed"}</td></tr>`).join("")}</tbody></table>
-      <div class="tracecell"><b class="stencil">${esc(key || "trace")}</b>${traceSvg(trials, key)}</div>
+          <td>${mark(t.outcome || t.status, false)}${isBest ? ' <span class="best">best</span>' : ""}</td>
+          <td class="r num">${v != null ? sig(v) : "—"}</td>
+          <td class="cmp">${d
+            ? `<span class="${d.cls}">${d.text} ${d.word}</span>
+               <span class="ref">than ${from ? "trial " + from.seq : "the baseline"}</span>`
+            : `<span class="ref">${t.parent ? "parent not scored" : "no baseline"}</span>`}</td></tr>`;
+        }).join("")}</tbody></table>
     </div>` : `<div class="empty" style="padding:22px"><b>No trials yet.</b>
       The run has started but nothing has been measured.</div>`}</div>
     <div class="pane" id="record"></div>`;
@@ -527,7 +731,6 @@ async function drawRun() {
 function drawPlan(run) {
   $("record").innerHTML = `<div class="record">
     <div class="head"><b class="stencil">Test plan</b></div>
-    ${run.reason ? `<p class="caption" style="color:var(--limit);max-width:80ch;margin:0 0 12px">${esc(run.reason)}</p>` : ""}
     ${run.manifest ? `<pre class="src" style="margin-top:0">${esc(run.manifest)}</pre>`
       : `<div class="empty">No manifest was recorded for this run.</div>`}
     <p class="caption">Select a trial to read what the model changed.</p>
