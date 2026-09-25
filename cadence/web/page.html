@@ -7,26 +7,27 @@
 <link rel="stylesheet" href="/vendor/diff2html.min.css">
 <script src="/vendor/diff2html.min.js"></script>
 <style>
+  /* One material. The record is a raised plane of the same ground, never a
+     foreign sheet laid on it. The ground is blue because the diff is the most
+     important surface on the page and green additions vanish on a green one. */
   :root {
-    --panel: #171a1e;
-    --panel-deep: #101317;
-    --panel-raised: #1e2228;
-    --rule: #2b3138;
-    --rule-bright: #3a424b;
-    --ink: #d3d8dc;
-    --ink-soft: #949ca4;
-    --ink-faint: #828a92;
+    --panel: #142a33;
+    --panel-deep: #0e2028;
+    --plane: #1b343d;
+    --plane-head: #21404a;
+    --rule: #2a4a55;
+    --rule-bright: #3b6272;
+    --ink: #dde6ea;
+    --ink-soft: #a0b4bd;
+    --ink-faint: #8ba1ab;
 
-    --stock: #dcd7ca;
-    --stock-rule: #bdb6a4;
-    --stock-sink: #cfc9ba;
-    --stock-ink: #1a1916;
-    --stock-ink-soft: #57524a;
+    --caution: #e8ab45;
+    --limit: #f0776a;
 
-    --caution: #e0a13a;
-    --limit: #e0685a;
-    --caution-on-stock: #7a5316;
-    --limit-on-stock: #8f2f24;
+    --del: #43232a;
+    --del-word: #6b3039;
+    --ins: #1d4434;
+    --ins-word: #2c6a4c;
 
     --trace-1: #2b9cb8;
     --trace-2: #8f6ae6;
@@ -46,7 +47,7 @@
   }
   .mono, code, pre, .num { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
-  ::selection { background: var(--caution); color: #14171a; }
+  ::selection { background: var(--caution); color: #241a05; }
   :focus-visible { outline: 2px solid var(--caution); outline-offset: 2px; }
   * { scrollbar-width: thin; scrollbar-color: var(--rule-bright) transparent; }
   *::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -91,42 +92,40 @@
   .facts span { font-size: 16px; color: var(--ink); }
 
   .mark { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
-  .mark.nominal { color: var(--stock-ink-soft); }
-  .mark.caution { color: var(--caution-on-stock); }
-  .mark.limit   { color: var(--limit-on-stock); }
-  .on-panel .mark.nominal { color: var(--ink-soft); }
-  .on-panel .mark.caution { color: var(--caution); }
-  .on-panel .mark.limit   { color: var(--limit); }
+  .mark.nominal { color: var(--ink-faint); }
+  .mark.caution { color: var(--caution); }
+  .mark.limit   { color: var(--limit); }
   .lamp { animation: lamp 1.6s steps(1, end) infinite; }
   @keyframes lamp { 0%, 60% { opacity: 1 } 61%, 100% { opacity: .35 } }
   @media (prefers-reduced-motion: reduce) { .lamp { animation: none } }
 
   .pane { overflow: auto; min-width: 0; }
-  .pane.left { border-right: 1px solid var(--rule); background: var(--stock); }
+  .pane.left { border-right: 1px solid var(--rule); background: var(--plane); }
 
   /* Run tier: strip left, record right. */
   .sortie { grid-template-columns: minmax(420px, 500px) minmax(0, 1fr); }
   .stripwrap { display: grid; grid-template-columns: minmax(0, 1fr) 132px; min-height: 100%; }
-  .strip { width: 100%; border-collapse: collapse; color: var(--stock-ink); }
+  .strip { width: 100%; border-collapse: collapse; }
   .strip th {
     position: sticky; top: 0; z-index: 2;
     font-size: 11px; letter-spacing: .14em; text-transform: uppercase; text-align: left;
-    font-weight: 600; color: var(--stock-ink-soft); background: var(--stock-sink);
-    padding: 7px 12px; border-bottom: 1px solid var(--stock-rule);
+    font-weight: 600; color: var(--ink-faint); background: var(--plane-head);
+    padding: 7px 12px; border-bottom: 1px solid var(--rule);
   }
-  .strip td { height: var(--row); padding: 0 12px; border-bottom: 1px solid #0000001a; white-space: nowrap; }
+  .strip td { height: var(--row); padding: 0 12px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
   .strip tbody tr { cursor: pointer; }
-  .strip tbody tr:hover td { background: #00000010; }
+  .strip tbody tr:hover td { background: #ffffff0a; }
   .strip tbody tr[aria-selected="true"] td { background: var(--caution); }
+  .strip tbody tr[aria-selected="true"] td { color: #241a05; }
   .strip tbody tr[aria-selected="true"] .mark,
-  .strip tbody tr[aria-selected="true"] .from { color: #3a2a08; }
+  .strip tbody tr[aria-selected="true"] .from { color: #241a05; }
   .strip .r { text-align: right; }
-  .strip .from { color: var(--stock-ink-soft); font-size: 12px; }
-  .tracecell { border-left: 1px solid var(--stock-rule); }
+  .strip .from { color: var(--ink-faint); font-size: 12px; }
+  .tracecell { border-left: 1px solid var(--rule); }
   .tracecell .stencil {
     position: sticky; top: 0; z-index: 2; display: block;
-    background: var(--stock-sink); color: var(--stock-ink-soft);
-    padding: 7px 10px; border-bottom: 1px solid var(--stock-rule);
+    background: var(--plane-head); color: var(--ink-faint);
+    padding: 7px 10px; border-bottom: 1px solid var(--rule);
   }
 
   .record { padding: 0 var(--gutter) 40px; }
@@ -148,7 +147,7 @@
   .legend span { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-soft); }
   .legend i { width: 10px; height: 10px; border-radius: 50%; }
   .caption { color: var(--ink-faint); font-size: 12px; margin: 6px 0 0; max-width: 90ch; }
-  .runs { margin-top: 16px; background: var(--stock); border: 1px solid #0b0d0f; }
+  .runs { margin-top: 16px; background: var(--plane); border: 1px solid var(--rule); }
 
   .tip {
     position: fixed; pointer-events: none; z-index: 30; opacity: 0;
@@ -166,52 +165,50 @@
   summary::before { content: "+ "; }
   details[open] summary::before { content: "− "; }
   pre.src {
-    background: var(--stock); color: var(--stock-ink); border: 1px solid #0b0d0f;
+    background: var(--plane); color: var(--ink); border: 1px solid var(--rule);
     margin: 10px 0 0; padding: 12px; overflow-x: auto; font-size: 12.5px; white-space: pre;
   }
 
-  /* The diff wears this page's own materials. Vendor light theme put white
-     gutters and pastel rows inside a dark panel; both its schemes are wrong
-     here, so both variable families point at the stock. */
+  /* The diff is the same plane as everything else. Both of diff2html's
+     variable families point here, and the surfaces it leaves transparent are
+     given one, or the page shows through behind the code. */
   .d2h-wrapper {
-    --d2h-bg-color: var(--stock);            --d2h-dark-bg-color: var(--stock);
-    --d2h-color: var(--stock-ink);           --d2h-dark-color: var(--stock-ink);
-    --d2h-border-color: var(--stock-rule);   --d2h-dark-border-color: var(--stock-rule);
-    --d2h-line-border-color: var(--stock-rule); --d2h-dark-line-border-color: var(--stock-rule);
-    --d2h-dim-color: var(--stock-ink-soft);  --d2h-dark-dim-color: var(--stock-ink-soft);
-    --d2h-del-bg-color: #e6cec7;             --d2h-dark-del-bg-color: #e6cec7;
-    --d2h-ins-bg-color: #cfd9c1;             --d2h-dark-ins-bg-color: #cfd9c1;
-    --d2h-del-highlight-bg-color: #d7a89c;   --d2h-dark-del-highlight-bg-color: #d7a89c;
-    --d2h-ins-highlight-bg-color: #b2c497;   --d2h-dark-ins-highlight-bg-color: #b2c497;
-    --d2h-empty-placeholder-bg-color: var(--stock-sink);
-    --d2h-dark-empty-placeholder-bg-color: var(--stock-sink);
-    --d2h-empty-placeholder-border-color: var(--stock-rule);
-    --d2h-dark-empty-placeholder-border-color: var(--stock-rule);
-    --d2h-info-bg-color: var(--stock-sink);  --d2h-dark-info-bg-color: var(--stock-sink);
-    --d2h-info-border-color: var(--stock-rule); --d2h-dark-info-border-color: var(--stock-rule);
-    --d2h-file-header-bg-color: var(--stock-sink);
-    --d2h-dark-file-header-bg-color: var(--stock-sink);
-    --d2h-ins-border-color: transparent;     --d2h-dark-ins-border-color: transparent;
-    --d2h-del-border-color: transparent;     --d2h-dark-del-border-color: transparent;
+    --d2h-bg-color: var(--plane);             --d2h-dark-bg-color: var(--plane);
+    --d2h-color: var(--ink);                  --d2h-dark-color: var(--ink);
+    --d2h-border-color: var(--rule);          --d2h-dark-border-color: var(--rule);
+    --d2h-line-border-color: var(--rule);     --d2h-dark-line-border-color: var(--rule);
+    --d2h-dim-color: var(--ink-faint);        --d2h-dark-dim-color: var(--ink-faint);
+    --d2h-del-bg-color: var(--del);           --d2h-dark-del-bg-color: var(--del);
+    --d2h-ins-bg-color: var(--ins);           --d2h-dark-ins-bg-color: var(--ins);
+    --d2h-del-highlight-bg-color: var(--del-word);
+    --d2h-dark-del-highlight-bg-color: var(--del-word);
+    --d2h-ins-highlight-bg-color: var(--ins-word);
+    --d2h-dark-ins-highlight-bg-color: var(--ins-word);
+    --d2h-empty-placeholder-bg-color: var(--panel);
+    --d2h-dark-empty-placeholder-bg-color: var(--panel);
+    --d2h-empty-placeholder-border-color: var(--rule);
+    --d2h-dark-empty-placeholder-border-color: var(--rule);
+    --d2h-info-bg-color: var(--plane-head);   --d2h-dark-info-bg-color: var(--plane-head);
+    --d2h-info-border-color: var(--rule);     --d2h-dark-info-border-color: var(--rule);
+    --d2h-file-header-bg-color: var(--plane-head);
+    --d2h-dark-file-header-bg-color: var(--plane-head);
+    --d2h-ins-border-color: transparent;      --d2h-dark-ins-border-color: transparent;
+    --d2h-del-border-color: transparent;      --d2h-dark-del-border-color: transparent;
   }
   .d2h-file-header { display: none; }
-  /* Its rows are transparent, so without this the panel shows through the
-     plate as black behind the code. */
   .d2h-file-wrapper, .d2h-files-diff, .d2h-file-side-diff,
   .d2h-file-diff, .d2h-diff-table, .d2h-diff-tbody {
-    background: var(--stock); color: var(--stock-ink);
+    background: var(--plane); color: var(--ink);
   }
   .d2h-code-linenumber, .d2h-code-side-linenumber {
-    background: var(--stock-sink); color: var(--stock-ink-soft);
+    background: var(--plane-head); color: var(--ink-faint);
   }
   .d2h-code-wrapper { position: relative; }
-  .d2h-file-wrapper { border: 1px solid #0b0d0f !important; border-radius: 0 !important; margin: 0 !important; }
+  .d2h-file-wrapper { border: 1px solid var(--rule) !important; border-radius: 0 !important; margin: 0 !important; }
   .d2h-code-side-line, .d2h-code-line { font-size: 12.5px; }
 
   .empty { color: var(--ink-faint); padding: 18px 0; max-width: 62ch; }
   .empty b { color: var(--ink); font-weight: 500; display: block; margin-bottom: 4px; }
-  .pane.left .empty { color: var(--stock-ink-soft); }
-  .pane.left .empty b { color: var(--stock-ink); }
 
   @media (max-width: 1000px) {
     body { overflow: auto; height: auto; }
@@ -292,6 +289,11 @@ const dur = (ms) => {
   if (s < 3600) return Math.floor(s / 60) + " m " + String(Math.round(s % 60)).padStart(2, "0") + " s";
   return (s / 3600).toFixed(1) + " h";
 };
+const stampOf = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
 const money = (u) => u == null ? "unpriced" : "$" + Number(u).toFixed(4);
 const sig = (v) => typeof v === "number"
   ? (Math.abs(v) >= 1000 ? v.toLocaleString() : String(Number(v.toFixed(4)))) : esc(v);
@@ -344,13 +346,13 @@ function traceSvg(rows, key) {
     const off = v < s.lo, best = v === s.hi;
     d += (d ? " L " : "M ") + x(v).toFixed(1) + " " + y(i).toFixed(1);
     pts += `<circle cx="${x(v).toFixed(1)}" cy="${y(i).toFixed(1)}" r="${best ? 5 : 3.5}"
-      fill="${off ? "var(--stock)" : best ? "var(--caution)" : "var(--trace-1)"}"
-      stroke="${off ? "var(--limit-on-stock)" : "var(--stock)"}" stroke-width="2"
+      fill="${off ? "var(--plane)" : best ? "var(--caution)" : "var(--trace-1)"}"
+      stroke="${off ? "var(--limit)" : "var(--plane)"}" stroke-width="2"
       class="pt" data-i="${i}"><title>trial ${t.seq}: ${sig(v)}${off ? " (off scale low)" : ""}</title></circle>`;
   });
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block"
       role="img" aria-label="${esc(key)} by trial">
-    <line x1="${PAD}" y1="0" x2="${PAD}" y2="${H}" stroke="var(--stock-rule)"/>
+    <line x1="${PAD}" y1="0" x2="${PAD}" y2="${H}" stroke="var(--rule)"/>
     <path d="${d}" fill="none" stroke="var(--trace-1)" stroke-width="2" stroke-linejoin="round"/>
     ${pts}</svg>`;
 }
@@ -443,7 +445,9 @@ async function drawTrajectory(runs) {
   const key = keys.includes(metric) ? metric : keys[0];
   if (!key) return;
   const series = shown.map((r, i) => ({
-    id: r.id, label: when(r.started_at), points: fetched[i].map(t => (t.metrics || {})[key])
+    // Runs of one experiment are often started on the same day, so the date
+    // alone labels two lines identically.
+    id: r.id, label: stampOf(r.started_at), points: fetched[i].map(t => (t.metrics || {})[key])
   })).filter(s => s.points.some(v => typeof v === "number"));
   if (series.length < 2) return;
   const s = scaleOf(series.flatMap(r => r.points));
@@ -569,7 +573,7 @@ function diffHtml(t) {
   if (!t.diff.trim()) return `<div class="empty"><b>Nothing changed.</b>The candidate is identical to its parent.</div>`;
   return Diff2Html.html(t.diff, {
     outputFormat: how === "split" ? "side-by-side" : "line-by-line",
-    drawFileList: false, matching: "words", colorScheme: "light",
+    drawFileList: false, matching: "words", colorScheme: "dark",
   });
 }
 
