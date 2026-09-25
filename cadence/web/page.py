@@ -14,7 +14,7 @@ which is why there is exactly one place where a shape is decided and it is
 
 from pathlib import Path
 
-__all__ = ["VENDOR", "page"]
+__all__ = ["VENDOR", "page", "version"]
 
 HERE = Path(__file__).parent / "page.html"
 
@@ -23,3 +23,13 @@ VENDOR = Path(__file__).parent / "vendor"
 
 def page() -> str:
     return HERE.read_text(encoding="utf-8")
+
+
+def version() -> str:
+    """When the page was last written, so an open tab can notice.
+
+    The page is already read from disk on every request, so editing it and
+    reloading works; this is the half that saves the reload. Cheap enough to
+    ask for every couple of seconds: one stat call against a local file.
+    """
+    return str(HERE.stat().st_mtime_ns)

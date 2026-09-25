@@ -25,7 +25,7 @@ from cadence.control.queries import (
     trial_detail,
 )
 from cadence.delivery import as_json
-from cadence.web.page import VENDOR, page
+from cadence.web.page import VENDOR, page, version
 
 __all__ = ["Answer", "answer"]
 
@@ -56,6 +56,8 @@ def answer(path: str, params: Mapping[str, str], open_session: Callable) -> Answ
     """
     if path in ("/", "/index.html"):
         return Answer(200, page(), HTML)
+    if path == "/api/version":
+        return Answer(200, json.dumps({"page": version()}))
     if path.startswith("/vendor/"):
         return _vendored(path[len("/vendor/") :])
     if not path.startswith("/api/"):
