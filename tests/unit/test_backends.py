@@ -1,5 +1,6 @@
 import socket
 import time
+import urllib.error
 
 import pytest
 from pydantic import ValidationError
@@ -237,6 +238,32 @@ class TestConnectingHasItsOwnBudget:
     def test_it_is_worth_retrying(self):
         with pytest.raises(RetryableModelError):
             Http(timeout=300.0, connect_timeout=1.0).post(self.NOWHERE, {"a": 1})
+
+
+class TestCadenceNamesItself:
+    """Groq's front door refuses Python's default user agent with a 403."""
+
+    def sent(self, headers=None) -> dict[str, str]:
+        seen = {}
+
+        class Opener:
+            def open(self, request, timeout):
+                seen.update(request.header_items())
+                raise urllib.error.URLError("not sent anywhere")
+
+        http = Http()
+        http._opener = Opener()
+        with pytest.raises(RetryableModelError):
+            http.post("https://example.invalid/v1", {}, headers)
+        return seen
+
+    def test_every_request_carries_a_cadence_user_agent(self):
+        assert self.sent()["User-agent"].startswith("cadence")
+
+    def test_a_provider_header_is_kept_beside_it(self):
+        sent = self.sent({"Authorization": "Bearer k"})
+        assert sent["Authorization"] == "Bearer k"
+        assert sent["User-agent"].startswith("cadence")
 
 
 class TestAddressesAreTriedInTurns:
