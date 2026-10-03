@@ -36,6 +36,7 @@ class OpenAIDialect:
             model=self.settings.model,
             prompt=request.prompt,
             temperature=self.settings.temperature,
+            extra=dict(self.settings.request),
         )
         answer = self.http.post(
             f"{self.settings.url}/chat/completions",

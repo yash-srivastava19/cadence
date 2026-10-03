@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from cadence.control.backends import Reliable, Scripted, chat_backend, known
+from cadence.control.backends.chat import OpenAIDialect
 from cadence.control.backends.http import (
     RETRYABLE,
     Http,
@@ -264,6 +265,37 @@ class TestCadenceNamesItself:
         sent = self.sent({"Authorization": "Bearer k"})
         assert sent["Authorization"] == "Bearer k"
         assert sent["User-agent"].startswith("cadence")
+
+
+class TestAProviderCanAskForMore:
+    """Some providers need a field the dialect has no word for. Groq's free
+    reasoning models stop at 2048 tokens unless asked for more."""
+
+    def settings(self, tmp_path, request: str):
+        (tmp_path / "providers.local.yml").write_text(
+            f"providers:\n  ollama:\n    request: {request}\n"
+        )
+        return settings_for("ollama", root=tmp_path)
+
+    def sent(self, settings) -> dict:
+        http = Recorded(spoke())
+        OpenAIDialect(settings, http=http).call(asking())
+        return http.sent[0][1]
+
+    def test_the_fields_go_in_every_request(self, tmp_path):
+        settings = self.settings(tmp_path, "{max_tokens: 4096, reasoning_effort: low}")
+        body = self.sent(settings)
+        assert (body["max_tokens"], body["reasoning_effort"]) == (4096, "low")
+        assert body["model"] == settings.model
+
+    def test_without_them_nothing_changes(self):
+        body = self.sent(settings_for("ollama"))
+        assert set(body) == {"model", "messages", "temperature"}
+
+    @pytest.mark.parametrize("field", ["model", "messages", "temperature"])
+    def test_they_cannot_replace_what_cadence_sends(self, tmp_path, field):
+        with pytest.raises(ValidationError, match="cadence sends those"):
+            self.settings(tmp_path, f"{{{field}: x}}")
 
 
 class TestAddressesAreTriedInTurns:
