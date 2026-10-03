@@ -12,6 +12,8 @@ retried three times, and bills you for the privilege.
 
 from typing import Any
 
+from pydantic import Field
+
 from cadence.core.types import NonBlank
 from cadence.core.values import Parsed, Value
 
@@ -22,9 +24,12 @@ class ChatRequest(Value):
     model: NonBlank
     prompt: NonBlank
     temperature: float
+    #: A provider's own extra fields (settings.request). Ours win on a clash.
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     def as_json(self) -> dict[str, Any]:
         return {
+            **self.extra,
             "model": self.model,
             "messages": [{"role": "user", "content": self.prompt}],
             "temperature": self.temperature,

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from cadence.errors import MissingKey, UnknownProvider
 
@@ -41,6 +41,10 @@ class Price(BaseModel):
         return (tokens_in * self.input + tokens_out * self.output) / PER
 
 
+#: What every request body already carries.
+OWN_FIELDS = frozenset({"model", "messages", "temperature"})
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -57,6 +61,21 @@ class Settings(BaseModel):
     #: The header this provider dedupes on, if it has one. Absent means it
     #: does not, and a retried call is a second charge.
     idempotency_header: str | None = None
+    #: Extra fields sent in every request body, for what one provider needs
+    #: and the dialect has no word for: a reply length, a reasoning effort.
+    #: The fields cadence itself sends cannot be overridden from here.
+    request: Mapping[str, Any] = {}
+
+    @field_validator("request")
+    @classmethod
+    def _leaves_ours_alone(cls, value: Mapping[str, Any]) -> Mapping[str, Any]:
+        taken = sorted(set(value) & OWN_FIELDS)
+        if taken:
+            raise ValueError(
+                f"request cannot set {', '.join(taken)}: cadence sends those"
+                " itself (set temperature under the provider, model in .cadence)"
+            )
+        return value
 
     @property
     def url(self) -> str:

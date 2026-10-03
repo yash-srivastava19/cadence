@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
 from functools import wraps
+from importlib.metadata import PackageNotFoundError, version
 from itertools import zip_longest
 from typing import Any, ParamSpec, Protocol, TypeVar, runtime_checkable
 
@@ -21,6 +22,18 @@ from cadence.errors import ModelError, RetryableModelError, TerminalModelError
 __all__ = ["RETRYABLE", "Http", "HttpResponse", "Posts", "error_for", "timed"]
 
 RETRYABLE = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+
+
+def _user_agent() -> str:
+    try:
+        return f"cadence/{version('cadence')}"
+    except PackageNotFoundError:
+        return "cadence"
+
+
+#: Some providers sit behind filters that refuse Python's default user agent
+#: (Groq answers 403 "error code 1010"), so cadence names itself.
+USER_AGENT = _user_agent()
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -100,7 +113,11 @@ class Http:
         posted = urllib.request.Request(
             url,
             data=json.dumps(request).encode(),
-            headers={"Content-Type": "application/json", **headers},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": USER_AGENT,
+                **headers,
+            },
         )
         try:
             with self._opener.open(posted, timeout=self.timeout) as response:
