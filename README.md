@@ -310,8 +310,32 @@ passed to it.
 Providers are defined in
 [`providers.yml`](cadence/control/backends/providers.yml). Every provider
 speaks the OpenAI dialect, so adding one is a row. Put prices and local
-overrides in `providers.local.yml`, which is gitignored. With a price
-declared, a run reports what it cost.
+overrides in `providers.local.yml`, which is gitignored and read from the
+directory you run `cadence` in. With a price declared, a run reports what it
+cost.
+
+A provider cadence does not ship, added in `providers.local.yml`:
+
+<!-- docs-test: allow-env GROQ_API_KEY -->
+
+```yaml
+providers:
+  groq:
+    base_url: https://api.groq.com/openai/v1
+    key_from: [GROQ_API_KEY]          # read from the environment, never a file
+    model: openai/gpt-oss-120b
+    attempts: 3                       # tries per call
+    backoff: 30.0                     # seconds, times the attempt number
+    request: {max_tokens: 4096, reasoning_effort: medium}
+```
+
+`request` adds fields to every request body, for what one provider needs and
+the dialect has no word for. It cannot replace `model`, `messages` or
+`temperature`, which cadence sends itself.
+
+A rate limit or an outage is retried. A daily quota that is used up, or a
+request too large for the model, is not: the run stops and says so, and
+`cadence run --resume RUN_ID` carries on once the quota resets.
 
 ## Everyday commands
 
@@ -324,7 +348,7 @@ cadence run --resume RUN_ID          # carry on a recorded run
 cadence runs list                    # recorded runs
 cadence runs show RUN_ID             # one run in full
 cadence trials list --run RUN_ID     # the trials of a run
-cadence trials show TRIAL_ID         # one trial in full
+cadence trials show TRIAL_ID         # one trial in full, and what it changed
 cadence apply RUN_ID [DIR]           # write the winner over your program
 cadence schema                       # the manifest's JSON Schema
 cadence db status                    # the database, and whether its schema is current
