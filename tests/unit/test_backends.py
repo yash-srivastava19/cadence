@@ -500,6 +500,47 @@ class TestWhatIsWorthRetrying:
     def test_these_are_terminal(self, status):
         assert isinstance(error_for(status, ""), TerminalModelError)
 
+    # Bodies as providers send them. Gemini says which quota after a long
+    # preamble, so the deciding words sit past the first 400 characters.
+    GEMINI = (
+        '{"error": {"code": 429, "message": "You exceeded your current quota, please'
+        " check your plan and billing details. For more information on this error,"
+        ' head to: https://ai.google.dev/gemini-api/docs/rate-limits."'
+        + " " * 400
+        + ', "details": [{"violations": [{"quotaId": "%s"}]}]}}'
+    )
+    GROQ_TOO_LARGE = (
+        '{"error":{"message":"Request too large for model `qwen/qwen3.8-27b` in'
+        " organization on output tokens per minute (OTPM): Limit 1000, Requested"
+        " 4096. The request's expected output tokens exceed the enforced limit;"
+        " reduce max_tokens (or the request's expected output) and try again.\"}}"
+    )
+
+    def test_a_quota_spent_for_the_day_is_not_waited_on(self):
+        body = self.GEMINI % "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+        error = error_for(429, body)
+        assert isinstance(error, TerminalModelError)
+        assert "daily quota is used up" in str(error)
+
+    def test_a_per_minute_limit_still_is(self):
+        body = self.GEMINI % "GenerateRequestsPerMinutePerProjectPerModel-FreeTier"
+        assert isinstance(error_for(429, body), RetryableModelError)
+
+    def test_a_request_too_large_is_not_sent_again(self):
+        error = error_for(429, self.GROQ_TOO_LARGE)
+        assert isinstance(error, TerminalModelError)
+        assert "max_tokens" in str(error)
+
+    def test_the_message_stays_short_however_long_the_body(self):
+        body = self.GEMINI % "GenerateRequestsPerMinutePerProjectPerModel-FreeTier"
+        assert len(str(error_for(429, body))) < 500
+
+    def test_a_terminal_429_is_tried_once(self):
+        http = Recorded(error_for(429, self.GROQ_TOO_LARGE), spoke("hi"))
+        with pytest.raises(TerminalModelError):
+            Ollama(http=http, attempts=3, backoff=0).call(asking("p"))
+        assert len(http.sent) == 1
+
     def test_a_retryable_error_is_retried(self):
         http = Recorded(RetryableModelError("429"), spoke("hi"))
         assert Ollama(http=http, attempts=2, backoff=0).call(asking("p")).text == "hi"

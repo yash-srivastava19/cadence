@@ -50,9 +50,31 @@ def timed(call: Callable[P, T]) -> Callable[P, tuple[T, float]]:
     return timing
 
 
+#: A 429 that waiting will not fix. A quota spent for the day comes back
+#: tomorrow, and a request too large for the model is refused every time.
+#: Read off the whole body: Gemini says per-day or per-minute past the
+#: first few hundred characters.
+SPENT = ("perday", "per day", "daily")
+TOO_LARGE = ("request too large", "reduce max_tokens", "request_too_large")
+
+
 def error_for(status: int, detail: str) -> ModelError:
-    """A 429 is worth backing off for. A 401 is worth nothing at all."""
-    message = f"{status}: {detail}"
+    """A 429 is worth backing off for, unless it says waiting cannot help.
+    A 401 is worth nothing at all."""
+    message = f"{status}: {detail[:400]}"
+    said = detail.lower().replace(" ", "") if status == 429 else ""
+    if any(p.replace(" ", "") in said for p in TOO_LARGE):
+        return TerminalModelError(
+            f"{message}\nThe request is larger than this model allows on this"
+            " plan; asking again sends the same thing. Lower `max_tokens` in"
+            " the provider's `request:` setting, or use another model."
+        )
+    if any(p.replace(" ", "") in said for p in SPENT):
+        return TerminalModelError(
+            f"{message}\nThe daily quota is used up; waiting minutes will not"
+            " bring it back. Resume the run after it resets, or use another"
+            " provider."
+        )
     if status in RETRYABLE:
         return RetryableModelError(message)
     return TerminalModelError(message)
@@ -209,6 +231,6 @@ def _by_turns(infos: list) -> list:
 
 def _detail(error: urllib.error.HTTPError) -> str:
     try:
-        return error.read().decode()[:400]
+        return error.read().decode()[:20_000]
     except Exception:
         return str(error)
