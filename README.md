@@ -277,6 +277,7 @@ model:                       # scripted | gemini | openai | anthropic | ollama
   gemini: {}
 prompt:
   template: region           # region | rewrite | improve
+  hints: [try a different strategy entirely]  # unset by default: the built-in rotation
 budget:
   trials: 20
   usd: 5.0                   # unset by default; enforced only where a price is declared

@@ -62,6 +62,24 @@ class TestTheRecipeRebuildsThePrompt:
         proposal = a_model(ANSWER).propose(a_directive(index=1)).proposal
         assert hint_for(1) in proposal.prompt
 
+    def test_a_problem_s_own_hints_replace_the_built_in_ones(self):
+        model = Model(backend=Scripted(), hints=("play differently", "look ahead"))
+        first = model.prepare(a_directive(index=0)).prompt
+        assert "play differently" in first
+        assert hint_for(0) not in first
+
+    def test_they_rotate_by_trial(self):
+        model = Model(backend=Scripted(), hints=("play differently", "look ahead"))
+        assert "look ahead" in model.prepare(a_directive(index=1)).prompt
+        assert "play differently" in model.prepare(a_directive(index=2)).prompt
+
+    def test_without_them_the_prompt_is_what_it_always_was(self):
+        """Recorded calls replay only while the prompt matches byte for byte."""
+        plain = Model(backend=Scripted()).prepare(a_directive(index=0)).prompt
+        unset = Model(backend=Scripted(), hints=None).prepare(a_directive(index=0))
+        assert unset.prompt == plain
+        assert hint_for(0) in plain
+
     def test_a_different_hint_gives_a_different_prompt(self):
         first = a_model(ANSWER).propose(a_directive(index=0)).proposal
         second = a_model(ANSWER).propose(a_directive(index=1)).proposal

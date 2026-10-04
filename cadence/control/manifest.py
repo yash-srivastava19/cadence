@@ -83,6 +83,10 @@ class Prompt(Strict):
     """
 
     template: Literal["region", "rewrite", "improve"] = "region"
+    #: What each trial is told to try, rotated by trial. Unset keeps the
+    #: built-in list, whose first entry ("make it faster without changing what
+    #: it returns") spends trial 0 on a copy when the goal is new behaviour.
+    hints: tuple[NonBlank, ...] | None = Field(default=None, min_length=1)
 
 
 class Budget(Strict):

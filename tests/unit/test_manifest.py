@@ -235,6 +235,21 @@ class TestDefaults:
     def test_it_defaults_to_the_one_that_edits_a_region(self, tmp_path):
         assert load(write(tmp_path, MINIMAL)).prompt.template == "region"
 
+    def test_a_problem_can_name_its_own_hints(self, tmp_path):
+        text = MINIMAL + "prompt: {hints: [play differently, look ahead]}\n"
+        assert load(write(tmp_path, text)).prompt.hints == (
+            "play differently",
+            "look ahead",
+        )
+
+    def test_without_them_the_built_in_ones_are_used(self, tmp_path):
+        assert load(write(tmp_path, MINIMAL)).prompt.hints is None
+
+    def test_an_empty_list_of_hints_is_refused(self, tmp_path):
+        """Nothing to rotate through is a mistake, not a way to turn hints off."""
+        with pytest.raises(ManifestError, match="hints"):
+            load(write(tmp_path, MINIMAL + "prompt: {hints: []}\n"))
+
     def test_a_template_that_does_not_exist_is_refused(self, tmp_path):
         text = MINIMAL + "prompt: {template: freestyle}\n"
         with pytest.raises(ManifestError, match="template"):

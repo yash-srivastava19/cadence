@@ -1,6 +1,6 @@
 import difflib
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from cadence.control.recall import digest, through
@@ -95,8 +95,9 @@ HINTS = (
 )
 
 
-def hint_for(index: int) -> str:
-    return HINTS[index % len(HINTS)]
+def hint_for(index: int, hints: Sequence[str] | None = None) -> str:
+    chosen = hints or HINTS
+    return chosen[index % len(chosen)]
 
 
 TEMPLATES: Mapping[str, str] = {
@@ -194,6 +195,7 @@ class Model:
         calls: Calls | None = None,
         markers: tuple[str, str] = (BEGIN, END),
         goals: Mapping[str, str] | None = None,
+        hints: Sequence[str] | None = None,
     ) -> None:
         if template not in TEMPLATES:
             raise KeyError(f"no template named {template!r}")
@@ -206,6 +208,8 @@ class Model:
         # like the template and the guidance are -- a search method should not
         # have to carry it, and it is not a fact about any one parent.
         self.goals = dict(goals or {})
+        #: The manifest's own hints, or None for the built-in rotation.
+        self.hints = tuple(hints) if hints else None
 
     def recipe(
         self, directive: Directive, problem: str | None = None
@@ -218,7 +222,7 @@ class Model:
             "code": directive.code,
             "standing": _standing_block(directive.standing, self.goals),
             "problem": _problem_block(problem),
-            "hint": hint_for(directive.index),
+            "hint": hint_for(directive.index, self.hints),
             "guidance": _guidance_block(self.guidance),
         }
 
