@@ -1,9 +1,14 @@
 version: 2
 
+# Read the Docs installs nothing by default beyond bare mkdocs, which fails on
+# `theme: material`. The dependencies already exist as the `docs` group in
+# pyproject.toml, so build with uv and that group rather than keeping a second
+# list here to drift out of step.
 build:
   os: "ubuntu-24.04"
   tools:
     python: "3.11"
-
-mkdocs:
-  configuration: mkdocs.yml
+  commands:
+    - pip install uv
+    - uv sync --group docs
+    - uv run mkdocs build --clean --strict --site-dir $READTHEDOCS_OUTPUT/html

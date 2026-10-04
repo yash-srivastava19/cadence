@@ -6,6 +6,27 @@ on:
   pull_request:
 
 jobs:
+  # The published site is built by Read the Docs on its own infrastructure, so a
+  # broken mkdocs config never reached CI and the first sign of it was a failed
+  # RTD build. This runs the same build, strictly, on every pull request.
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      # The same group Read the Docs installs, from the same pyproject.
+      - name: Install dependencies
+        run: uv sync --group docs
+
+      # --strict turns a broken link or a missing nav entry into a failure here
+      # rather than a warning nobody reads.
+      - name: Build the documentation
+        run: uv run mkdocs build --clean --strict
+
   code_standards:
     runs-on: ubuntu-latest
 
