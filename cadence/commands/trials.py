@@ -4,7 +4,7 @@ import typer
 
 from cadence.commands.reading import reading, show
 from cadence.commands.report import die
-from cadence.control.queries import PAGE, one_trial, some_trials
+from cadence.control.queries import PAGE, some_trials, trial_detail
 from cadence.delivery import one_as_text, trials_as_text
 
 app = typer.Typer(no_args_is_help=True, help="Trials inside a run.")
@@ -28,9 +28,9 @@ def show_(
     trial_id: str = typer.Argument(..., metavar="TRIAL_ID"),
     json_: bool | None = typer.Option(None, "--json/--no-json"),
 ) -> None:
-    """Everything recorded about one trial."""
+    """Everything recorded about one trial, and what it changed."""
     with reading() as session:
-        found = one_trial(session, trial_id)
+        found = trial_detail(session, trial_id)
     if found is None:
         die(f"no trial called {trial_id!r}.")
     show(found, one_as_text(found), json_)

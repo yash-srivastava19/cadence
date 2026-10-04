@@ -12,6 +12,7 @@ from cadence.core.dto import (
     MetricReading,
     RunDetail,
     RunSummary,
+    TrialDetail,
     TrialSummary,
 )
 
@@ -86,6 +87,10 @@ SHOWN_APART = {
     "directions",
     "baseline",
     "compared",
+    # Whole programs and replies: in --json, and the diff below the fields.
+    "code",
+    "diff",
+    "response",
 }
 
 
@@ -104,7 +109,17 @@ def one_as_text(row: RunSummary | TrialSummary) -> str:
     ]
     if isinstance(row, RunDetail):
         lines.extend(_run_apart(row))
+    if isinstance(row, TrialDetail):
+        lines.extend(_what_changed(row))
     return "\n".join(lines)
+
+
+def _what_changed(trial: TrialDetail) -> list[str]:
+    """What the trial tried. The diff, since the whole program can be long;
+    --json carries the program and the model's reply as well."""
+    if not trial.diff:
+        return ["", "no program: nothing was proposed or applied"]
+    return ["", "what changed:", trial.diff.rstrip("\n")]
 
 
 def _aim(direction: str | None) -> str:

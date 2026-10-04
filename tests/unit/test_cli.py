@@ -37,6 +37,17 @@ class TestCheck:
     def test_it_says_it_is_ready(self):
         assert "ready" in runner.invoke(app, ["check", str(LAB)]).output
 
+    def test_it_says_which_metrics_the_objective_ranks_by(self, tmp_path):
+        """Two metrics declared, one weighted: the other is only reported."""
+        (tmp_path / ".cadence").write_text(
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
+            "metrics: {win: maximize, ms: minimize}\n"
+            "objective: {weighted_sum: {win: 1.0}}\n"
+        )
+        (tmp_path / "p.py").write_text(MARKED % "print('win: 1')\nprint('ms: 5')")
+        output = runner.invoke(app, ["check", str(tmp_path)]).output
+        assert "over win to maximize; reported only: ms" in output
+
     def test_a_directory_with_no_manifest_fails(self, tmp_path):
         result = runner.invoke(app, ["check", str(tmp_path)])
         assert result.exit_code == 1
@@ -621,3 +632,19 @@ class TestInitWritesAProjectThatChecksOut:
         assert "solve.py already there" in result.output
         assert (tmp_path / "solve.py").read_text() == "mine\n"
         assert not (tmp_path / ".cadence").exists()
+
+
+class TestTrialsShow:
+    def test_it_reads_the_detailed_record_and_prints_the_diff(self, monkeypatch):
+        from contextlib import nullcontext
+
+        from tests.unit.test_delivery import a_trial_in_detail
+
+        monkeypatch.setattr("cadence.commands.trials.reading", nullcontext)
+        monkeypatch.setattr(
+            "cadence.commands.trials.trial_detail",
+            lambda session, trial_id: a_trial_in_detail(id=trial_id),
+        )
+        result = runner.invoke(app, ["trials", "show", "r1/0", "--no-json"])
+        assert result.exit_code == 0, result.output
+        assert "+print('value: 45')" in result.output

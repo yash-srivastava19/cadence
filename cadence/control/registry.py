@@ -163,6 +163,7 @@ def build(
         model=Model(
             backend=backend or resolve("backend", BACKENDS, manifest.model),
             template=manifest.prompt.template,
+            hints=manifest.prompt.hints,
             markers=(manifest.markers.begin, manifest.markers.end),
             guidance=guidance(manifest, root),
             goals=manifest.metrics,

@@ -44,7 +44,6 @@ from cadence.lifecycle.states import RunState
 
 __all__ = [
     "one_run",
-    "one_trial",
     "run_detail",
     "some_experiments",
     "some_runs",
@@ -181,17 +180,6 @@ def _baseline_of(session: Session, run_id: str) -> Mapping[str, float] | None:
         .order_by(events.c.seq)
         .limit(1)
     ).scalar()
-
-
-def one_trial(session: Session, trial_id: str) -> TrialSummary | None:
-    row = (
-        session.execute(
-            sa.select(*TRIAL_COLUMNS).select_from(SCORED).where(trials.c.id == trial_id)
-        )
-        .mappings()
-        .first()
-    )
-    return None if row is None else _trial(row)
 
 
 def _stalled(status: str, last_wrote: datetime | None) -> bool:

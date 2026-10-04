@@ -6,7 +6,7 @@ here is about one question: can a reader compare this run with another one?
 
 import json
 
-from cadence.core.dto import Report, RunSummary, Spend, TrialSummary
+from cadence.core.dto import Report, RunSummary, Spend, TrialDetail, TrialSummary
 from cadence.delivery import (
     as_json,
     as_text,
@@ -202,6 +202,48 @@ class TestOneRecord:
         """`show` is where somebody goes when the listing was not enough."""
         for name in RunSummary.model_fields:
             assert name in one_as_text(a_run())
+
+
+DIFF = (
+    "--- parent\n+++ candidate\n@@ -1 +1 @@\n-print('value: 0')\n+print('value: 45')\n"
+)
+
+
+def a_trial_in_detail(**overrides):
+    fields = {
+        "id": "t1",
+        "run_id": "r1",
+        "seq": 0,
+        "status": TrialState.MEASURED,
+        "attempts": 1,
+        "code": "print('value: 45')\n" + "# a long program\n" * 50,
+        "diff": DIFF,
+        "response": "Here it is.",
+    }
+    return TrialDetail(**{**fields, **overrides})
+
+
+class TestOneTrialShowsWhatItTried:
+    """`trials show` used to stop at a fingerprint: there was no way to see
+    what a trial had changed without querying the database by hand."""
+
+    def test_the_diff_is_printed_below_the_fields(self):
+        text = one_as_text(a_trial_in_detail())
+        assert "what changed:" in text
+        assert "+print('value: 45')" in text
+        assert text.index("seq") < text.index("what changed:")
+
+    def test_the_whole_program_is_left_to_json(self):
+        assert "# a long program" not in one_as_text(a_trial_in_detail())
+
+    def test_it_says_so_when_there_was_no_program(self):
+        text = one_as_text(a_trial_in_detail(code=None, diff=None))
+        assert "nothing was proposed or applied" in text
+
+    def test_json_carries_the_code_and_the_reply(self):
+        shown = json.loads(as_json(a_trial_in_detail()))
+        assert shown["code"].startswith("print('value: 45')")
+        assert shown["response"] == "Here it is."
 
 
 class TestListingsAreAlsoJson:

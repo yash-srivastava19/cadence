@@ -76,7 +76,7 @@ class Experiment:
         #: What the run has spent, counted from its own facts by `Spent`.
         self.spent = Spent(self.run_id)
         #: What the programs the run started from scored. None until measured,
-        #: and on a resumed run it stays None -- the first run took it.
+        #: and on a resumed run it is read back from the first run's tape.
         self.baseline: TrialResult | None = None
 
     def run(self) -> Report:
@@ -129,6 +129,7 @@ class Experiment:
         assert resumed is not None  # only called when there is one
         run = Run(id=self.run_id, status=RunState.RUNNING)
         run.trials = resumed.trials
+        self.baseline = resumed.baseline
         self.trace.emit(
             RunResumed, trials=resumed.trials, results=len(resumed.history.results)
         )

@@ -54,7 +54,19 @@ def _find(lines: list[str], wanted: list[str]) -> int:
     for start in range(len(lines) - width + 1):
         if [line.strip() for line in lines[start : start + width]] == stripped:
             return start
-    raise PatchError(f"no lines in the program match {wanted[0].strip()!r}")
+    raise PatchError(_mismatch(lines, wanted))
+
+
+def _mismatch(lines: list[str], wanted: list[str]) -> str:
+    """Name the line that is actually missing, not just the hunk's first one."""
+    present = {line.strip() for line in lines}
+    missing = next((w for w in wanted if w.strip() and w.strip() not in present), None)
+    if missing is not None:
+        return f"the patch expects {missing.strip()!r}, which is not in the program"
+    return (
+        f"the {len(wanted)} lines the patch expects are all in the program, but"
+        f" not together in that order (it starts at {wanted[0].strip()!r})"
+    )
 
 
 def _apply(code: str, patch: Sequence[str]) -> str:

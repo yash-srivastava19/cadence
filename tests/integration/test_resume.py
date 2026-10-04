@@ -123,6 +123,44 @@ class TestWhatTheDatabaseOffersBack:
         assert present(resume_from(died_mid_trial, RUN)).trials == 0
 
 
+WORSE = "Try this.\n```python\nprint('value: -5')\n```"
+WORSE_STILL = "Or this.\n```python\nprint('value: -9')\n```"
+
+
+@pytest.fixture
+def regressed(session, journal):
+    """A run whose only trial scored below the program it started from."""
+    an_experiment(session, WORSE, budget=1).run()
+    _running(session)
+    return session
+
+
+class TestTheStartingProgramStaysInTheRunning:
+    """A resumed run used to forget its baseline, so the best child won even
+    when every child was worse, and `cadence apply` would have written a
+    regression over the program it started from."""
+
+    def test_the_database_offers_the_baseline_back(self, regressed):
+        baseline = present(present(resume_from(regressed, RUN)).baseline)
+        assert baseline.code == BASELINE
+        assert baseline.metrics["value"] == 0
+
+    def test_it_is_not_put_in_the_history(self, regressed):
+        """Trial 0's prompt depends on the history, and replaying a paid call
+        needs that prompt unchanged."""
+        codes = [r.code for r in present(resume_from(regressed, RUN)).history.results]
+        assert BASELINE not in codes
+
+    def test_a_resumed_run_still_names_it_the_winner(self, regressed, journal):
+        report = an_experiment(regressed, WORSE_STILL, budget=2).run()
+        assert report.program == BASELINE
+        assert present(report.metrics)["value"] == 0
+
+    def test_a_child_that_beats_it_still_wins(self, regressed, journal):
+        report = an_experiment(regressed, IMPROVES, budget=2).run()
+        assert present(report.metrics)["value"] == 45
+
+
 class TestPickingItUpAgain:
     def test_it_carries_on_rather_than_starting_over(self, interrupted, journal):
         report = an_experiment(interrupted, IMPROVES_MORE, budget=2).run()

@@ -15,7 +15,6 @@ if not os.environ.get("TEST_DATABASE_URL"):
 
 from cadence.control.queries import (
     one_run,
-    one_trial,
     run_detail,
     some_experiments,
     some_runs,
@@ -117,10 +116,15 @@ class TestTheTrialsOfARun:
 
     def test_one_trial_comes_back_by_id(self, session, two_trials):
         wanted = some_trials(session, "a")[0]
-        assert one_trial(session, wanted.id) == wanted
+        found = trial_detail(session, wanted.id)
+        assert (found.id, found.seq, found.status) == (
+            wanted.id,
+            wanted.seq,
+            wanted.status,
+        )
 
     def test_a_trial_nobody_recorded_is_none(self, session):
-        assert one_trial(session, "never-existed") is None
+        assert trial_detail(session, "never-existed") is None
 
 
 class TestARunCanBeWatchedWhileItRuns:
@@ -183,7 +187,7 @@ class TestATrialCarriesItsScore:
     def test_one_trial_looked_up_by_id_carries_it_too(self, session, journalled):
         journalled(IMPROVES, run_id="scored", budget=1)
         wanted = some_trials(session, "scored")[0]
-        assert one_trial(session, wanted.id).metrics == wanted.metrics
+        assert trial_detail(session, wanted.id).metrics == wanted.metrics
 
 
 class TestARunPageCanAffordMoreThanAListing:
