@@ -227,3 +227,42 @@ class TestWhenTheScoringCommandIsTheBrokenOne:
 
     def test_an_ordinary_run_is_untouched(self):
         assert a_runner().try_("print('value: 3')").verdict.outcome == Outcome.SCORED
+
+
+class TestAPatchThatDoesNotFitSaysWhy:
+    """It used to quote the hunk's first line, which was often in the program.
+    The diff below is the one qwen2.5-coder wrote: everything matches except
+    the `# ...` it abbreviated with."""
+
+    PROGRAM = (
+        "def choose(view: dict, moves: list[dict]) -> int:\n"
+        '    """Return the index of one of `moves`."""\n'
+        "    return 0\n"
+    )
+
+    def test_it_names_the_line_that_is_missing(self):
+        patch = [
+            "--- a/choose.py",
+            "+++ b/choose.py",
+            "@@ -1,3 +1,4 @@",
+            " def choose(view: dict, moves: list[dict]) -> int:",
+            "+    import random",
+            '     """Return the index of one of `moves`."""',
+            "     # ...",
+        ]
+        with pytest.raises(PatchError) as raised:
+            apply_patch(self.PROGRAM, patch)
+        assert "'# ...'" in str(raised.value)
+        assert "def choose" not in str(raised.value)
+
+    def test_lines_that_exist_out_of_order_are_told_apart(self):
+        patch = [
+            "--- a/p.py",
+            "+++ b/p.py",
+            "@@ -1,2 +1,2 @@",
+            "     return 0",
+            "-def choose(view: dict, moves: list[dict]) -> int:",
+            "+def choose(view, moves):",
+        ]
+        with pytest.raises(PatchError, match="not together in that order"):
+            apply_patch(self.PROGRAM, patch)

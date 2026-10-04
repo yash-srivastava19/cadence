@@ -89,11 +89,18 @@ def _report(preflight: Preflight) -> None:
 
 def _objective(manifest: Manifest) -> None:
     objective = objective_for(manifest)
-    found("objective", f"{_named(objective)} over {_goals(manifest)}")
+    found("objective", f"{_named(objective)} over {_goals(manifest, objective)}")
 
 
-def _goals(manifest: Manifest) -> str:
-    return ", ".join(f"{name} to {goal}" for name, goal in manifest.metrics.items())
+def _goals(manifest: Manifest, objective) -> str:
+    """What the objective ranks by, and what is only reported.
+
+    Listing every declared metric here read as though all of them counted,
+    when an objective that names one weighs that one alone."""
+    ranked = [name for name in manifest.metrics if name in objective.weights]
+    said = ", ".join(f"{name} to {manifest.metrics[name]}" for name in ranked)
+    reported = [name for name in manifest.metrics if name not in objective.weights]
+    return f"{said}; reported only: {', '.join(reported)}" if reported else said
 
 
 def _baseline(manifest: Manifest, runner: TrialRunner, code: str) -> Measurement:

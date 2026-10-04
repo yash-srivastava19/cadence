@@ -37,6 +37,17 @@ class TestCheck:
     def test_it_says_it_is_ready(self):
         assert "ready" in runner.invoke(app, ["check", str(LAB)]).output
 
+    def test_it_says_which_metrics_the_objective_ranks_by(self, tmp_path):
+        """Two metrics declared, one weighted: the other is only reported."""
+        (tmp_path / ".cadence").write_text(
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
+            "metrics: {win: maximize, ms: minimize}\n"
+            "objective: {weighted_sum: {win: 1.0}}\n"
+        )
+        (tmp_path / "p.py").write_text(MARKED % "print('win: 1')\nprint('ms: 5')")
+        output = runner.invoke(app, ["check", str(tmp_path)]).output
+        assert "over win to maximize; reported only: ms" in output
+
     def test_a_directory_with_no_manifest_fails(self, tmp_path):
         result = runner.invoke(app, ["check", str(tmp_path)])
         assert result.exit_code == 1
