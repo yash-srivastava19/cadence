@@ -621,3 +621,19 @@ class TestInitWritesAProjectThatChecksOut:
         assert "solve.py already there" in result.output
         assert (tmp_path / "solve.py").read_text() == "mine\n"
         assert not (tmp_path / ".cadence").exists()
+
+
+class TestTrialsShow:
+    def test_it_reads_the_detailed_record_and_prints_the_diff(self, monkeypatch):
+        from contextlib import nullcontext
+
+        from tests.unit.test_delivery import a_trial_in_detail
+
+        monkeypatch.setattr("cadence.commands.trials.reading", nullcontext)
+        monkeypatch.setattr(
+            "cadence.commands.trials.trial_detail",
+            lambda session, trial_id: a_trial_in_detail(id=trial_id),
+        )
+        result = runner.invoke(app, ["trials", "show", "r1/0", "--no-json"])
+        assert result.exit_code == 0, result.output
+        assert "+print('value: 45')" in result.output
