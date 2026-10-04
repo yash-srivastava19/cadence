@@ -178,6 +178,26 @@ set up recording first.
 Every run also writes a log of each step to `cadence-runs/`, with or without
 a database. See [Logs](#logs).
 
+## Use Cadence with Claude Code
+
+Cadence includes a small Claude Code plugin that teaches an agent how to design
+the editable region, scorer, manifest, and validation strategy before it spends
+model calls. It does not start runs or apply candidates without confirmation.
+
+From Claude Code:
+
+```text
+/plugin marketplace add yash-srivastava19/cadence
+/plugin install cadence@cadence
+/reload-plugins
+```
+
+Then ask Claude Code to help use Cadence on your problem. The plugin reads the
+current documentation, and its source is in
+[`plugins/cadence`](plugins/cadence). The docs also publish [`llms.txt`](https://cadence.readthedocs.io/en/latest/llms.txt),
+a full Markdown corpus, and a machine-readable skills catalog for other agent
+clients.
+
 ### 6. Keep runs, resume them, apply the winner
 
 Recording needs a Postgres. Point cadence at any one you have, and let it

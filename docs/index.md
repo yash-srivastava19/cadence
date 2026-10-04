@@ -1,89 +1,98 @@
-# Cadence
+<div class="eyebrow">Cadence · alpha · cadence/v1alpha2</div>
 
-Cadence improves a program by rewriting it over and over. A language model
-proposes an edit, Cadence runs the result against a scoring function you
-provide, keeps what scored better, and repeats.
+# Evolve code you can measure.
 
-You supply two things: a program with the editable region marked, and a way to
-score it. Cadence supplies the loop.
+Mark the part of a program a model may rewrite, name the command that scores it, and Cadence searches for a better version inside a sandbox.
 
-## Try it in five minutes
+<div class="grid cards" markdown>
 
-```bash
-git clone https://github.com/yash-srivastava19/cadence
-cd cadence
-uv sync
-export GEMINI_API_KEY="your-key-here"
-python run_h1_experiment.py
+-   **01 · Learn by doing**
+
+    Run a complete experiment with a small program, a scoring command, and a bounded budget.
+
+    [First experiment →](tutorials/first-experiment.md)
+
+-   **02 · Use your own problem**
+
+    Bring a heuristic, scheduler, simulator, or proof tactic. Cadence does not need to know its language or domain.
+
+    [Bring your own program →](guides/bring-your-own-program.md)
+
+-   **03 · Understand the system**
+
+    Learn why the editable region, scorer, verdicts, and durable history are separate.
+
+    [Read the concepts →](concepts/index.md)
+
+-   **04 · Look up exact behavior**
+
+    Find CLI commands, manifest fields, environment variables, and recorded output.
+
+    [Open the reference →](reference/cli.md)
+
+</div>
+
+## The experiment in one line
+
+You bring three things. Cadence supplies the search loop and the record of what happened.
+
+<div class="flow" markdown>
+<div class="flow-step"><small>01</small><strong>Marked<br>program</strong><span>the region you expose</span></div>
+<i>→</i>
+<div class="flow-step"><small>02</small><strong>Model<br>patch</strong><span>one change to try</span></div>
+<i>→</i>
+<div class="flow-step"><small>03</small><strong>Scoring<br>command</strong><span>your measurement</span></div>
+<i>→</i>
+<div class="flow-step"><small>04</small><strong>Verdict</strong><span>score or reason</span></div>
+<i>→</i>
+<div class="flow-step"><small>05</small><strong>Next<br>parent</strong><span>best evidence so far</span></div>
+</div>
+
+```yaml title=".cadence"
+api_version: cadence/v1alpha2
+program: solve.py
+run: python score.py
+metrics:
+  score: maximize
+budget:
+  trials: 20
+model:
+  gemini: {}
 ```
 
-That evolves a Traveling Salesman heuristic for 30 generations, then writes
-`h1_results.png` and `experiment_log.json` to the project root. It costs
-roughly 30 Gemini calls.
+```bash
+cadence check  # inspect the run; spends nothing
+cadence run    # propose, measure, keep what improved
+```
 
-New here? [Getting started](getting-started.md) walks through the same run and
-explains what each part of the output means.
+## What Cadence protects
 
-## How one generation works
-
-1. **Sample a parent.** Usually a program from the previous generation; every
-   `ELITISM_INTERVAL` generations, the best program found so far.
-2. **Build a prompt** from the parent, a few sibling programs as inspiration,
-   and the current lesson.
-3. **Ask the model to rewrite the marked block** — just that block, not the
-   whole file.
-4. **Swap it into the parent**, block for block, in order.
-5. **Score the child** on five fixed seeds, in parallel.
-6. **Store it** in SQLite with its cost, its parent, and the diff that made it.
-
-Every `LESSON_INTERVAL` generations, Cadence asks the model what it has learned
-from the run so far and prepends that to later prompts. Every
-`META_PROMPT_EDIT_INTERVAL` generations, it rewrites its own instruction text.
-
-## What you need to write
-
-Two things, both in your own code:
-
-- **A baseline program** with the region to evolve wrapped in
-  `### START_BLOCK` and `### END_BLOCK`. Everything outside the markers is
-  fixed and the model is told not to touch it.
-- **A `Task` subclass** with four members: `function_name`, `generate_inputs`,
-  `evaluate`, and `baseline_program`.
-
-[Tasks](tasks.md) is the complete guide, with a worked knapsack example.
-
-## What Cadence does not do yet
-
-Stated plainly, because finding out later wastes your time:
-
-- **One provider.** Google Gemini only. `LLMConfig.model` defaults to
-  `gemini-2.0-flash`.
-- **One objective.** `EvaluationResult.cost` is a single float, lower is
-  better. There is no Pareto or multi-objective selection.
-- **Diffs only.** No crossover, no full-file rewrite operator.
-- **No sandbox.** Candidate programs run with `exec()` inside the same Python
-  process as the loop. Do not point Cadence at anything you would not run by
-  hand on the same machine.
-- **No timeout.** A candidate containing an infinite loop hangs the run.
-  `Evaluator` accepts `timeout` and `max_memory_mb` arguments and currently
-  ignores both.
-
-The [architecture](architecture.md) page covers the design; the parts marked
-as planned are not built.
-
-## Where to go next
-
-| You want to | Read |
+| Boundary | Why it matters |
 | --- | --- |
-| Run Cadence for the first time | [Getting started](getting-started.md) |
-| Apply it to your own problem | [Tasks](tasks.md) |
-| Change generations, seeds, intervals | [Configuration](configuration.md) |
-| Understand selection and lessons | [Evolution pipeline](evolution.md) |
-| Reproduce the published experiments | [Experiments](experiments.md) |
-| Watch a run in the browser | [Web interface](web-interface.md) |
-| Look up a function signature | [API reference](api/index.md) |
-| Send a patch | [Contributing](contributing.md) |
+| The marked region | The model can change only what you expose. |
+| The scoring command | A candidate cannot rewrite the code that judges it. |
+| The manifest | Metrics, budget, model, seeds, and limits are explicit and recorded. |
+| The verdict | A crash, timeout, verifier error, and score are different outcomes. |
+| The run history | A stopped machine does not erase measured evidence. |
 
-## Licence
+!!! warning "Alpha software"
+    The manifest format is versioned and breaking changes are expected before a stable release. The sandbox limits time, memory, output, and environment exposure, but does not currently restrict network access or files outside the working copy.
 
-MIT. See [LICENSE](https://github.com/yash-srivastava19/cadence/blob/main/LICENSE).
+## Choose a path
+
+| You want to... | Start here |
+| --- | --- |
+| Run Cadence once | [Get started](get-started/index.md) |
+| Learn the whole workflow | [First experiment](tutorials/first-experiment.md) |
+| Use your own algorithm | [Bring your own program](guides/bring-your-own-program.md) |
+| Make the result trustworthy | [Design the harness](concepts/harness.md) |
+| Recover after a stop | [Resume and inspect a run](guides/resume-and-inspect.md) |
+| Find a flag or field | [CLI reference](reference/cli.md) or [Manifest reference](reference/manifest.md) |
+| Understand the implementation | [Architecture](architecture/index.md) |
+| See real evidence | [Experiments and evidence](research/index.md) |
+
+## For people building with agents
+
+Cadence documentation is intended to be usable by coding agents as well as people. An agent should help you design the scoring harness, run `cadence check`, explain warnings, and cite the page that supports its advice. It should not invent a score, hide a failure, or start an expensive run without making the budget visible.
+
+The agent workflow is documented in [Design the harness](concepts/harness.md) and [Bring your own program](guides/bring-your-own-program.md).

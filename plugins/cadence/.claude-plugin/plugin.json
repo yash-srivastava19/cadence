@@ -1,0 +1,11 @@
+{
+  "name": "cadence",
+  "version": "0.1.0",
+  "description": "Help users design, validate, inspect, and resume Cadence experiments.",
+  "author": {
+    "name": "Yashovardhan Srivastava",
+    "email": "ysrivastava82@gmail.com"
+  },
+  "repository": "https://github.com/yash-srivastava19/cadence",
+  "license": "MIT"
+}

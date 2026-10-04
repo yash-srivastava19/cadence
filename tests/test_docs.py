@@ -18,29 +18,10 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 
-#: Pages that still describe the replaced system, kept until they are
-#: rewritten rather than deleted. They are checked for existence and nothing
-#: else -- resolving their symbols would only tell us what we already know.
-#:
-#: The list is meant to shrink. Take a page off it when you rewrite that page,
-#: and this file will start holding it to the same standard as the rest.
-DESCRIBES_THE_REPLACED_SYSTEM = {
-    "docs/advanced-features.md",
-    "docs/api/index.md",
-    "docs/architecture.md",
-    "docs/configuration.md",
-    "docs/contributing.md",
-    "docs/evolution.md",
-    "docs/examples.md",
-    "docs/experiments.md",
-    "docs/getting-started.md",
-    "docs/index.md",
-    "docs/llm-interaction.md",
-    "docs/performance-evaluation.md",
-    "docs/results-visualization.md",
-    "docs/tasks.md",
-    "docs/web-interface.md",
-}
+# Pages in the public docs describe the current CLI and manifest system. Keep
+# this set for one simple regression test: if a page is deliberately archived,
+# it must be named here rather than silently drifting in the published tree.
+DESCRIBES_THE_REPLACED_SYSTEM: set[str] = set()
 
 ALL_DOCS = [*sorted(REPO.glob("docs/**/*.md")), REPO / "README.md"]
 DOC_FILES = [
