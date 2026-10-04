@@ -11,16 +11,24 @@ nothing about the method changes when the answer starts coming from Postgres.
 """
 
 import sqlalchemy as sa
-from pydantic import Field
+from pydantic import Field, TypeAdapter
 from sqlalchemy.orm import Session
 
-from cadence.control.storage import blobs, candidates, runs, trials, verdicts
+from cadence.control.entities import Candidate
+from cadence.control.storage import blobs, candidates, events, runs, trials, verdicts
 from cadence.core.dto import RunHistory, TrialResult
 from cadence.core.values import Value
-from cadence.core.verdict import Failed, Outcome, Scored
+from cadence.core.verdict import Failed, Outcome, Scored, Verdict
 from cadence.lifecycle.states import CandidateState, RunState, TrialState
 
-__all__ = ["Resumption", "history_of", "resume_from", "seeds_of", "status_of"]
+__all__ = [
+    "Resumption",
+    "baseline_of",
+    "history_of",
+    "resume_from",
+    "seeds_of",
+    "status_of",
+]
 
 
 class Resumption(Value):
@@ -37,6 +45,10 @@ class Resumption(Value):
     #: How many trials are settled. The next one takes this as its seq, so an
     #: unfinished trial is redone rather than skipped past.
     trials: int = Field(ge=0)
+    #: What the starting program scored. Kept out of `history` for the same
+    #: reason the live loop keeps it out (it would change trial 0's prompt),
+    #: but the winner is still chosen against it.
+    baseline: TrialResult | None = None
 
 
 def status_of(session: Session, run_id: str) -> str | None:
@@ -198,4 +210,36 @@ def resume_from(session: Session, run_id: str) -> Resumption | None:
     history = history_of(session, run_id)
     if history is None:
         return None
-    return Resumption(history=history, trials=trials_of(session, run_id))
+    return Resumption(
+        history=history,
+        trials=trials_of(session, run_id),
+        baseline=baseline_of(session, run_id, history.seeds),
+    )
+
+
+def baseline_of(
+    session: Session, run_id: str, seeds: tuple[str, ...]
+) -> TrialResult | None:
+    """The starting program and what it scored, off the SeedMeasured on the tape.
+
+    None when no seed scored, which is also what a fresh run holds then.
+    """
+    payload = session.execute(
+        sa.select(events.c.payload)
+        .where(events.c.run_id == run_id)
+        .where(events.c.type == "SeedMeasured")
+        .where(events.c.payload["verdict"]["outcome"].astext == Outcome.SCORED.value)
+        .order_by(events.c.seq)
+        .limit(1)
+    ).scalar()
+    if payload is None:
+        return None
+    code = next(
+        (c for c in seeds if Candidate(code=c).fingerprint == payload["fingerprint"]),
+        None,
+    )
+    if code is None:
+        return None
+    return TrialResult(
+        code=code, verdict=TypeAdapter(Verdict).validate_python(payload["verdict"])
+    )
