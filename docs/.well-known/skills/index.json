@@ -1,0 +1,13 @@
+{
+  "skills": [
+    {
+      "name": "cadence",
+      "display_name": "Cadence project workflow",
+      "description": "Help a user design, validate, run, inspect, and resume a Cadence experiment without confusing measurement failures with scores.",
+      "version": "0.1.0",
+      "skill_url": "https://cadence.readthedocs.io/en/latest/.well-known/skills/cadence/SKILL.md",
+      "source_url": "https://github.com/yash-srivastava19/cadence/tree/main/plugins/cadence",
+      "updated": "2026-10-04"
+    }
+  ]
+}

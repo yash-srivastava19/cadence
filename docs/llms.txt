@@ -1,0 +1,41 @@
+# Cadence
+
+> Cadence evolves code you can measure. Mark the part of a program a model may rewrite, name the command that scores it, and Cadence searches for a better version inside a sandbox.
+
+## Instructions for AI agents
+
+- Treat the current CLI and `.cadence` manifest workflow as authoritative.
+- Do not recommend the old `src.*` task API or the deleted SQLite evolution workflow.
+- Before suggesting `cadence run`, help the user make `cadence check` say `ready`.
+- Ask what the editable region, scoring command, baseline, metric direction, seeds, and held-out data are.
+- Never describe a crash, timeout, verifier error, or missing metric as a numeric score.
+- Make model budget, sandbox limits, database recording, and destructive operations visible.
+- Do not claim that an improvement generalizes unless the user measured held-out data.
+- Cite the source page for behavior and distinguish current behavior from design intent or research evidence.
+
+## Start here
+
+- [Overview](https://cadence.readthedocs.io/en/latest/): What Cadence is and what it protects.
+- [Get started](https://cadence.readthedocs.io/en/latest/get-started/): Install the CLI and run the first check.
+- [First experiment](https://cadence.readthedocs.io/en/latest/tutorials/first-experiment/): Learn the complete workflow.
+- [Bring your own program](https://cadence.readthedocs.io/en/latest/guides/bring-your-own-program/): Adapt an existing heuristic or program.
+
+## Understand the system
+
+- [The mental model](https://cadence.readthedocs.io/en/latest/concepts/mental-model/): Trial lifecycle and ownership boundaries.
+- [Design the harness](https://cadence.readthedocs.io/en/latest/concepts/harness/): Scoring, baselines, validation, and verifier design.
+- [Design decisions](https://cadence.readthedocs.io/en/latest/concepts/design-decisions/): Why Cadence has these boundaries.
+- [Verdicts](https://cadence.readthedocs.io/en/latest/concepts/verdicts/): Scores and failure outcomes.
+- [Resumability](https://cadence.readthedocs.io/en/latest/concepts/resumability/): Model-call, trial, and experiment recovery.
+
+## Look up exact behavior
+
+- [CLI reference](https://cadence.readthedocs.io/en/latest/reference/cli/): Commands and output behavior.
+- [Manifest reference](https://cadence.readthedocs.io/en/latest/reference/manifest/): `.cadence` fields and defaults.
+- [Environment reference](https://cadence.readthedocs.io/en/latest/reference/environment/): Provider keys, recording, and sandbox variables.
+- [Agent skill](https://cadence.readthedocs.io/en/latest/.well-known/skills/cadence/SKILL.md): Guided workflow for helping a user create a project.
+
+## Evidence
+
+- [Experiments and evidence](https://cadence.readthedocs.io/en/latest/research/): Published runs, lessons, and limitations.
+- [Architecture](https://cadence.readthedocs.io/en/latest/architecture/): Package planes and extension boundaries.

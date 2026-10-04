@@ -1,20 +1,80 @@
 site_name: Cadence
+site_description: Evolve code you can measure.
+site_url: https://cadence.readthedocs.io/en/latest/
+repo_url: https://github.com/yash-srivastava19/cadence
+repo_name: yash-srivastava19/cadence
+hooks:
+  - docs/hooks.py
 theme:
-  name: readthedocs
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
+extra_css:
+  - stylesheets/extra.css
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - toc:
+      permalink: true
 nav:
-  - Home: index.md
-  - Getting Started: getting-started.md
-  - Configuration: configuration.md
-  - Architecture: architecture.md
-  - Task Interface: tasks.md
-  - Evolution Pipeline: evolution.md
-  - LLM Interaction: llm-interaction.md
-  - Code Mutation Examples: examples.md
-  - Experiments: experiments.md
-  - Performance Evaluation: performance-evaluation.md
-  - Results Visualization: results-visualization.md
-  - Extending Cadence: extending-custom-task.md
-  - Advanced Features: advanced-features.md
-  - Web Interface: web-interface.md
-  - API Reference: api/index.md
+  - Start here:
+      - Overview: index.md
+      - Get started: get-started/index.md
+  - Learn:
+      - Concepts: concepts/index.md
+      - The mental model: concepts/mental-model.md
+      - Design the harness: concepts/harness.md
+      - Design decisions: concepts/design-decisions.md
+      - Verdicts, not numbers: concepts/verdicts.md
+      - Resumability: concepts/resumability.md
+  - Tutorials:
+      - First experiment: tutorials/first-experiment.md
+  - Guides:
+      - Bring your own program: guides/bring-your-own-program.md
+      - Design a scorer: guides/design-a-scorer.md
+      - Resume and inspect a run: guides/resume-and-inspect.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Manifest: reference/manifest.md
+      - Environment: reference/environment.md
+  - Examples:
+      - Examples: examples/index.md
+      - Knapsack lab: examples/knapsack.md
+  - Architecture:
+      - Architecture: architecture/index.md
+      - System planes: architecture/planes.md
+  - Research:
+      - Experiments and evidence: research/index.md
+  - Agent integrations:
+      - Use Cadence with AI agents: agents.md
   - Contributing: contributing.md
