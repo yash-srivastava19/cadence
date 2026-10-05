@@ -48,6 +48,11 @@ You bring three things. Cadence supplies the search loop and the record of what 
 <div class="flow-step"><small>05</small><strong>Next<br>parent</strong><span>best evidence so far</span></div>
 </div>
 
+<figure markdown>
+  ![A Cadence trial moving from proposal to measurement and recording](assets/illustrations/trial-loop.gif){ loading=lazy }
+  <figcaption>One trial, stepped through. The model proposes a change; the scorer stays outside the editable region.</figcaption>
+</figure>
+
 ```yaml title=".cadence"
 api_version: cadence/v1alpha2
 program: solve.py

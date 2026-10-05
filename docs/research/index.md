@@ -10,12 +10,12 @@ Cadence is built to make experiments inspectable, including the runs that expose
 These are not marketing screenshots. They are useful because they show the system under pressure: a trial being stepped through, a run continuing across days, and candidates changing while the measurement remains outside the editable region.
 
 <figure markdown>
-  ![One Cadence trial, stepped through from proposal to recorded fact](https://yash-sri.xyz/assets/img/evolving_problems/loop.gif){ loading=lazy }
+  ![One Cadence trial, stepped through from proposal to recorded fact](../assets/illustrations/trial-loop.gif){ loading=lazy }
   <figcaption>One trial, stepped through. The scoring command remains outside the region the model can rewrite.</figcaption>
 </figure>
 
 <figure markdown>
-  ![Cadence run progress across multiple sittings](https://yash-sri.xyz/assets/img/evolving_problems/progress.png){ loading=lazy }
+  ![Cadence run progress across multiple sittings](../assets/illustrations/run-progress.png){ loading=lazy }
   <figcaption>A run can cross day boundaries because the measured history is durable.</figcaption>
 </figure>
 

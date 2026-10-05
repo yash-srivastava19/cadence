@@ -51,6 +51,11 @@ Cadence runs the scoring command in this temporary directory with the declared s
 
 </details>
 
+<figure markdown>
+  ![A Cadence trial recorded as a sequence of facts](../assets/illustrations/trial-loop.gif){ loading=lazy }
+  <figcaption>The loop is not a black box: proposal, patching, measurement, and recording happen as separate steps.</figcaption>
+</figure>
+
 ## What you own
 
 - The program and editable region.
