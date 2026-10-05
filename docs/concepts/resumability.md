@@ -10,6 +10,11 @@ Cadence separates three recovery problems. They are related, but they are not th
 
 The database is the checkpoint. The process and the machine running it are disposable.
 
+<figure markdown>
+  ![Cadence resume levels](../assets/illustrations/resume-levels.gif){ loading=lazy }
+  <figcaption>Resume has separate jobs at the model-call, trial, and experiment levels.</figcaption>
+</figure>
+
 ## What a resume is not
 
 Resuming is not starting a new run from a good program. A new run has a new identity and a new history. A resumed run continues the existing experiment.
