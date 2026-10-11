@@ -23,6 +23,7 @@ from cadence.core.verdict import Failed, Scored
 from cadence.observe.channel import Fact
 from cadence.observe.signals import (
     CandidateBuilt,
+    CandidateRemeasured,
     Event,
     ModelCalled,
     ModelRequested,
@@ -90,6 +91,17 @@ KINDS: Mapping[type[Fact], Mapping[str, str]] = {
         "run_id": "envelope",
         "at": "envelope",
         "fingerprint": "id",
+        "verdict": "verdict",
+        "wall_ms": "number",
+        "task_hash": "id",
+        "seeds_hash": "id",
+    },
+    CandidateRemeasured: {
+        "run_id": "envelope",
+        "at": "envelope",
+        "trial_id": "id",
+        "fingerprint": "id",
+        "sandbox_seeds": "text",
         "verdict": "verdict",
         "wall_ms": "number",
         "task_hash": "id",
@@ -229,7 +241,9 @@ def _scores(metrics: Mapping[str, float]) -> str:
     return ", ".join(f"{name}={value:g}" for name, value in metrics.items())
 
 
-def _verdict(fact: SeedMeasured | TrialMeasured) -> tuple[str, str, str]:
+def _verdict(
+    fact: SeedMeasured | TrialMeasured | CandidateRemeasured,
+) -> tuple[str, str, str]:
     """status, level, and the words for it."""
     verdict = fact.verdict
     if isinstance(verdict, Failed):
@@ -400,6 +414,23 @@ def _baseline(log: RunLog, fact: SeedMeasured) -> Records:
             f"{fact.run_id}/baseline/{fact.fingerprint}",
             fact.run_id,
             f"baseline {words}",
+            status=status,
+            level=level,
+            attrs=_attrs(fact),
+        )
+    ]
+
+
+def _remeasured(log: RunLog, fact: CandidateRemeasured) -> Records:
+    status, level, words = _verdict(fact)
+    return [
+        log._step(
+            fact,
+            "remeasure",
+            "event",
+            f"{fact.run_id}/remeasure/{fact.fingerprint}/{fact.seeds_hash}",
+            fact.run_id,
+            f"remeasured on seeds {list(fact.sandbox_seeds)}: {words}",
             status=status,
             level=level,
             attrs=_attrs(fact),
@@ -603,6 +634,7 @@ HANDLERS: Mapping[type[Fact], Callable[[RunLog, Any], Records]] = {
     RunResumed: _run_resumed,
     RunFinished: _run_finished,
     SeedMeasured: _baseline,
+    CandidateRemeasured: _remeasured,
     TrialStarted: _trial_started,
     ModelRequested: _model_requested,
     ModelCalled: _model_called,

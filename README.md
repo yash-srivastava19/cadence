@@ -169,7 +169,7 @@ cadence run
 ```
 
 Progress goes to stderr, one line per trial. The result goes to stdout: the
-best program, its metrics, and what the run spent. Pipe it (`cadence run >
+winner, its metrics, and what the run spent. Pipe it (`cadence run >
 result.json`) or read it on the terminal.
 
 Without a database, that output is the only copy of the winner. Keep it, or
@@ -206,7 +206,7 @@ create its own schema:
 ```bash
 export DATABASE_URL=postgresql://user:password@host:5432/cadence
 cadence db status                # what is there, and what a run would make of it
-cadence db upgrade               # create or update the schema; once per database
+cadence db upgrade               # create the schema, and update it after upgrading cadence
 ```
 
 If you have no Postgres to hand, one container is enough:
@@ -291,6 +291,10 @@ markers:
   end: "CADENCE:END"
 method:                      # how the next parent is chosen
   evolution: {size: 8, tournament: 3}
+pick:                        # unset by default: the method's best is the winner
+  confirm: {seeds: [100, 101], top: 3}  # score the top 3 again on new seeds
+judge:                       # unset by default: score each candidate on every seed
+  cascade: {seeds: [0], above: 0.5}     # score on one seed first; the rest only if promising
 objective:                   # unset by default: a weighted sum over metrics
   weighted_sum: {score: 1.0}
 model:                       # scripted | gemini | openai | anthropic | ollama
@@ -424,7 +428,7 @@ The run prints the path when it ends. A line looks like this:
 | Field | What it is |
 |---|---|
 | `level` | `info`; `warn` when something cost a call and bought nothing (an unusable reply, a rejected patch); `error` when the run cannot go on |
-| `span` | The step: `run`, `baseline`, `trial`, `model_call`, `read_reply`, `apply_patch` or `measure` |
+| `span` | The step: `run`, `baseline`, `trial`, `model_call`, `read_reply`, `apply_patch`, `measure` or `remeasure` (a program scored again) |
 | `phase` | `start` and `end` of a step, or `event` for a single moment |
 | `status` | How the step ended: `ok`, `scored`, `failed:crashed`, `unusable`, `abandoned`… |
 | `message` | The line as a sentence |
@@ -501,8 +505,9 @@ ask `control` what happened, and hand the answer to `delivery`, so the
 terminal and the browser cannot disagree about whether a trial improved.
 
 The layers are enforced by `import-linter` in CI. To add a search method,
-implement the `Method` port. To add a sandbox, implement `Sandbox`. To watch
-a run, subscribe to its signals.
+implement the `Method` port. To change how candidates are scored, implement
+`Judge`; to change how the winner is chosen, `Pick`. To add a sandbox,
+implement `Sandbox`. To watch a run, subscribe to its signals.
 
 ## Development
 

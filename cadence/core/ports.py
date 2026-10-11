@@ -13,6 +13,8 @@ from typing import Protocol, runtime_checkable
 from cadence.core.dto import (
     Completion,
     Directive,
+    Measurement,
+    Picked,
     Recalled,
     Request,
     RunHistory,
@@ -21,7 +23,17 @@ from cadence.core.dto import (
 )
 from cadence.core.types import Metrics
 
-__all__ = ["Audit", "Backend", "Calls", "Locks", "Method", "Objective"]
+__all__ = [
+    "Audit",
+    "Backend",
+    "Calls",
+    "Judge",
+    "Locks",
+    "Measure",
+    "Method",
+    "Objective",
+    "Pick",
+]
 
 
 @runtime_checkable
@@ -98,3 +110,43 @@ class Method(Protocol):
     ) -> Directive | None: ...
 
     def best(self, history: RunHistory) -> TrialResult | None: ...
+
+
+@runtime_checkable
+class Measure(Protocol):
+    """Score a program, on the run's seeds or on seeds the caller names.
+
+    Handed to plugins by the run rather than built by them, so that every
+    measurement is written down the same way, whoever asked for it.
+    """
+
+    def __call__(
+        self, code: str, seeds: tuple[int, ...] | None = None
+    ) -> Measurement: ...
+
+
+@runtime_checkable
+class Judge(Protocol):
+    """How a candidate is measured. Owns that, nothing else.
+
+    It may measure as often as it likes and returns one of the measurements
+    it took: that one is the trial's verdict, and the run records the others
+    beside it. It cannot return a measurement it did not take, and it cannot
+    hide a broken scorer -- a measurement that escalates stops the run
+    whichever one is returned.
+    """
+
+    def judge(
+        self, code: str, history: RunHistory, measure: Measure
+    ) -> Measurement: ...
+
+
+@runtime_checkable
+class Pick(Protocol):
+    """Which program the run reports as its winner. Owns that, nothing else.
+
+    Separate from Method, which chooses what to try next: exploring may
+    favour a weaker parent, but the winner has to be the one we trust.
+    """
+
+    def pick(self, history: RunHistory, measure: Measure) -> Picked | None: ...

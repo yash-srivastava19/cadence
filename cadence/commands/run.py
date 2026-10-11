@@ -19,6 +19,7 @@ from cadence.delivery.runlog import RunLog
 from cadence.errors import CadenceError
 from cadence.lifecycle.states import RunState
 from cadence.observe.signals import (
+    CandidateRemeasured,
     RunFinished,
     SeedMeasured,
     TrialMeasured,
@@ -70,6 +71,14 @@ def _narrate(fact) -> None:
             note(f"  baseline   {scores}")
         else:
             note(f"  baseline   would not score: {fact.verdict.reason}")
+    elif isinstance(fact, CandidateRemeasured):
+        verdict = fact.verdict
+        if isinstance(verdict, Scored):
+            scores = " ".join(f"{k} {v:g}" for k, v in verdict.metrics.items())
+        else:
+            scores = f"{verdict.outcome} {verdict.reason or ''}".rstrip()
+        seeds = list(fact.sandbox_seeds)
+        note(f"  remeasure  {fact.fingerprint[:12]} on seeds {seeds}: {scores}")
     elif isinstance(fact, TrialStarted):
         note(f"  trial {fact.seq + 1}")
     elif isinstance(fact, TrialMeasured):

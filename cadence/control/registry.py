@@ -5,10 +5,14 @@ from pathlib import Path
 
 from cadence.control.backends import Scripted, chat_backend, known
 from cadence.control.experiment import Experiment
+from cadence.control.judges.cascade import Cascade
+from cadence.control.judges.full import Full
 from cadence.control.manifest import FILENAME, Manifest, Plugin
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import Pareto, WeightedSum
+from cadence.control.picks.best import Best
+from cadence.control.picks.confirm import Confirm
 from cadence.control.recall import Recorded
 from cadence.control.restore import resume_from
 from cadence.core.dto import RecordedManifest
@@ -17,7 +21,16 @@ from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
 from cadence.parsing.metrics import direction
 
-__all__ = ["BACKENDS", "METHODS", "OBJECTIVES", "build", "runner_for", "seed_program"]
+__all__ = [
+    "BACKENDS",
+    "JUDGES",
+    "METHODS",
+    "OBJECTIVES",
+    "PICKS",
+    "build",
+    "runner_for",
+    "seed_program",
+]
 
 
 def _provider(name: str):
@@ -31,6 +44,10 @@ def _provider(name: str):
 
 METHODS = {"evolution": Evolution}
 OBJECTIVES = {"weighted_sum": WeightedSum, "pareto": Pareto}
+PICKS = {"best": Best, "confirm": Confirm}
+DEFAULT_PICK = Plugin(name="best")
+JUDGES = {"full": Full, "cascade": Cascade}
+DEFAULT_JUDGE = Plugin(name="full")
 BACKENDS = {"scripted": Scripted, **{name: _provider(name) for name in known()}}
 
 
@@ -44,7 +61,10 @@ def resolve(kind: str, known: dict, plugin: Plugin, **extra):
     _reject_unknown_options(kind, plugin, factory, extra)
     try:
         return factory(**extra, **plugin.options)
-    except TypeError as error:
+    except (TypeError, ValueError) as error:
+        # ValueError too: an option of the right name with an impossible value
+        # (a tournament of 0, a confirm with no seeds) is the user's to fix,
+        # and has to reach them as a message, not a traceback.
         raise UnknownPlugin(f"{kind} {plugin.name!r}: {error}") from error
 
 
@@ -154,11 +174,21 @@ def build(
     happened to match is how two people sharing a database silently continue
     each other's experiment.
     """
+    objective = objective_for(manifest)
+    method = resolve("method", METHODS, manifest.method, objective=objective)
     return Experiment(
         run_id=run_id,
         manifest=recorded(manifest, source or root),
-        method=resolve(
-            "method", METHODS, manifest.method, objective=objective_for(manifest)
+        method=method,
+        pick=resolve(
+            "pick",
+            PICKS,
+            manifest.pick or DEFAULT_PICK,
+            method=method,
+            objective=objective,
+        ),
+        judge=resolve(
+            "judge", JUDGES, manifest.judge or DEFAULT_JUDGE, objective=objective
         ),
         model=Model(
             backend=backend or resolve("backend", BACKENDS, manifest.model),

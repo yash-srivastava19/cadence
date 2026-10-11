@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -104,6 +104,13 @@ class Sandbox(Strict):
 
 
 class Manifest(Strict):
+    #: Settings added after hashes were first recorded, that change nothing
+    #: while unset. Unset, they are off rather than defaulted: they stay out of
+    #: the identity, so adding one does not make every manifest on file look
+    #: like a different experiment, and out of the count of defaults `check`
+    #: reports, which would otherwise grow with every port cadence gains.
+    OFF_WHEN_UNSET: ClassVar[tuple[str, ...]] = ("pick", "judge")
+
     api_version: NonBlank
     program: NonBlank
     metrics: Mapping[NonBlank, Goal] = Field(min_length=1)
@@ -114,6 +121,11 @@ class Manifest(Strict):
     run: NonBlank = DEFAULT_RUN
     guidance: NonBlank = DEFAULT_GUIDANCE
     method: Plugin = Plugin(name=DEFAULT_METHOD)
+    #: How the winner is chosen. Unset means the method's own best, which is
+    #: what every run did before this was a setting of its own.
+    pick: Plugin | None = None
+    #: How each candidate is measured. Unset means once, on every seed.
+    judge: Plugin | None = None
     model: Plugin = Plugin(name=DEFAULT_MODEL)
     objective: Plugin | None = None
     markers: Markers = Markers()
@@ -142,7 +154,11 @@ class Manifest(Strict):
         default rather than writing it out does not make it a different
         experiment.
         """
-        return hash_of(self.model_dump(mode="json"))
+        document = self.model_dump(mode="json")
+        for added in self.OFF_WHEN_UNSET:
+            if document[added] is None:
+                del document[added]
+        return hash_of(document)
 
     @property
     def command(self) -> str:
@@ -169,6 +185,8 @@ class Manifest(Strict):
                 f"  guidance   {self.guidance}",
                 f"  markers    {self.markers.begin} .. {self.markers.end}",
                 f"  method     {_plugin(self.method)}",
+                *([f"  pick       {_plugin(self.pick)}"] if self.pick else []),
+                *([f"  judge      {_plugin(self.judge)}"] if self.judge else []),
                 f"  objective  {self._objective}",
                 f"  model      {_plugin(self.model)}",
                 f"  budget     {self.budget.trials} trials",

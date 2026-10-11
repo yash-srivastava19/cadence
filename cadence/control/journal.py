@@ -45,6 +45,7 @@ from cadence.lifecycle.states import CandidateState, RunState, TrialState
 from cadence.observe.channel import Fact
 from cadence.observe.signals import (
     CandidateBuilt,
+    CandidateRemeasured,
     ModelCalled,
     ModelRequested,
     PatchRejected,
@@ -186,8 +187,18 @@ class Journal:
             )
         elif isinstance(fact, (TrialMeasured, SeedMeasured)):
             self._measured(fact)
+            if isinstance(fact, TrialMeasured):
+                self.session.execute(
+                    sa.update(trials)
+                    .where(trials.c.id == fact.trial_id)
+                    .values(task_hash=fact.task_hash, seeds_hash=fact.seeds_hash)
+                )
             if fact.verdict.outcome is Outcome.CRASHED:
                 self._crashed(fact.verdict.fingerprint, run_id)
+        elif isinstance(fact, CandidateRemeasured):
+            # Recorded, never quarantined: a winner that crashes on fresh
+            # seeds is a finding about the winner, not a reason to hide it.
+            self._measured(fact)
         elif isinstance(fact, ModelRequested):
             self._asking(fact, run_id)
         elif isinstance(fact, ModelCalled):
@@ -291,7 +302,9 @@ class Journal:
                 .values(status=CandidateState.QUARANTINED)
             )
 
-    def _measured(self, fact: "TrialMeasured | SeedMeasured") -> None:
+    def _measured(
+        self, fact: "TrialMeasured | SeedMeasured | CandidateRemeasured"
+    ) -> None:
         """What this candidate scored, against this task, on these seeds.
 
         The three together are the primary key, so the row is the record of a

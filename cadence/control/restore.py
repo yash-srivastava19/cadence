@@ -15,7 +15,15 @@ from pydantic import Field, TypeAdapter
 from sqlalchemy.orm import Session
 
 from cadence.control.entities import Candidate
-from cadence.control.storage import blobs, candidates, events, runs, trials, verdicts
+from cadence.control.storage import (
+    blobs,
+    candidates,
+    events,
+    its_own_verdict,
+    runs,
+    trials,
+    verdicts,
+)
 from cadence.core.dto import RunHistory, TrialResult
 from cadence.core.values import Value
 from cadence.core.verdict import Failed, Outcome, Scored, Verdict
@@ -137,7 +145,7 @@ def _results(session: Session, run_id: str) -> list[TrialResult]:
             ),
         )
         .join(blobs, candidates.c.code_hash == blobs.c.hash)
-        .join(verdicts, verdicts.c.candidate_hash == candidates.c.fingerprint)
+        .join(verdicts, its_own_verdict(candidates.c.fingerprint))
     )
     rows = session.execute(
         sa.select(

@@ -28,10 +28,11 @@ Read the current Cadence documentation before inventing commands or configuratio
 6. Create or explain `program`, scorer, `.cadence`, and `IMPROVE.md`.
 7. Run `cadence check` before `cadence run`.
 8. Explain every warning, limit, seed, metric direction, and expected budget.
-9. Ask for confirmation before starting a run that can spend model calls.
-10. After the run, distinguish scored candidates from crashes, timeouts, verifier errors, and provider failures.
-11. Recommend held-out evaluation before calling a candidate a general improvement.
-12. Explain `cadence run --resume RUN_ID` and `cadence apply RUN_ID` before using either.
+9. Ask whether the score is noisy. If it is, suggest `pick: confirm` with seeds outside `sandbox.seeds`. If scoring is slow, suggest `judge: cascade`.
+10. Ask for confirmation before starting a run that can spend model calls.
+11. After the run, distinguish scored candidates from crashes, timeouts, verifier errors, and provider failures.
+12. Recommend held-out evaluation before calling a candidate a general improvement.
+13. Explain `cadence run --resume RUN_ID` and `cadence apply RUN_ID` before using either.
 
 ## Non-negotiable rules
 
@@ -39,6 +40,7 @@ Read the current Cadence documentation before inventing commands or configuratio
 - A scorer that the candidate can rewrite is not a stable experiment.
 - `cadence check` is required before an expensive run.
 - A validation improvement is not evidence of generalization by itself.
+- The best of many noisy scores is partly luck. When a winner was confirmed, report its confirmed score.
 - `cadence apply` overwrites the configured program; tell the user to commit first.
 - Do not start, resume, apply, migrate, or delete anything without explicit confirmation.
 

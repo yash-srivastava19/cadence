@@ -23,6 +23,7 @@ __all__ = [
     "dsn",
     "engine",
     "events",
+    "its_own_verdict",
     "manifests",
     "metadata",
     "model_calls",
@@ -125,6 +126,11 @@ trials = sa.Table(
     # What it produced. Null until the patch applies, and for good if it never
     # does: an abandoned trial made nothing.
     _hash("candidate_fingerprint"),
+    # Which of the candidate's verdicts is this trial's: a candidate can be
+    # measured again, on other seeds or under another task. Null until it is
+    # measured.
+    _hash("task_hash"),
+    _hash("seeds_hash"),
     sa.Column("reason", sa.Text),
     sa.Column("owner", sa.Text),
     _when("lease_expires_at"),
@@ -238,7 +244,7 @@ APP_ROLE = "cadence_app"
 #: The migration this code writes against. A test reads alembic's head and
 #: asserts they match, so adding a migration without updating this constant
 #: fails in CI rather than at somebody's first run.
-EXPECTED_REVISION = "c4e81b90d7a2"
+EXPECTED_REVISION = "d7b2e5a91c40"
 
 
 def revision_of(connection: Connection) -> str | None:
@@ -324,3 +330,16 @@ def sessions(url: str | None = None, **kwargs) -> sessionmaker[Session]:
     bound = engine(url, **kwargs)
     demand_current_schema(bound)
     return sessionmaker(bind=bound, expire_on_commit=False)
+
+
+def its_own_verdict(fingerprint):
+    """The verdict a trial was measured with, among all its candidate has.
+
+    On the candidate alone, a program measured again -- on fresh seeds, or
+    under another task -- would come back once per verdict.
+    """
+    return sa.and_(
+        verdicts.c.candidate_hash == fingerprint,
+        verdicts.c.task_hash == trials.c.task_hash,
+        verdicts.c.seeds_hash == trials.c.seeds_hash,
+    )

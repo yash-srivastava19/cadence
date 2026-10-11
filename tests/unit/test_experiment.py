@@ -4,7 +4,10 @@ from cadence.control.experiment import Experiment
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import WeightedSum
-from cadence.core.dto import Report, Spend
+from cadence.control.picks.confirm import Confirm
+from cadence.core.dto import Measurement, Picked, Report, Spend
+from cadence.core.verdict import Scored
+from cadence.delivery.text import as_text
 from cadence.errors import EmptyReply, TerminalModelError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
@@ -27,7 +30,7 @@ NONSENSE = "I would change the loop, but here is prose instead."
 GIVES_UP = [NONSENSE] * (Trial.max_attempts + 1)
 
 
-def an_experiment(*responses, budget=1, metrics=None):
+def an_experiment(*responses, budget=1, metrics=None, pick=None, judge=None):
     return Experiment(
         run_id="h1",
         manifest=a_manifest(),
@@ -42,7 +45,155 @@ def an_experiment(*responses, budget=1, metrics=None):
         ),
         seeds=[BASELINE],
         budget=budget,
+        pick=pick,
+        judge=judge,
     )
+
+
+class TheStartingProgram:
+    """A pick that trusts nothing the search found."""
+
+    def pick(self, history, measure):
+        seed = next(r for r in history.results if r.code == BASELINE)
+        return Picked(result=seed)
+
+
+class MeasuresAgain:
+    """A pick that scores every candidate again before choosing."""
+
+    def __init__(self):
+        self.verdicts = []
+
+    def pick(self, history, measure):
+        for result in history.results:
+            self.verdicts.append(measure(result.code, (7, 8)).verdict)
+        return Picked(result=history.results[0])
+
+
+class TestThePickNamesTheWinner:
+    def test_without_one_the_method_ranks_as_it_always_did(self):
+        assert present(an_experiment(IMPROVES).run().metrics)["value"] == 9.0
+
+    def test_a_pick_can_overrule_the_search(self):
+        report = an_experiment(IMPROVES, pick=TheStartingProgram()).run()
+        assert present(report.metrics)["value"] == 0.0
+        assert "value: 0" in present(report.program)
+
+    def test_the_tape_names_the_winner_the_pick_chose(self):
+        with cadence.recording() as tape:
+            report = an_experiment(IMPROVES, pick=TheStartingProgram()).run()
+        [finished] = [f for f in tape if type(f).__name__ == "RunFinished"]
+        assert finished.best == report.best
+
+    def test_a_pick_measures_through_the_run(self):
+        pick = MeasuresAgain()
+        with cadence.recording() as tape:
+            an_experiment(IMPROVES, pick=pick).run()
+        again = [f for f in tape if type(f).__name__ == "CandidateRemeasured"]
+        assert len(again) == len(pick.verdicts) == 2  # the child and the seed
+        assert {f.sandbox_seeds for f in again} == {(7, 8)}
+        assert [f.verdict for f in again] == pick.verdicts
+
+    def test_measuring_again_is_not_a_trial(self):
+        report = an_experiment(IMPROVES, pick=MeasuresAgain()).run()
+        assert report.trials == 1
+
+    def test_a_failed_run_still_asks_the_pick(self):
+        report = an_experiment(
+            IMPROVES, *GIVES_UP, budget=3, pick=TheStartingProgram()
+        ).run()
+        assert "value: 0" in present(report.program)
+
+
+class TestAConfirmedRun:
+    def a_confirmed_run(self):
+        objective = WeightedSum(value=1.0)
+        pick = Confirm(Evolution(objective=objective), objective, seeds=(5,))
+        return an_experiment(IMPROVES, pick=pick)
+
+    def test_the_winner_is_measured_again_before_it_is_named(self):
+        with cadence.recording() as tape:
+            report = self.a_confirmed_run().run()
+        again = [f for f in tape if type(f).__name__ == "CandidateRemeasured"]
+        assert report.best in {f.fingerprint for f in again}
+
+    def test_the_report_says_what_it_was_confirmed_on(self):
+        report = self.a_confirmed_run().run()
+        evidence = present(report.evidence)
+        assert evidence.seeds == (5,)
+        assert evidence.searched == {"value": 9.0}
+
+    def test_the_report_reads_as_confirmed(self):
+        assert "confirmed on seeds [5]" in as_text(self.a_confirmed_run().run())
+
+    def test_an_unconfirmed_run_reports_no_evidence(self):
+        assert an_experiment(IMPROVES).run().evidence is None
+
+
+class TwiceThenTheFirst:
+    """A judge that measures on another seed, then in full, and keeps the first."""
+
+    def judge(self, code, history, measure):
+        first = measure(code, (1,))
+        measure(code)
+        return first
+
+
+class Invents:
+    """A judge that returns a measurement nobody took."""
+
+    def judge(self, code, history, measure):
+        measure(code)
+        return Measurement(
+            verdict=Scored(fingerprint="made-up", metrics={"value": 1e9}), wall_ms=0.0
+        )
+
+
+class KeepsTheLast:
+    def judge(self, code, history, measure):
+        measure(code, (1,))
+        return measure(code)
+
+
+# Its scorer reports a fault of its own on seed 1, and scores fine on seed 0.
+BREAKS_ON_SEED_ONE = rewritten(
+    "import os\n"
+    "if os.environ['CADENCE_SEED'] == '1':\n"
+    '    print(\'{"cadence_verifier_error": "the key expired"}\')\n'
+    "print('value: 9')"
+)
+
+
+class TestTheJudgeMeasuresEachCandidate:
+    def test_the_trial_carries_the_measurement_the_judge_kept(self):
+        with cadence.recording() as tape:
+            an_experiment(IMPROVES, judge=TwiceThenTheFirst()).run()
+        [trial] = [f for f in tape if type(f).__name__ == "TrialMeasured"]
+        again = [f for f in tape if type(f).__name__ == "CandidateRemeasured"]
+        assert trial.seeds_hash != again[0].seeds_hash
+        assert again[0].sandbox_seeds == (0,)
+
+    def test_every_other_measurement_is_on_the_tape_with_its_trial(self):
+        with cadence.recording() as tape:
+            an_experiment(IMPROVES, judge=TwiceThenTheFirst()).run()
+        [started] = [f for f in tape if type(f).__name__ == "TrialStarted"]
+        [again] = [f for f in tape if type(f).__name__ == "CandidateRemeasured"]
+        assert again.trial_id == started.trial_id
+
+    def test_a_judge_cannot_return_a_measurement_it_did_not_take(self):
+        report = an_experiment(IMPROVES, judge=Invents()).run()
+        assert report.status == RunState.FAILED
+        assert "did not take" in present(report.reason)
+
+    def test_a_judge_cannot_hide_a_broken_scorer(self):
+        report = an_experiment(BREAKS_ON_SEED_ONE, judge=KeepsTheLast()).run()
+        assert report.status == RunState.FAILED
+        assert "the key expired" in present(report.reason)
+
+    def test_without_one_each_candidate_is_measured_once(self):
+        with cadence.recording() as tape:
+            an_experiment(IMPROVES).run()
+        assert not [f for f in tape if type(f).__name__ == "CandidateRemeasured"]
 
 
 class TestAFullOfflineRun:

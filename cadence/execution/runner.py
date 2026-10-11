@@ -79,10 +79,32 @@ class TrialRunner:
         measurement, not a partial one."""
         return hash_of({"seeds": list(self.seeds)})
 
+    def on(self, seeds: Sequence[int]) -> "TrialRunner":
+        """The same measuring stick, on other seeds.
+
+        For measuring a program again on seeds the search never saw: same
+        command, limits and workspace, so the only thing that differs is
+        what the scoring command is handed as CADENCE_SEED.
+        """
+        return TrialRunner(
+            program=self.program,
+            command=self.command,
+            metrics=self.metrics,
+            sandbox=self.sandbox,
+            seeds=seeds,
+            workspace=self.workspace,
+            seconds=self.seconds,
+            memory_mb=self.memory_mb,
+        )
+
     def try_(self, code: str) -> Measurement:
         started = time.monotonic()
         verdict = self._verdict(code)
-        return Measurement(verdict=verdict, wall_ms=(time.monotonic() - started) * 1000)
+        return Measurement(
+            verdict=verdict,
+            wall_ms=(time.monotonic() - started) * 1000,
+            seeds=self.seeds,
+        )
 
     def once(self, code: str) -> Measurement:
         """One run of one program, on the first seed.

@@ -15,6 +15,10 @@ markers:
   end: "CADENCE:END"
 method:
   evolution: {size: 8, tournament: 3}
+pick:
+  confirm: {seeds: [100, 101], top: 3}
+judge:
+  cascade: {seeds: [0], above: 0.5}
 objective:
   weighted_sum: {score: 1.0}
 model:
@@ -54,6 +58,38 @@ Run `cadence schema` for the machine-readable schema used by editors and validat
 | `sandbox.memory_mb` | Memory limit for one scoring command. |
 | `sandbox.seeds` | Seeds used to measure each candidate. |
 | `verifier.tolerance` | Declares the numeric repeatability tolerance for cached verdicts. |
+
+## Choosing the winner
+
+`method` chooses which program to improve next. `pick` chooses which program the run reports as its winner. That is the program `cadence apply` writes.
+
+| `pick` | What it does |
+| --- | --- |
+| unset | Reports the method's best program. |
+| `best` | Same as unset. |
+| `confirm: {seeds, top}` | Scores the `top` best programs (default 3) again on `seeds`, and reports the one that scores best there. |
+
+Use `confirm` when the score is noisy. The best of many noisy scores is partly luck, so scoring the leaders again on new seeds gives a winner you can trust more. Use seeds that are not in `sandbox.seeds`.
+
+With `confirm`:
+
+- The reported metrics are the new scores. The `evidence` field shows the seeds and what the winner scored during the search.
+- Scoring again is not a trial, and it does not count against `budget.trials`.
+- If none of the leaders scores on the new seeds, the run reports the method's best and says why in `evidence.unconfirmed`.
+
+## Measuring each candidate
+
+`judge` chooses how each candidate is scored.
+
+| `judge` | What it does |
+| --- | --- |
+| unset | Scores each candidate once, on every seed in `sandbox.seeds`. |
+| `full` | Same as unset. |
+| `cascade: {seeds, above}` | Scores the candidate on `seeds` first. If that score is at least as good as the share `above` (default 0.5) of the programs scored so far, it scores the candidate on every seed. Otherwise the first score is final. |
+
+Use `cascade` when scoring is slow. It saves time on weak candidates, but a candidate that stops early is scored on fewer seeds, so its score is noisier. The cost `cadence check` reports assumes every candidate is scored in full.
+
+Every score is recorded. If the scoring command reports a fault of its own, the run stops, whichever judge you use.
 
 ## Provider fields
 

@@ -25,6 +25,7 @@ from cadence.control.journal import Journal  # noqa: E402
 from cadence.control.methods.evolution import Evolution  # noqa: E402
 from cadence.control.model import Model  # noqa: E402
 from cadence.control.objectives.ranking import WeightedSum  # noqa: E402
+from cadence.control.picks.confirm import Confirm  # noqa: E402
 from cadence.control.storage import (  # noqa: E402
     blobs,
     candidates,
@@ -84,7 +85,16 @@ def journalled(session):
     journal = Journal(session)
     stop = cadence.record(journal.record)
 
-    def run(*responses, run_id="h1", budget=1, backend=None, owner=None, label=None):
+    def run(
+        *responses,
+        run_id="h1",
+        budget=1,
+        backend=None,
+        owner=None,
+        label=None,
+        pick=None,
+        judge=None,
+    ):
         from cadence.control.backends import Scripted
 
         experiment = Experiment(
@@ -103,6 +113,8 @@ def journalled(session):
             ),
             seeds=[BASELINE],
             budget=budget,
+            pick=pick,
+            judge=judge,
         )
         return experiment.run()
 
@@ -451,6 +463,39 @@ def scored(session, fingerprint):
     """
     [row] = [r for r in rows(session, verdicts) if r["candidate_hash"] == fingerprint]
     return row
+
+
+def confirming():
+    objective = WeightedSum(value=1.0)
+    return Confirm(Evolution(objective=objective), objective, seeds=(5, 6))
+
+
+class TestAConfirmedWinnerIsOnRecord:
+    def test_each_remeasurement_is_on_the_tape(self, session, journalled):
+        journalled(IMPROVES, pick=confirming())
+        again = [
+            row
+            for row in rows(session, events, run_id="h1")
+            if row["type"] == "CandidateRemeasured"
+        ]
+        assert len(again) == 2  # the child and the program it started from
+        assert {tuple(row["payload"]["sandbox_seeds"]) for row in again} == {(5, 6)}
+
+    def test_it_is_a_second_verdict_not_a_replacement(self, session, journalled):
+        report = journalled(IMPROVES, pick=confirming())
+        mine = [r for r in measurements(session) if r["candidate_hash"] == report.best]
+        assert len({r["seeds_hash"] for r in mine}) == 2
+
+    def test_the_trial_names_the_measurement_that_is_its_own(self, session, journalled):
+        journalled(IMPROVES, pick=confirming())
+        [trial] = rows(session, trials, run_id="h1")
+        assert trial["task_hash"] is not None
+        assert trial["seeds_hash"] is not None
+
+    def test_the_run_names_the_confirmed_winner(self, session, journalled):
+        report = journalled(IMPROVES, pick=confirming())
+        [run] = rows(session, runs, id="h1")
+        assert run["best"] == report.best
 
 
 class TestWhatEachCandidateScored:

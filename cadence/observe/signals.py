@@ -11,6 +11,7 @@ from cadence.observe.channel import Channel, Fact
 
 __all__ = [
     "CandidateBuilt",
+    "CandidateRemeasured",
     "Event",
     "ModelCalled",
     "ModelRequested",
@@ -187,6 +188,30 @@ class SeedMeasured(Event):
     """
 
     fingerprint: NonBlank
+    verdict: Verdict
+    wall_ms: float = Field(ge=0, allow_inf_nan=False)
+    task_hash: NonBlank
+    seeds_hash: NonBlank
+
+
+class CandidateRemeasured(Event):
+    """A program the run already had, scored again on other seeds.
+
+    Asked for by a plugin: a pick that will not trust one measurement, or a
+    judge that measured a trial more than once. Not itself a trial result and
+    never counted against the budget, but written down, so that everything a
+    decision was made on is on the tape. `trial_id` says which trial asked,
+    when one did.
+
+    Lands in the verdicts table like the other two: a different seeds_hash
+    is a different measurement, not a correction of the first.
+    """
+
+    fingerprint: NonBlank
+    trial_id: str | None = None
+    #: Not `seeds`: on this tape that word means the programs a run started
+    #: from, and the journal keeps those out of the payload.
+    sandbox_seeds: tuple[int, ...] = Field(min_length=1)
     verdict: Verdict
     wall_ms: float = Field(ge=0, allow_inf_nan=False)
     task_hash: NonBlank

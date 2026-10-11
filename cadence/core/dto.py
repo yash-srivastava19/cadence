@@ -29,9 +29,11 @@ __all__ = [
     "Comparison",
     "Completion",
     "Directive",
+    "Evidence",
     "ExperimentSummary",
     "Measurement",
     "MetricReading",
+    "Picked",
     "Proposal",
     "Recalled",
     "RecordedManifest",
@@ -188,6 +190,9 @@ class Measurement(Value):
 
     verdict: Verdict
     wall_ms: float = Field(ge=0, allow_inf_nan=False)
+    #: The seeds it was averaged over. Empty only where a caller built one by
+    #: hand; the runner always says.
+    seeds: tuple[int, ...] = ()
 
 
 class TrialResult(Value):
@@ -220,6 +225,31 @@ class RunHistory(Value):
     @property
     def scored(self) -> tuple[TrialResult, ...]:
         return tuple(r for r in self.results if r.verdict.is_scored)
+
+
+class Evidence(Value):
+    """What a winner was chosen on, when that is not what the search saw."""
+
+    #: The seeds the winner was measured on again.
+    seeds: tuple[int, ...] = Field(min_length=1)
+    #: What the winner scored during the search, beside the numbers it is
+    #: reported with. None when it could not be confirmed.
+    searched: Frozen[str, float] | None = None
+    #: Why no candidate could be confirmed, when none could. The winner is
+    #: then the search's own best, reported with the search's numbers.
+    unconfirmed: str | None = None
+
+
+class Picked(Value):
+    """The program a run reports as its winner.
+
+    Its own shape rather than a bare TrialResult, because choosing the winner
+    is a decision with evidence behind it, and the evidence is part of the
+    answer: a pick plugin that measures again says what it found here.
+    """
+
+    result: TrialResult
+    evidence: Evidence | None = None
 
 
 class TrialBudget(Value):
@@ -325,6 +355,9 @@ class Report(Value):
     program: str | None = None
     metrics: Mapping[str, float] | None = None
     reason: str | None = None
+    #: Set when the winner was chosen on measurements the search did not see;
+    #: `metrics` are then those measurements.
+    evidence: Evidence | None = None
 
 
 class RunSummary(Value):
