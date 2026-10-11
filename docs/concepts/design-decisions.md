@@ -10,9 +10,9 @@ This separation keeps the authority to judge outside the thing being judged.
 
 ## Exploring and trusting are different jobs
 
-The search method picks which program to improve next. It may favor a weaker program to explore. The winner is the program the run reports and `cadence apply` writes, so it should be the one with the most evidence behind it. Cadence keeps these as two settings, `method` and `pick`.
+The search method chooses which program to improve next, and it may choose a weaker one to explore. The winner is the program the run reports and `cadence apply` writes, so it should be the one you can trust most. Cadence keeps these as two settings, `method` and `pick`.
 
-The distinction matters when scores are noisy. In a Scrabble experiment, the search's best program scored a win rate of 0.650 during training and 0.507 on 400 games it had not seen. Choosing the best of many noisy measurements selects for luck. `pick: confirm` measures the leaders again on seeds the search never used and ranks them on those scores.
+This matters when scores are noisy. If a run keeps the best of many noisy scores, its winner is often the luckiest program rather than the best one. `pick: confirm` scores the leaders again on seeds the search never used, and chooses on those scores.
 
 ## The editable region is smaller than the project
 

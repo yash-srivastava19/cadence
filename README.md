@@ -291,8 +291,8 @@ markers:
   end: "CADENCE:END"
 method:                      # how the next parent is chosen
   evolution: {size: 8, tournament: 3}
-pick:                        # unset by default: the method's own best is the winner
-  confirm: {seeds: [100, 101], top: 3}  # score the top 3 again on unseen seeds
+pick:                        # unset by default: the method's best is the winner
+  confirm: {seeds: [100, 101], top: 3}  # score the top 3 again on new seeds
 objective:                   # unset by default: a weighted sum over metrics
   weighted_sum: {score: 1.0}
 model:                       # scripted | gemini | openai | anthropic | ollama

@@ -59,17 +59,21 @@ Run `cadence schema` for the machine-readable schema used by editors and validat
 
 ## Choosing the winner
 
-`method` decides which program to improve next. `pick` decides which program the run reports, and `cadence apply` writes. They are separate because a search may favor a weaker parent to explore, but the winner should be the program you can trust.
+`method` chooses which program to improve next. `pick` chooses which program the run reports as its winner. That is the program `cadence apply` writes.
 
 | `pick` | What it does |
 | --- | --- |
-| unset | The method's own best. This is what every run did before `pick` existed. |
-| `best` | The same, named explicitly. |
-| `confirm: {seeds, top}` | Scores the method's `top` best programs (default 3) again on `seeds`, then ranks them on those scores alone. |
+| unset | Reports the method's best program. |
+| `best` | Same as unset. |
+| `confirm: {seeds, top}` | Scores the `top` best programs (default 3) again on `seeds`, and reports the one that scores best there. |
 
-Use `confirm` when the score is noisy. A search keeps the best of many measurements, so its best is partly luck. Choose `seeds` that `sandbox.seeds` does not use; otherwise the confirmation repeats measurements the search already made.
+Use `confirm` when the score is noisy. The best of many noisy scores is partly luck, so scoring the leaders again on new seeds gives a winner you can trust more. Use seeds that are not in `sandbox.seeds`.
 
-With `confirm`, the reported metrics are the confirmed scores, and the report's `evidence` field shows the seeds and what the winner scored during the search. Each measurement is recorded as a `CandidateRemeasured` event. It is not a trial and does not count against `budget.trials`. If none of the top programs scores on the new seeds, the run reports the method's best with its search scores and says why in `evidence.unconfirmed`.
+With `confirm`:
+
+- The reported metrics are the new scores. The `evidence` field shows the seeds and what the winner scored during the search.
+- Scoring again is not a trial, and it does not count against `budget.trials`.
+- If none of the leaders scores on the new seeds, the run reports the method's best and says why in `evidence.unconfirmed`.
 
 ## Provider fields
 
