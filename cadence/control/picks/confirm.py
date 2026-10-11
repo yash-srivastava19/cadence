@@ -1,9 +1,8 @@
 """The winner is chosen on seeds the search never saw.
 
 A search keeps the best of many noisy measurements, so its best is partly
-luck: on Scrabble, E1's trial 1 trained at 0.650 and scored 0.507 on 400
-fresh games. This measures the method's top few again on seeds of the
-manifest's choosing and ranks them on those numbers alone.
+luck. This measures the method's top few again on seeds of the manifest's
+choosing and ranks them on those numbers alone.
 """
 
 from collections.abc import Sequence
