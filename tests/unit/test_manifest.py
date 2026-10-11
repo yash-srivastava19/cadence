@@ -139,6 +139,20 @@ class TestAManifestHasAnIdentity:
             ).hash
         )
 
+    def test_adding_pick_left_every_existing_identity_alone(self, tmp_path):
+        # Computed by the code before `pick` existed. `cadence apply` refuses a
+        # winner whose manifest hash differs, so a new setting that moved
+        # these would orphan every run already recorded.
+        assert load(write(tmp_path, COMPLETE)).hash == "ee599c6bcf9ad914"
+        assert load(write(tmp_path, MINIMAL, ".cadence2")).hash == "94d4dda1dcacfe87"
+
+    def test_naming_a_pick_is_a_different_experiment(self, tmp_path):
+        picked = MINIMAL + "pick: {best: {}}\n"
+        assert (
+            load(write(tmp_path, MINIMAL)).hash
+            != load(write(tmp_path, picked, ".cadence2")).hash
+        )
+
 
 class TestDeclaringTheVerifierDeterministic:
     def test_it_is_undeclared_by_default(self, tmp_path):
@@ -196,6 +210,13 @@ class TestDefaults:
 
     def test_the_method_defaults(self, tmp_path):
         assert load(write(tmp_path, MINIMAL)).method.name == "evolution"
+
+    def test_the_pick_is_left_to_the_method(self, tmp_path):
+        assert load(write(tmp_path, MINIMAL)).pick is None
+
+    def test_a_pick_may_be_named(self, tmp_path):
+        text = MINIMAL + "pick:\n  best: {}\n"
+        assert load(write(tmp_path, text)).pick.name == "best"
 
     def test_the_model_defaults(self, tmp_path):
         assert load(write(tmp_path, MINIMAL)).model.name == "scripted"
@@ -294,9 +315,16 @@ class TestPlugins:
 class TestThePlan:
     def test_it_shows_what_was_resolved(self, tmp_path):
         plan = load(write(tmp_path, MINIMAL)).plan
+        assert "pick" not in plan
         assert "evolution" in plan
         assert "20 trials" in plan
         assert "python train.py" in plan
+
+    def test_a_named_pick_is_shown(self, tmp_path):
+        assert (
+            "pick       best"
+            in load(write(tmp_path, MINIMAL + "pick: {best: {}}\n")).plan
+        )
 
     def test_it_says_which_way_the_metric_should_go(self, tmp_path):
         assert "minimize val_bpb" in load(write(tmp_path, MINIMAL)).plan

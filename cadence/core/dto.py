@@ -32,6 +32,7 @@ __all__ = [
     "ExperimentSummary",
     "Measurement",
     "MetricReading",
+    "Picked",
     "Proposal",
     "Recalled",
     "RecordedManifest",
@@ -220,6 +221,17 @@ class RunHistory(Value):
     @property
     def scored(self) -> tuple[TrialResult, ...]:
         return tuple(r for r in self.results if r.verdict.is_scored)
+
+
+class Picked(Value):
+    """The program a run reports as its winner.
+
+    Its own shape rather than a bare TrialResult, because choosing the winner
+    is a decision with evidence behind it, and the evidence is part of the
+    answer: a pick plugin that measures again says what it found here.
+    """
+
+    result: TrialResult
 
 
 class TrialBudget(Value):

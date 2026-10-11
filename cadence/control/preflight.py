@@ -26,7 +26,13 @@ from pathlib import Path
 from cadence.control.backends.settings import settings_for
 from cadence.control.manifest import Manifest
 from cadence.control.region import split
-from cadence.control.registry import METHODS, OBJECTIVES, objective_for, resolve
+from cadence.control.registry import (
+    METHODS,
+    OBJECTIVES,
+    PICKS,
+    objective_for,
+    resolve,
+)
 from cadence.core.types import NonBlank
 from cadence.core.values import Value
 from cadence.errors import CadenceError
@@ -77,6 +83,7 @@ def _looked_at(manifest: Manifest, root: Path, code: str) -> Sequence[Finding]:
         _the_region(manifest, code),
         _the_scoring(manifest, code),
         _the_method(manifest),
+        *[found for found in [_the_pick(manifest)] if found is not None],
         _the_model(manifest),
     ]
 
@@ -170,6 +177,22 @@ def _the_method(manifest: Manifest) -> Finding:
     return Finding(
         about="method", detail=f"{manifest.method.name} built with {options}"
     )
+
+
+def _the_pick(manifest: Manifest) -> Finding | None:
+    """Only when one is named: unset, the method's own best is the winner,
+    and saying so on every check would be a line about nothing."""
+    if manifest.pick is None:
+        return None
+    try:
+        objective = objective_for(manifest)
+        method = resolve("method", METHODS, manifest.method, objective=objective)
+        resolve("pick", PICKS, manifest.pick, method=method, objective=objective)
+    except CadenceError as error:
+        return Finding(about="pick", detail=str(error), ok=False)
+    options = ", ".join(f"{k}={v}" for k, v in manifest.pick.options.items())
+    detail = f"{manifest.pick.name} built with {options or 'no options'}"
+    return Finding(about="pick", detail=detail)
 
 
 def _the_model(manifest: Manifest) -> Finding:

@@ -114,6 +114,9 @@ class Manifest(Strict):
     run: NonBlank = DEFAULT_RUN
     guidance: NonBlank = DEFAULT_GUIDANCE
     method: Plugin = Plugin(name=DEFAULT_METHOD)
+    #: How the winner is chosen. Unset means the method's own best, which is
+    #: what every run did before this was a setting of its own.
+    pick: Plugin | None = None
     model: Plugin = Plugin(name=DEFAULT_MODEL)
     objective: Plugin | None = None
     markers: Markers = Markers()
@@ -142,7 +145,14 @@ class Manifest(Strict):
         default rather than writing it out does not make it a different
         experiment.
         """
-        return hash_of(self.model_dump(mode="json"))
+        document = self.model_dump(mode="json")
+        # Settings added after hashes were first recorded stay out of the
+        # identity until they are used, so adding one does not make every
+        # manifest already on file look like a different experiment.
+        for added in ("pick",):
+            if document[added] is None:
+                del document[added]
+        return hash_of(document)
 
     @property
     def command(self) -> str:
@@ -169,6 +179,7 @@ class Manifest(Strict):
                 f"  guidance   {self.guidance}",
                 f"  markers    {self.markers.begin} .. {self.markers.end}",
                 f"  method     {_plugin(self.method)}",
+                *([f"  pick       {_plugin(self.pick)}"] if self.pick else []),
                 f"  objective  {self._objective}",
                 f"  model      {_plugin(self.model)}",
                 f"  budget     {self.budget.trials} trials",

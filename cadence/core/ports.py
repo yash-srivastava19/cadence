@@ -13,6 +13,7 @@ from typing import Protocol, runtime_checkable
 from cadence.core.dto import (
     Completion,
     Directive,
+    Picked,
     Recalled,
     Request,
     RunHistory,
@@ -20,8 +21,18 @@ from cadence.core.dto import (
     TrialResult,
 )
 from cadence.core.types import Metrics
+from cadence.core.verdict import Verdict
 
-__all__ = ["Audit", "Backend", "Calls", "Locks", "Method", "Objective"]
+__all__ = [
+    "Audit",
+    "Backend",
+    "Calls",
+    "Locks",
+    "Measure",
+    "Method",
+    "Objective",
+    "Pick",
+]
 
 
 @runtime_checkable
@@ -98,3 +109,25 @@ class Method(Protocol):
     ) -> Directive | None: ...
 
     def best(self, history: RunHistory) -> TrialResult | None: ...
+
+
+@runtime_checkable
+class Measure(Protocol):
+    """Score a program again, on seeds of the caller's choosing.
+
+    Handed to plugins by the run rather than built by them, so that every
+    measurement is written down the same way, whoever asked for it.
+    """
+
+    def __call__(self, code: str, seeds: tuple[int, ...]) -> Verdict: ...
+
+
+@runtime_checkable
+class Pick(Protocol):
+    """Which program the run reports as its winner. Owns that, nothing else.
+
+    Separate from Method, which chooses what to try next: exploring may
+    favour a weaker parent, but the winner has to be the one we trust.
+    """
+
+    def pick(self, history: RunHistory, measure: Measure) -> Picked | None: ...

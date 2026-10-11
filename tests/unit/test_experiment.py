@@ -4,7 +4,7 @@ from cadence.control.experiment import Experiment
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import WeightedSum
-from cadence.core.dto import Report, Spend
+from cadence.core.dto import Picked, Report, Spend
 from cadence.errors import EmptyReply, TerminalModelError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
@@ -27,7 +27,7 @@ NONSENSE = "I would change the loop, but here is prose instead."
 GIVES_UP = [NONSENSE] * (Trial.max_attempts + 1)
 
 
-def an_experiment(*responses, budget=1, metrics=None):
+def an_experiment(*responses, budget=1, metrics=None, pick=None):
     return Experiment(
         run_id="h1",
         manifest=a_manifest(),
@@ -42,7 +42,63 @@ def an_experiment(*responses, budget=1, metrics=None):
         ),
         seeds=[BASELINE],
         budget=budget,
+        pick=pick,
     )
+
+
+class TheStartingProgram:
+    """A pick that trusts nothing the search found."""
+
+    def pick(self, history, measure):
+        seed = next(r for r in history.results if r.code == BASELINE)
+        return Picked(result=seed)
+
+
+class MeasuresAgain:
+    """A pick that scores every candidate again before choosing."""
+
+    def __init__(self):
+        self.verdicts = []
+
+    def pick(self, history, measure):
+        for result in history.results:
+            self.verdicts.append(measure(result.code, (7, 8)))
+        return Picked(result=history.results[0])
+
+
+class TestThePickNamesTheWinner:
+    def test_without_one_the_method_ranks_as_it_always_did(self):
+        assert present(an_experiment(IMPROVES).run().metrics)["value"] == 9.0
+
+    def test_a_pick_can_overrule_the_search(self):
+        report = an_experiment(IMPROVES, pick=TheStartingProgram()).run()
+        assert present(report.metrics)["value"] == 0.0
+        assert "value: 0" in present(report.program)
+
+    def test_the_tape_names_the_winner_the_pick_chose(self):
+        with cadence.recording() as tape:
+            report = an_experiment(IMPROVES, pick=TheStartingProgram()).run()
+        [finished] = [f for f in tape if type(f).__name__ == "RunFinished"]
+        assert finished.best == report.best
+
+    def test_a_pick_measures_through_the_run(self):
+        pick = MeasuresAgain()
+        with cadence.recording() as tape:
+            an_experiment(IMPROVES, pick=pick).run()
+        again = [f for f in tape if type(f).__name__ == "CandidateRemeasured"]
+        assert len(again) == len(pick.verdicts) == 2  # the child and the seed
+        assert {f.sandbox_seeds for f in again} == {(7, 8)}
+        assert [f.verdict for f in again] == pick.verdicts
+
+    def test_measuring_again_is_not_a_trial(self):
+        report = an_experiment(IMPROVES, pick=MeasuresAgain()).run()
+        assert report.trials == 1
+
+    def test_a_failed_run_still_asks_the_pick(self):
+        report = an_experiment(
+            IMPROVES, *GIVES_UP, budget=3, pick=TheStartingProgram()
+        ).run()
+        assert "value: 0" in present(report.program)
 
 
 class TestAFullOfflineRun:

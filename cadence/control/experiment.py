@@ -3,10 +3,12 @@ from collections.abc import Sequence
 from cadence.control.entities import Candidate, Run, Trial
 from cadence.control.model import Model
 from cadence.control.patcher import apply_patch
+from cadence.control.picks.best import Best
 from cadence.control.recall import key_for
 from cadence.control.restore import Resumption
 from cadence.core.dto import (
     Directive,
+    Picked,
     Proposal,
     RecordedManifest,
     Report,
@@ -15,8 +17,8 @@ from cadence.core.dto import (
     TrialBudget,
     TrialResult,
 )
-from cadence.core.ports import Method
-from cadence.core.verdict import Failed
+from cadence.core.ports import Method, Pick
+from cadence.core.verdict import Failed, Verdict
 from cadence.errors import (
     ModelError,
     NoCandidates,
@@ -29,6 +31,7 @@ from cadence.lifecycle.states import RunState
 from cadence.observe.channel import Emitter, Fact
 from cadence.observe.signals import (
     CandidateBuilt,
+    CandidateRemeasured,
     ModelCalled,
     ModelRequested,
     PatchRejected,
@@ -61,10 +64,14 @@ class Experiment:
         cap_usd: float | None = None,
         owner: str | None = None,
         experiment: str | None = None,
+        pick: Pick | None = None,
     ) -> None:
         self.run_id = run_id
         self.manifest = manifest
         self.method = method
+        #: Who names the winner. The method's own best unless told otherwise,
+        #: which is what a run did before this was a port of its own.
+        self.pick: Pick = pick or Best(method)
         self.model = model
         self.runner = runner
         self.seeds = tuple(seeds)
@@ -317,7 +324,7 @@ class Experiment:
                 trace.emit(TrialAbandoned, reason=str(error))
                 return None
 
-    def _winner(self, history: RunHistory) -> TrialResult | None:
+    def _winner(self, history: RunHistory) -> Picked | None:
         """The best program the run has, which may be the one it started from.
 
         The search only ever ranks what it produced, so a run whose every
@@ -325,27 +332,46 @@ class Experiment:
         is not a weak result, it is a wrong one: `cadence apply` would write
         it over a better program and call it an improvement.
 
-        Ranked by the method, on a history built here and used for nothing
-        else. The search decides what "better" means; this only makes sure
-        the program the run started from is one of the things it decides
-        between. Built at report time so the prompt never sees it -- a seed
-        in history.results would change what trial 0 asks, and recall.py
-        replays a paid-for call only when the prompt digest still matches.
+        Chosen by the pick plugin, on a history built here and used for
+        nothing else: the search decides what "better" means, the pick
+        decides what to trust, and this only makes sure the program the run
+        started from is one of the things they decide between. Built at report
+        time so the prompt never sees it -- a seed in history.results would
+        change what trial 0 asks, and recall.py replays a paid-for call only
+        when the prompt digest still matches.
         """
-        if self.baseline is None:
-            return self.method.best(history)
-        return self.method.best(
-            RunHistory(
+        if self.baseline is not None:
+            history = RunHistory(
                 run_id=history.run_id,
                 seeds=history.seeds,
                 results=(*history.results, self.baseline),
             )
+        return self.pick.pick(history, self._remeasure)
+
+    def _remeasure(self, code: str, seeds: tuple[int, ...]) -> Verdict:
+        """Score a program the run already has, on other seeds, on the record.
+
+        The capability a plugin is handed instead of a runner, so a plugin
+        never measures anything the tape does not show.
+        """
+        runner = self.runner.on(seeds)
+        measured = runner.try_(code)
+        self.trace.emit(
+            CandidateRemeasured,
+            fingerprint=Candidate(code=code).fingerprint,
+            sandbox_seeds=tuple(seeds),
+            verdict=measured.verdict,
+            wall_ms=measured.wall_ms,
+            task_hash=runner.task_hash,
+            seeds_hash=runner.seeds_hash,
         )
+        return measured.verdict
 
     def _finish(
         self, run: Run, history: RunHistory, scored: int, reason: str | None = None
     ) -> Report:
-        best = self._winner(history)
+        picked = self._winner(history)
+        best = picked.result if picked else None
         run.finish(best=best.verdict.fingerprint if best else None)
         self.trace.emit(
             RunFinished,
@@ -375,7 +401,8 @@ class Experiment:
         went wrong -- the results do not have to lie about it as well.
         """
         history = self._history(results)
-        best = self._winner(history)
+        picked = self._winner(history)
+        best = picked.result if picked else None
         run.fail(reason=reason)
         # Assigned rather than transitioned: fail() carries a reason, not a
         # best, and a RunFinished naming a best the entity does not hold
