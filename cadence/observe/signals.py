@@ -197,16 +197,18 @@ class SeedMeasured(Event):
 class CandidateRemeasured(Event):
     """A program the run already had, scored again on other seeds.
 
-    Not a trial, like SeedMeasured: nothing was proposed and nothing counts
-    against the budget. Asked for by a plugin -- today a pick that will not
-    trust one measurement -- and written down here, so that what the winner
-    was chosen on is on the tape beside what the search saw.
+    Asked for by a plugin: a pick that will not trust one measurement, or a
+    judge that measured a trial more than once. Not itself a trial result and
+    never counted against the budget, but written down, so that everything a
+    decision was made on is on the tape. `trial_id` says which trial asked,
+    when one did.
 
     Lands in the verdicts table like the other two: a different seeds_hash
     is a different measurement, not a correction of the first.
     """
 
     fingerprint: NonBlank
+    trial_id: str | None = None
     #: Not `seeds`: on this tape that word means the programs a run started
     #: from, and the journal keeps those out of the payload.
     sandbox_seeds: tuple[int, ...] = Field(min_length=1)

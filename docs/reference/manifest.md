@@ -17,6 +17,8 @@ method:
   evolution: {size: 8, tournament: 3}
 pick:
   confirm: {seeds: [100, 101], top: 3}
+judge:
+  cascade: {seeds: [0], above: 0.5}
 objective:
   weighted_sum: {score: 1.0}
 model:
@@ -74,6 +76,18 @@ With `confirm`:
 - The reported metrics are the new scores. The `evidence` field shows the seeds and what the winner scored during the search.
 - Scoring again is not a trial, and it does not count against `budget.trials`.
 - If none of the leaders scores on the new seeds, the run reports the method's best and says why in `evidence.unconfirmed`.
+
+## Measuring each candidate
+
+`judge` decides how a candidate is measured. Whatever it decides, every measurement is recorded, and a scorer that reports a fault of its own stops the run.
+
+| `judge` | What it does |
+| --- | --- |
+| unset | Once, on every seed in `sandbox.seeds`. This is what every run did before `judge` existed. |
+| `full` | The same, named explicitly. |
+| `cascade: {seeds, above}` | Scores the candidate on `seeds` first. It goes on to every seed in `sandbox.seeds` only when that quick score is at least as good as the share `above` (default 0.5) of the programs the run has scored. Otherwise the quick score is its verdict. |
+
+Use `cascade` when scoring is slow and a few seeds already rank candidates well. A candidate that stops early is measured on fewer seeds than the rest, so its score is noisier. `cadence check` reports the cost of measuring every candidate in full, which is the most a cascade can spend.
 
 ## Provider fields
 

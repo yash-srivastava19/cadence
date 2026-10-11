@@ -5,6 +5,8 @@ from pathlib import Path
 
 from cadence.control.backends import Scripted, chat_backend, known
 from cadence.control.experiment import Experiment
+from cadence.control.judges.cascade import Cascade
+from cadence.control.judges.full import Full
 from cadence.control.manifest import FILENAME, Manifest, Plugin
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
@@ -21,6 +23,7 @@ from cadence.parsing.metrics import direction
 
 __all__ = [
     "BACKENDS",
+    "JUDGES",
     "METHODS",
     "OBJECTIVES",
     "PICKS",
@@ -43,6 +46,8 @@ METHODS = {"evolution": Evolution}
 OBJECTIVES = {"weighted_sum": WeightedSum, "pareto": Pareto}
 PICKS = {"best": Best, "confirm": Confirm}
 DEFAULT_PICK = Plugin(name="best")
+JUDGES = {"full": Full, "cascade": Cascade}
+DEFAULT_JUDGE = Plugin(name="full")
 BACKENDS = {"scripted": Scripted, **{name: _provider(name) for name in known()}}
 
 
@@ -181,6 +186,9 @@ def build(
             manifest.pick or DEFAULT_PICK,
             method=method,
             objective=objective,
+        ),
+        judge=resolve(
+            "judge", JUDGES, manifest.judge or DEFAULT_JUDGE, objective=objective
         ),
         model=Model(
             backend=backend or resolve("backend", BACKENDS, manifest.model),

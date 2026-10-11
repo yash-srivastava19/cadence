@@ -6,7 +6,7 @@ from cadence.control.objectives.ranking import WeightedSum
 from cadence.control.picks.best import Best
 from cadence.control.picks.confirm import Confirm
 from cadence.control.registry import PICKS, resolve
-from cadence.core.dto import RunHistory, TrialResult
+from cadence.core.dto import Measurement, RunHistory, TrialResult
 from cadence.core.ports import Pick
 from cadence.core.verdict import Failed, Outcome, Scored
 from cadence.errors import UnknownPlugin
@@ -54,12 +54,14 @@ class Fresh:
         self.scores = scores
         self.asked = []
 
-    def __call__(self, code, seeds):
+    def __call__(self, code, seeds=None):
         self.asked.append((code, seeds))
         value = self.scores[code]
         if value is None:
-            return Failed(fingerprint=code, outcome=Outcome.CRASHED, reason="boom")
-        return Scored(fingerprint=code, metrics={"value": value})
+            verdict = Failed(fingerprint=code, outcome=Outcome.CRASHED, reason="boom")
+        else:
+            verdict = Scored(fingerprint=code, metrics={"value": value})
+        return Measurement(verdict=verdict, wall_ms=0.0, seeds=seeds or ())
 
 
 def a_confirm(top=3, seeds=(7, 8)):

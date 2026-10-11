@@ -220,10 +220,17 @@ def _affordable(manifest: Manifest, baseline: Measurement) -> None:
     seeds = len(manifest.sandbox.seeds)
     total = baseline.wall_ms * seeds * manifest.budget.trials / 1000
     spent = f"{total / 60:.0f} minutes" if total >= 90 else f"{total:.0f}s"
+    # A judge may measure a candidate more than once, or less than in full,
+    # so with one named this is what measuring every candidate fully costs.
+    judged = (
+        f", if {manifest.judge.name} measures every candidate in full"
+        if (manifest.judge)
+        else ""
+    )
     found(
         "cost",
         f"{manifest.budget.trials} trials x {seeds} seeds x"
-        f" {baseline.wall_ms:.0f}ms is about {spent} of scoring",
+        f" {baseline.wall_ms:.0f}ms is about {spent} of scoring{judged}",
     )
     if total >= 3600:
         note(

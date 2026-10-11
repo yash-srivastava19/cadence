@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 
 from cadence.control.entities import Candidate, Run, Trial
+from cadence.control.judges.full import Full
 from cadence.control.model import Model
 from cadence.control.patcher import apply_patch
 from cadence.control.picks.best import Best
@@ -8,6 +9,7 @@ from cadence.control.recall import key_for
 from cadence.control.restore import Resumption
 from cadence.core.dto import (
     Directive,
+    Measurement,
     Picked,
     Proposal,
     RecordedManifest,
@@ -17,12 +19,13 @@ from cadence.core.dto import (
     TrialBudget,
     TrialResult,
 )
-from cadence.core.ports import Method, Pick
-from cadence.core.verdict import Failed, Verdict
+from cadence.core.ports import Judge, Method, Pick
+from cadence.core.verdict import Failed
 from cadence.errors import (
     ModelError,
     NoCandidates,
     PatchError,
+    PluginBrokeContract,
     SetupError,
     UnusableReply,
 )
@@ -65,6 +68,7 @@ class Experiment:
         owner: str | None = None,
         experiment: str | None = None,
         pick: Pick | None = None,
+        judge: Judge | None = None,
     ) -> None:
         self.run_id = run_id
         self.manifest = manifest
@@ -72,6 +76,9 @@ class Experiment:
         #: Who names the winner. The method's own best unless told otherwise,
         #: which is what a run did before this was a port of its own.
         self.pick: Pick = pick or Best(method)
+        #: How each candidate is measured: once, on every seed, unless told
+        #: otherwise.
+        self.judge: Judge = judge or Full()
         self.model = model
         self.runner = runner
         self.seeds = tuple(seeds)
@@ -203,7 +210,7 @@ class Experiment:
                         f" having spent ${self.spent.total.usd:.4f}"
                     ),
                 )
-            reply = self._one(run, directive)
+            reply = self._one(run, directive, history)
             run.counted()
             if reply is None:
                 continue
@@ -226,7 +233,9 @@ class Experiment:
     def _history(self, results: list[TrialResult]) -> RunHistory:
         return RunHistory(run_id=self.run_id, seeds=self.seeds, results=tuple(results))
 
-    def _one(self, run: Run, directive: Directive) -> TrialResult | None:
+    def _one(
+        self, run: Run, directive: Directive, history: RunHistory
+    ) -> TrialResult | None:
         trial = Trial(
             id=Trial.id_for(self.run_id, run.trials),
             seq=run.trials,
@@ -258,17 +267,60 @@ class Experiment:
             code=child.code,
             parent=directive.parent,
         )
-        measured = self.runner.try_(child.code)
+        measured = self._judged(child.code, history, trial.id)
         verdict = measured.verdict
         trial.measure(verdict=verdict)
+        measuring = self._runner_on(measured.seeds)
         trace.emit(
             TrialMeasured,
             verdict=verdict,
             wall_ms=measured.wall_ms,
-            task_hash=self.runner.task_hash,
-            seeds_hash=self.runner.seeds_hash,
+            task_hash=measuring.task_hash,
+            seeds_hash=measuring.seeds_hash,
         )
         return TrialResult(code=code, verdict=verdict)
+
+    def _judged(self, program: str, history: RunHistory, trial_id: str) -> Measurement:
+        """The trial's measurement, as the judge chose it, with the rest on the tape.
+
+        Two rules the judge cannot bend. What it returns must be one of the
+        measurements it took, or the tape would hold a verdict nobody
+        measured. And a measurement whose scorer broke is the verdict whatever
+        the judge prefers: a cascade that stopped at a cheap stage must not
+        hide a verifier that is failing.
+        """
+        taken: list[Measurement] = []
+
+        def measure(code: str, seeds: tuple[int, ...] | None = None) -> Measurement:
+            measured = self._runner_on(seeds).try_(code)
+            taken.append(measured)
+            return measured
+
+        chosen = self.judge.judge(program, history, measure)
+        if not any(chosen is measured for measured in taken):
+            raise PluginBrokeContract(
+                f"judge {type(self.judge).__name__} returned a measurement it did"
+                " not take; a judge must return one of the results of measure()"
+            )
+        broken = next(
+            (
+                measured
+                for measured in taken
+                if isinstance(measured.verdict, Failed) and measured.verdict.escalates
+            ),
+            None,
+        )
+        if broken is not None:
+            chosen = broken
+        for measured in taken:
+            if measured is not chosen:
+                self._record_again(measured, trial_id=trial_id)
+        return chosen
+
+    def _runner_on(self, seeds: tuple[int, ...] | None):
+        if seeds is None or tuple(seeds) == self.runner.seeds:
+            return self.runner
+        return self.runner.on(seeds)
 
     def _propose(
         self, run: Run, trial: Trial, trace, directive: Directive
@@ -348,24 +400,30 @@ class Experiment:
             )
         return self.pick.pick(history, self._remeasure)
 
-    def _remeasure(self, code: str, seeds: tuple[int, ...]) -> Verdict:
-        """Score a program the run already has, on other seeds, on the record.
+    def _remeasure(
+        self, code: str, seeds: tuple[int, ...] | None = None
+    ) -> Measurement:
+        """Score a program the run already has, on the record.
 
         The capability a plugin is handed instead of a runner, so a plugin
         never measures anything the tape does not show.
         """
-        runner = self.runner.on(seeds)
-        measured = runner.try_(code)
+        measured = self._runner_on(seeds).try_(code)
+        self._record_again(measured)
+        return measured
+
+    def _record_again(self, measured: Measurement, trial_id: str | None = None) -> None:
+        runner = self._runner_on(measured.seeds)
         self.trace.emit(
             CandidateRemeasured,
-            fingerprint=Candidate(code=code).fingerprint,
-            sandbox_seeds=tuple(seeds),
+            fingerprint=measured.verdict.fingerprint,
+            trial_id=trial_id,
+            sandbox_seeds=runner.seeds,
             verdict=measured.verdict,
             wall_ms=measured.wall_ms,
             task_hash=runner.task_hash,
             seeds_hash=runner.seeds_hash,
         )
-        return measured.verdict
 
     def _finish(
         self, run: Run, history: RunHistory, scored: int, reason: str | None = None

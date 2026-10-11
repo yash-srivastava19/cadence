@@ -93,6 +93,7 @@ def journalled(session):
         owner=None,
         label=None,
         pick=None,
+        judge=None,
     ):
         from cadence.control.backends import Scripted
 
@@ -113,6 +114,7 @@ def journalled(session):
             seeds=[BASELINE],
             budget=budget,
             pick=pick,
+            judge=judge,
         )
         return experiment.run()
 

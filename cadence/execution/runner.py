@@ -100,7 +100,11 @@ class TrialRunner:
     def try_(self, code: str) -> Measurement:
         started = time.monotonic()
         verdict = self._verdict(code)
-        return Measurement(verdict=verdict, wall_ms=(time.monotonic() - started) * 1000)
+        return Measurement(
+            verdict=verdict,
+            wall_ms=(time.monotonic() - started) * 1000,
+            seeds=self.seeds,
+        )
 
     def once(self, code: str) -> Measurement:
         """One run of one program, on the first seed.

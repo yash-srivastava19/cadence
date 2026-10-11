@@ -96,6 +96,18 @@ class TestAProgramMeasuredAgainIsStillOneResult:
         assert result.metrics == present(report.evidence).searched
 
 
+class StopsAtTheQuickStage:
+    def judge(self, code, history, measure):
+        return measure(code, (9,))
+
+
+class TestATrialMeasuredOnOtherSeeds:
+    def test_it_comes_back_with_the_verdict_it_was_given(self, session, journalled):
+        journalled(IMPROVES, judge=StopsAtTheQuickStage())
+        [result] = present(history_of(session, "h1")).results
+        assert result.metrics == {"value": 45.0}
+
+
 class TestTheOrderIsTheOrderItHappened:
     def test_results_come_back_in_the_order_they_were_tried(self, session, journalled):
         journalled(IMPROVES, IMPROVES_MORE, budget=2)

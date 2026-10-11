@@ -38,6 +38,10 @@ class UnknownPlugin(SetupError):
     """No method, objective or backend goes by that name, or by those options."""
 
 
+class PluginBrokeContract(SetupError):
+    """A plugin answered with something its port does not allow."""
+
+
 class UnknownProvider(SetupError):
     """No row in providers.yml goes by that name."""
 

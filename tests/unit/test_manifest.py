@@ -153,6 +153,13 @@ class TestAManifestHasAnIdentity:
             != load(write(tmp_path, picked, ".cadence2")).hash
         )
 
+    def test_naming_a_judge_is_a_different_experiment(self, tmp_path):
+        judged = MINIMAL + "judge: {full: {}}\n"
+        assert (
+            load(write(tmp_path, MINIMAL)).hash
+            != load(write(tmp_path, judged, ".cadence2")).hash
+        )
+
 
 class TestDeclaringTheVerifierDeterministic:
     def test_it_is_undeclared_by_default(self, tmp_path):
@@ -217,6 +224,9 @@ class TestDefaults:
     def test_a_pick_may_be_named(self, tmp_path):
         text = MINIMAL + "pick:\n  best: {}\n"
         assert load(write(tmp_path, text)).pick.name == "best"
+
+    def test_the_judge_is_left_unset(self, tmp_path):
+        assert load(write(tmp_path, MINIMAL)).judge is None
 
     def test_the_model_defaults(self, tmp_path):
         assert load(write(tmp_path, MINIMAL)).model.name == "scripted"
@@ -316,6 +326,7 @@ class TestThePlan:
     def test_it_shows_what_was_resolved(self, tmp_path):
         plan = load(write(tmp_path, MINIMAL)).plan
         assert "pick" not in plan
+        assert "judge" not in plan
         assert "evolution" in plan
         assert "20 trials" in plan
         assert "python train.py" in plan

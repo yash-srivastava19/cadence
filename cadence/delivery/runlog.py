@@ -99,6 +99,7 @@ KINDS: Mapping[type[Fact], Mapping[str, str]] = {
     CandidateRemeasured: {
         "run_id": "envelope",
         "at": "envelope",
+        "trial_id": "id",
         "fingerprint": "id",
         "sandbox_seeds": "text",
         "verdict": "verdict",

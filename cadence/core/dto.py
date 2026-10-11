@@ -190,6 +190,9 @@ class Measurement(Value):
 
     verdict: Verdict
     wall_ms: float = Field(ge=0, allow_inf_nan=False)
+    #: The seeds it was averaged over. Empty only where a caller built one by
+    #: hand; the runner always says.
+    seeds: tuple[int, ...] = ()
 
 
 class TrialResult(Value):

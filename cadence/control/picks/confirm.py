@@ -38,7 +38,7 @@ class Confirm:
         confirmed: list[tuple[TrialResult, Scored]] = []
         failures: list[str] = []
         for leader in leaders:
-            verdict = measure(leader.code, self.seeds)
+            verdict = measure(leader.code, self.seeds).verdict
             if isinstance(verdict, Failed):
                 failures.append(f"{verdict.fingerprint[:12]} {verdict.outcome}")
                 continue

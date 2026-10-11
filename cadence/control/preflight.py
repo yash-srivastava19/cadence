@@ -24,9 +24,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from cadence.control.backends.settings import settings_for
-from cadence.control.manifest import Manifest
+from cadence.control.manifest import Manifest, Plugin
 from cadence.control.region import split
 from cadence.control.registry import (
+    JUDGES,
     METHODS,
     OBJECTIVES,
     PICKS,
@@ -83,13 +84,18 @@ def _looked_at(manifest: Manifest, root: Path, code: str) -> Sequence[Finding]:
         _the_region(manifest, code),
         _the_scoring(manifest, code),
         _the_method(manifest),
-        *[found for found in [_the_pick(manifest)] if found is not None],
+        *[
+            found
+            for found in (_the_pick(manifest), _the_judge(manifest))
+            if found is not None
+        ],
         _the_model(manifest),
     ]
 
 
 def _the_manifest(manifest: Manifest) -> Finding:
-    defaulted = len(Manifest.model_fields) - len(manifest.model_fields_set)
+    off = sum(1 for name in Manifest.OFF_WHEN_UNSET if getattr(manifest, name) is None)
+    defaulted = len(Manifest.model_fields) - len(manifest.model_fields_set) - off
     return Finding(
         about="manifest",
         detail=f"{manifest.api_version}, {defaulted} defaults applied",
@@ -182,17 +188,30 @@ def _the_method(manifest: Manifest) -> Finding:
 def _the_pick(manifest: Manifest) -> Finding | None:
     """Only when one is named: unset, the method's own best is the winner,
     and saying so on every check would be a line about nothing."""
-    if manifest.pick is None:
+    return _named(manifest, "pick", manifest.pick)
+
+
+def _the_judge(manifest: Manifest) -> Finding | None:
+    """Only when one is named: unset, every candidate is measured in full."""
+    return _named(manifest, "judge", manifest.judge)
+
+
+def _named(manifest: Manifest, kind: str, plugin: Plugin | None) -> Finding | None:
+    """Build the plugin a manifest names, the way a run will, and say so."""
+    if plugin is None:
         return None
     try:
         objective = objective_for(manifest)
         method = resolve("method", METHODS, manifest.method, objective=objective)
-        resolve("pick", PICKS, manifest.pick, method=method, objective=objective)
+        if kind == "pick":
+            resolve(kind, PICKS, plugin, method=method, objective=objective)
+        else:
+            resolve(kind, JUDGES, plugin, objective=objective)
     except CadenceError as error:
-        return Finding(about="pick", detail=str(error), ok=False)
-    options = ", ".join(f"{k}={v}" for k, v in manifest.pick.options.items())
-    detail = f"{manifest.pick.name} built with {options or 'no options'}"
-    return Finding(about="pick", detail=detail)
+        return Finding(about=kind, detail=str(error), ok=False)
+    options = ", ".join(f"{k}={v}" for k, v in plugin.options.items())
+    detail = f"{plugin.name} built with {options or 'no options'}"
+    return Finding(about=kind, detail=detail)
 
 
 def _the_model(manifest: Manifest) -> Finding:

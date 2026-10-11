@@ -293,6 +293,8 @@ method:                      # how the next parent is chosen
   evolution: {size: 8, tournament: 3}
 pick:                        # unset by default: the method's best is the winner
   confirm: {seeds: [100, 101], top: 3}  # score the top 3 again on new seeds
+judge:                       # unset by default: score each candidate on every seed
+  cascade: {seeds: [0], above: 0.5}     # score on one seed first; the rest only if promising
 objective:                   # unset by default: a weighted sum over metrics
   weighted_sum: {score: 1.0}
 model:                       # scripted | gemini | openai | anthropic | ollama
@@ -504,7 +506,7 @@ terminal and the browser cannot disagree about whether a trial improved.
 
 The layers are enforced by `import-linter` in CI. To add a search method,
 implement the `Method` port. To change how the winner is chosen, implement
-`Pick`. To add a sandbox, implement `Sandbox`. To watch
+`Pick`; how a candidate is measured, `Judge`. To add a sandbox, implement `Sandbox`. To watch
 a run, subscribe to its signals.
 
 ## Development
