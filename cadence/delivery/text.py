@@ -1,6 +1,6 @@
 """A finished run, for a person."""
 
-from cadence.core.dto import Report, Spend
+from cadence.core.dto import Evidence, Report, Spend
 
 __all__ = ["as_text"]
 
@@ -14,9 +14,23 @@ def as_text(report: Report) -> str:
         lines.append(f"\n{report.reason}")
     for name, value in (report.metrics or {}).items():
         lines.append(f"  {name} = {value:g}")
+    if report.evidence is not None:
+        lines.append(evidence(report.evidence))
     if report.program:
         lines.append(f"\n{report.program}")
     return "\n".join(lines)
+
+
+def evidence(found: Evidence) -> str:
+    """What the numbers above were measured on, when not the search's seeds."""
+    seeds = list(found.seeds)
+    if found.unconfirmed:
+        return (
+            f"  not confirmed on seeds {seeds} ({found.unconfirmed});"
+            " these are the search's numbers"
+        )
+    searched = ", ".join(f"{k} = {v:g}" for k, v in (found.searched or {}).items())
+    return f"  confirmed on seeds {seeds}; during the search it scored {searched}"
 
 
 def spent(spend: Spend) -> str:

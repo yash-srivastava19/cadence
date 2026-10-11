@@ -10,6 +10,7 @@ from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import Pareto, WeightedSum
 from cadence.control.picks.best import Best
+from cadence.control.picks.confirm import Confirm
 from cadence.control.recall import Recorded
 from cadence.control.restore import resume_from
 from cadence.core.dto import RecordedManifest
@@ -40,7 +41,7 @@ def _provider(name: str):
 
 METHODS = {"evolution": Evolution}
 OBJECTIVES = {"weighted_sum": WeightedSum, "pareto": Pareto}
-PICKS = {"best": Best}
+PICKS = {"best": Best, "confirm": Confirm}
 DEFAULT_PICK = Plugin(name="best")
 BACKENDS = {"scripted": Scripted, **{name: _provider(name) for name in known()}}
 
@@ -55,7 +56,10 @@ def resolve(kind: str, known: dict, plugin: Plugin, **extra):
     _reject_unknown_options(kind, plugin, factory, extra)
     try:
         return factory(**extra, **plugin.options)
-    except TypeError as error:
+    except (TypeError, ValueError) as error:
+        # ValueError too: an option of the right name with an impossible value
+        # (a tournament of 0, a confirm with no seeds) is the user's to fix,
+        # and has to reach them as a message, not a traceback.
         raise UnknownPlugin(f"{kind} {plugin.name!r}: {error}") from error
 
 

@@ -390,6 +390,7 @@ class Experiment:
             program=best.code if best else None,
             metrics=best.metrics if best else None,
             reason=reason,
+            evidence=picked.evidence if picked else None,
         )
 
     def _fail(self, run: Run, reason: str, results: list[TrialResult]) -> Report:
@@ -425,6 +426,7 @@ class Experiment:
             program=best.code if best else None,
             metrics=best.metrics if best else None,
             reason=reason,
+            evidence=picked.evidence if picked else None,
         )
 
 

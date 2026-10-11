@@ -29,6 +29,7 @@ __all__ = [
     "Comparison",
     "Completion",
     "Directive",
+    "Evidence",
     "ExperimentSummary",
     "Measurement",
     "MetricReading",
@@ -223,6 +224,19 @@ class RunHistory(Value):
         return tuple(r for r in self.results if r.verdict.is_scored)
 
 
+class Evidence(Value):
+    """What a winner was chosen on, when that is not what the search saw."""
+
+    #: The seeds the winner was measured on again.
+    seeds: tuple[int, ...] = Field(min_length=1)
+    #: What the winner scored during the search, beside the numbers it is
+    #: reported with. None when it could not be confirmed.
+    searched: Frozen[str, float] | None = None
+    #: Why no candidate could be confirmed, when none could. The winner is
+    #: then the search's own best, reported with the search's numbers.
+    unconfirmed: str | None = None
+
+
 class Picked(Value):
     """The program a run reports as its winner.
 
@@ -232,6 +246,7 @@ class Picked(Value):
     """
 
     result: TrialResult
+    evidence: Evidence | None = None
 
 
 class TrialBudget(Value):
@@ -337,6 +352,9 @@ class Report(Value):
     program: str | None = None
     metrics: Mapping[str, float] | None = None
     reason: str | None = None
+    #: Set when the winner was chosen on measurements the search did not see;
+    #: `metrics` are then those measurements.
+    evidence: Evidence | None = None
 
 
 class RunSummary(Value):

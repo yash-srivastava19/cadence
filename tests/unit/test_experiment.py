@@ -4,7 +4,9 @@ from cadence.control.experiment import Experiment
 from cadence.control.methods.evolution import Evolution
 from cadence.control.model import Model
 from cadence.control.objectives.ranking import WeightedSum
+from cadence.control.picks.confirm import Confirm
 from cadence.core.dto import Picked, Report, Spend
+from cadence.delivery.text import as_text
 from cadence.errors import EmptyReply, TerminalModelError
 from cadence.execution.runner import TrialRunner
 from cadence.execution.sandboxes.subprocess import Subprocess
@@ -99,6 +101,31 @@ class TestThePickNamesTheWinner:
             IMPROVES, *GIVES_UP, budget=3, pick=TheStartingProgram()
         ).run()
         assert "value: 0" in present(report.program)
+
+
+class TestAConfirmedRun:
+    def a_confirmed_run(self):
+        objective = WeightedSum(value=1.0)
+        pick = Confirm(Evolution(objective=objective), objective, seeds=(5,))
+        return an_experiment(IMPROVES, pick=pick)
+
+    def test_the_winner_is_measured_again_before_it_is_named(self):
+        with cadence.recording() as tape:
+            report = self.a_confirmed_run().run()
+        again = [f for f in tape if type(f).__name__ == "CandidateRemeasured"]
+        assert report.best in {f.fingerprint for f in again}
+
+    def test_the_report_says_what_it_was_confirmed_on(self):
+        report = self.a_confirmed_run().run()
+        evidence = present(report.evidence)
+        assert evidence.seeds == (5,)
+        assert evidence.searched == {"value": 9.0}
+
+    def test_the_report_reads_as_confirmed(self):
+        assert "confirmed on seeds [5]" in as_text(self.a_confirmed_run().run())
+
+    def test_an_unconfirmed_run_reports_no_evidence(self):
+        assert an_experiment(IMPROVES).run().evidence is None
 
 
 class TestAFullOfflineRun:
