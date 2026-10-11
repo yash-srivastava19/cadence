@@ -207,7 +207,7 @@ create its own schema:
 ```bash
 export DATABASE_URL=postgresql://user:password@host:5432/cadence
 cadence db status                # what is there, and what a run would make of it
-cadence db upgrade               # create or update the schema; once per database
+cadence db upgrade               # create the schema, and update it after upgrading cadence
 ```
 
 If you have no Postgres to hand, one container is enough:

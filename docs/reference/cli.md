@@ -11,7 +11,7 @@ Cadence uses one command-line interface for project setup, preflight, execution,
 | `cadence run [DIR]` | Run the search. |
 | `cadence run --resume RUN_ID` | Continue a recorded run. |
 | `cadence run --config FILE` | Use a manifest other than `DIR/.cadence`. |
-| `cadence apply RUN_ID [DIR]` | Write the best program from a run over the configured program. |
+| `cadence apply RUN_ID [DIR]` | Write a run's winner over the configured program: the method's best, or what the manifest's `pick` chose. |
 | `cadence schema` | Print the manifest JSON Schema. |
 
 ## Recorded runs and trials
@@ -48,5 +48,7 @@ cadence dashboard --port 9000
 The dashboard is read-only and binds to localhost. It reads the same recorded data exposed by the run and trial commands. It has no authentication; anyone who can reach the bound address can read the manifests and candidate programs.
 
 ## Output and exit behavior
+
+`cadence run` reports the winner, its metrics, and what the run spent. When the manifest's `pick` measured the winner again, the metrics are the new ones and `evidence` gives the seeds and what the winner scored during the search.
 
 Human-readable commands print one sentence per problem where possible and use a non-zero exit code when the requested operation cannot continue. Use `--json` for stable machine-readable output rather than parsing terminal prose.
