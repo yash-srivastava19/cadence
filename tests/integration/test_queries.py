@@ -22,10 +22,12 @@ from cadence.control.queries import (
     trial_detail,
 )
 from cadence.lifecycle.states import RunState, TrialState
+from tests.factories import present
 from tests.integration.test_journal import (
     CRASHES,
     IMPROVES,
     NONSENSE,
+    confirming,
     journalled,
     owner_engine,
     session,
@@ -91,6 +93,17 @@ class TestOneRun:
         """The command turns this into "no run called that". A raise here
         would make a typo look like a failure of cadence."""
         assert one_run(session, "never-existed") is None
+
+
+class TestAProgramMeasuredAgainIsListedOnce:
+    def test_the_listing_has_one_row_per_trial(self, session, journalled):
+        journalled(IMPROVES, pick=confirming())
+        assert len(some_trials(session, "h1")) == 1
+
+    def test_the_detail_is_the_trial_s_own_measurement(self, session, journalled):
+        journalled(IMPROVES, pick=confirming())
+        [listed] = some_trials(session, "h1")
+        assert present(trial_detail(session, listed.id)).metrics == listed.metrics
 
 
 class TestTheTrialsOfARun:

@@ -31,6 +31,7 @@ from tests.integration.test_journal import (  # noqa: E402
     IMPROVES,
     IMPROVES_MORE,
     NONSENSE,
+    confirming,
     journalled,
     owner_engine,
     session,
@@ -78,6 +79,21 @@ class TestReadingBackAFinishedRun:
         assert restored.run_id == "h1"
         assert restored.seeds == (BASELINE,)
         assert restored.index == report.trials
+
+
+class TestAProgramMeasuredAgainIsStillOneResult:
+    """A confirmed winner has two verdicts. Read back by candidate alone, its
+    trial came back twice, and a resumed search would choose its parents from
+    a history one result longer than the one it had."""
+
+    def test_the_history_has_one_result_per_trial(self, session, journalled):
+        report = journalled(IMPROVES, pick=confirming())
+        assert len(present(history_of(session, "h1")).results) == report.trials
+
+    def test_the_result_carries_what_the_search_saw(self, session, journalled):
+        report = journalled(IMPROVES, pick=confirming())
+        [result] = present(history_of(session, "h1")).results
+        assert result.metrics == present(report.evidence).searched
 
 
 class TestTheOrderIsTheOrderItHappened:

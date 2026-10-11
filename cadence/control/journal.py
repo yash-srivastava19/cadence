@@ -187,6 +187,12 @@ class Journal:
             )
         elif isinstance(fact, (TrialMeasured, SeedMeasured)):
             self._measured(fact)
+            if isinstance(fact, TrialMeasured):
+                self.session.execute(
+                    sa.update(trials)
+                    .where(trials.c.id == fact.trial_id)
+                    .values(task_hash=fact.task_hash, seeds_hash=fact.seeds_hash)
+                )
             if fact.verdict.outcome is Outcome.CRASHED:
                 self._crashed(fact.verdict.fingerprint, run_id)
         elif isinstance(fact, CandidateRemeasured):
