@@ -8,6 +8,12 @@ Cadence uses a language model to propose changes because proposal is the part of
 
 This separation keeps the authority to judge outside the thing being judged.
 
+## Exploring and trusting are different jobs
+
+The search method picks which program to improve next. It may favor a weaker program to explore. The winner is the program the run reports and `cadence apply` writes, so it should be the one with the most evidence behind it. Cadence keeps these as two settings, `method` and `pick`.
+
+The distinction matters when scores are noisy. In a Scrabble experiment, the search's best program scored a win rate of 0.650 during training and 0.507 on 400 games it had not seen. Choosing the best of many noisy measurements selects for luck. `pick: confirm` measures the leaders again on seeds the search never used and ranks them on those scores.
+
 ## The editable region is smaller than the project
 
 The model receives a bounded region rather than an unrestricted repository. This gives the experiment a stable shell: imports, interfaces, test data, and the scoring command can remain fixed while the candidate explores an algorithm.

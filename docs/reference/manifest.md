@@ -15,6 +15,8 @@ markers:
   end: "CADENCE:END"
 method:
   evolution: {size: 8, tournament: 3}
+pick:
+  confirm: {seeds: [100, 101], top: 3}
 objective:
   weighted_sum: {score: 1.0}
 model:
@@ -54,6 +56,20 @@ Run `cadence schema` for the machine-readable schema used by editors and validat
 | `sandbox.memory_mb` | Memory limit for one scoring command. |
 | `sandbox.seeds` | Seeds used to measure each candidate. |
 | `verifier.tolerance` | Declares the numeric repeatability tolerance for cached verdicts. |
+
+## Choosing the winner
+
+`method` decides which program to improve next. `pick` decides which program the run reports, and `cadence apply` writes. They are separate because a search may favor a weaker parent to explore, but the winner should be the program you can trust.
+
+| `pick` | What it does |
+| --- | --- |
+| unset | The method's own best. This is what every run did before `pick` existed. |
+| `best` | The same, named explicitly. |
+| `confirm: {seeds, top}` | Scores the method's `top` best programs (default 3) again on `seeds`, then ranks them on those scores alone. |
+
+Use `confirm` when the score is noisy. A search keeps the best of many measurements, so its best is partly luck. Choose `seeds` that `sandbox.seeds` does not use; otherwise the confirmation repeats measurements the search already made.
+
+With `confirm`, the reported metrics are the confirmed scores, and the report's `evidence` field shows the seeds and what the winner scored during the search. Each measurement is recorded as a `CandidateRemeasured` event. It is not a trial and does not count against `budget.trials`. If none of the top programs scores on the new seeds, the run reports the method's best with its search scores and says why in `evidence.unconfirmed`.
 
 ## Provider fields
 

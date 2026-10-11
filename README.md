@@ -291,6 +291,8 @@ markers:
   end: "CADENCE:END"
 method:                      # how the next parent is chosen
   evolution: {size: 8, tournament: 3}
+pick:                        # unset by default: the method's own best is the winner
+  confirm: {seeds: [100, 101], top: 3}  # score the top 3 again on unseen seeds
 objective:                   # unset by default: a weighted sum over metrics
   weighted_sum: {score: 1.0}
 model:                       # scripted | gemini | openai | anthropic | ollama
@@ -501,7 +503,8 @@ ask `control` what happened, and hand the answer to `delivery`, so the
 terminal and the browser cannot disagree about whether a trial improved.
 
 The layers are enforced by `import-linter` in CI. To add a search method,
-implement the `Method` port. To add a sandbox, implement `Sandbox`. To watch
+implement the `Method` port. To change how the winner is chosen, implement
+`Pick`. To add a sandbox, implement `Sandbox`. To watch
 a run, subscribe to its signals.
 
 ## Development
