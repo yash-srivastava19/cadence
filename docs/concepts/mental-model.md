@@ -30,10 +30,10 @@ The candidate does not see or rewrite the scoring command. The scoring command d
 | Mark | What part of the program is open to exploration? |
 | Propose | What change is worth trying next? |
 | Apply | Can the proposal become a candidate without changing the shell? |
-| Measure | What did this exact candidate do on these exact inputs? How often, and on which seeds, is the manifest's `judge`. |
+| Measure | What did this exact candidate do on these exact inputs? |
 | Classify | Was the result a score, or did measurement fail? |
 | Select | Which evidence should influence the next proposal? |
-| Pick | Which program does the run report as its winner? By default the method's best; `pick` can demand more evidence first. |
+| Pick | Which program should the run report as its winner? |
 
 The order matters. Selection before measurement would be a guess. Measurement without classification would confuse a broken scorer with a weak algorithm.
 
@@ -65,7 +65,7 @@ Cadence runs the scoring command in this temporary directory with the declared s
 - The baseline.
 - The seeds and data split.
 - The guidance in `IMPROVE.md`.
-- How much evidence a winner needs (`pick`) and how candidates are measured (`judge`), when the defaults do not fit.
+- How candidates are scored (`judge`) and how the winner is chosen (`pick`), if the defaults do not fit.
 
 ## What Cadence owns
 
@@ -74,7 +74,7 @@ Cadence runs the scoring command in this temporary directory with the declared s
 - Running the candidate in the sandbox.
 - Classifying the result as a verdict.
 - Selecting parents and tracking lineage.
-- Recording every measurement a `judge` or `pick` asks for, and stopping the run if the scorer reports a fault of its own.
+- Recording every score, and stopping the run if the scoring command reports a fault of its own.
 - Recording enough history to inspect and resume the run.
 
 ## The seam is deliberate

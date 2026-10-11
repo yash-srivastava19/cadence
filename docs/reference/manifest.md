@@ -79,15 +79,17 @@ With `confirm`:
 
 ## Measuring each candidate
 
-`judge` decides how a candidate is measured. Whatever it decides, every measurement is recorded, and a scorer that reports a fault of its own stops the run.
+`judge` chooses how each candidate is scored.
 
 | `judge` | What it does |
 | --- | --- |
-| unset | Once, on every seed in `sandbox.seeds`. This is what every run did before `judge` existed. |
-| `full` | The same, named explicitly. |
-| `cascade: {seeds, above}` | Scores the candidate on `seeds` first. It goes on to every seed in `sandbox.seeds` only when that quick score is at least as good as the share `above` (default 0.5) of the programs the run has scored. Otherwise the quick score is its verdict. |
+| unset | Scores each candidate once, on every seed in `sandbox.seeds`. |
+| `full` | Same as unset. |
+| `cascade: {seeds, above}` | Scores the candidate on `seeds` first. If that score is at least as good as the share `above` (default 0.5) of the programs scored so far, it scores the candidate on every seed. Otherwise the first score is final. |
 
-Use `cascade` when scoring is slow and a few seeds already rank candidates well. A candidate that stops early is measured on fewer seeds than the rest, so its score is noisier. `cadence check` reports the cost of measuring every candidate in full, which is the most a cascade can spend.
+Use `cascade` when scoring is slow. It saves time on weak candidates, but a candidate that stops early is scored on fewer seeds, so its score is noisier. The cost `cadence check` reports assumes every candidate is scored in full.
+
+Every score is recorded. If the scoring command reports a fault of its own, the run stops, whichever judge you use.
 
 ## Provider fields
 

@@ -23,9 +23,9 @@ Runs, trials, candidates, model calls, verdicts, and manifests are recorded as f
 The package uses ports for the parts that vary:
 
 - `Method` chooses the next parent or proposal strategy.
-- `Judge` decides how a candidate is measured: how often, and on which seeds.
-- `Pick` chooses the winner the run reports, which can differ from the method's best.
-- `Objective` decides which of two sets of metrics is better.
+- `Judge` decides how each candidate is scored.
+- `Pick` chooses the winner the run reports.
+- `Objective` decides which of two results is better.
 - `Model` supplies a proposal.
 - `Sandbox` runs a candidate under limits.
 - `Storage` records and restores the run.

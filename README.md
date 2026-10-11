@@ -168,9 +168,8 @@ does not say `ready`.
 cadence run
 ```
 
-Progress goes to stderr, one line per trial, plus one per program a `judge` or
-`pick` scores again. The result goes to stdout: the winner, its metrics, and
-what the run spent. Pipe it (`cadence run >
+Progress goes to stderr, one line per trial. The result goes to stdout: the
+winner, its metrics, and what the run spent. Pipe it (`cadence run >
 result.json`) or read it on the terminal.
 
 Without a database, that output is the only copy of the winner. Keep it, or
@@ -429,7 +428,7 @@ The run prints the path when it ends. A line looks like this:
 | Field | What it is |
 |---|---|
 | `level` | `info`; `warn` when something cost a call and bought nothing (an unusable reply, a rejected patch); `error` when the run cannot go on |
-| `span` | The step: `run`, `baseline`, `trial`, `model_call`, `read_reply`, `apply_patch`, `measure` or `remeasure` (a program scored again, by a `judge` or `pick`) |
+| `span` | The step: `run`, `baseline`, `trial`, `model_call`, `read_reply`, `apply_patch`, `measure` or `remeasure` (a program scored again) |
 | `phase` | `start` and `end` of a step, or `event` for a single moment |
 | `status` | How the step ended: `ok`, `scored`, `failed:crashed`, `unusable`, `abandoned`… |
 | `message` | The line as a sentence |
@@ -506,9 +505,9 @@ ask `control` what happened, and hand the answer to `delivery`, so the
 terminal and the browser cannot disagree about whether a trial improved.
 
 The layers are enforced by `import-linter` in CI. To add a search method,
-implement the `Method` port. To change how the winner is chosen, implement
-`Pick`; how a candidate is measured, `Judge`. To add a sandbox, implement `Sandbox`. To watch
-a run, subscribe to its signals.
+implement the `Method` port. To change how candidates are scored, implement
+`Judge`; to change how the winner is chosen, `Pick`. To add a sandbox,
+implement `Sandbox`. To watch a run, subscribe to its signals.
 
 ## Development
 

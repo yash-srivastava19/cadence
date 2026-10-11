@@ -38,7 +38,7 @@ Cadence restores the recorded experiment history and continues from settled work
 cadence apply RUN_ID
 ```
 
-This overwrites the configured program with the run's winner: the method's best, or whatever the manifest's `pick` chose. Commit or copy the project first; `apply` does not create a backup.
+This overwrites the configured program with the run's winner. Commit or copy the project first; `apply` does not create a backup.
 
 ## Read the local log
 
