@@ -146,7 +146,7 @@ class Manifest(Strict):
         return self
 
     @model_validator(mode="after")
-    def _confirm_on_fresh_seeds(self) -> "Manifest":
+    def _reject_reused_confirm_seeds(self) -> "Manifest":
         if self.pick is None or self.pick.name != "confirm":
             return self
         shared = set(self.pick.options.get("seeds") or ()) & set(self.sandbox.seeds)

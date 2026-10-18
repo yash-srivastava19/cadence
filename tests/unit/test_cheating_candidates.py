@@ -1,11 +1,4 @@
-"""Candidates that try to score themselves rather than solve the problem.
-
-Each one is a way a search could find a high number without a better program.
-The xfails are the holes still open, written down as tests so that closing
-one turns it green rather than leaving a claim in the README to check by hand.
-The hole they share: in the usual layout score.py imports the candidate, so
-the candidate runs inside the scorer's process and owns its stdout.
-"""
+"""Candidates that try to score themselves rather than solve the problem."""
 
 import textwrap
 

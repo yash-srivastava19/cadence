@@ -5,7 +5,7 @@ from typing import Any
 
 from cadence.control.patcher import apply_patch
 from cadence.control.recall import digest, through
-from cadence.control.region import BEGIN, END, splice, split
+from cadence.control.region import BEGIN, END, Region, splice, split
 from cadence.core.dto import Completion, Directive, Proposal, Request, Suggestion
 from cadence.core.ports import Backend, Calls
 from cadence.errors import MarkerError, PatchError
@@ -187,6 +187,10 @@ def _lines(text: str) -> list[str]:
     return (text if text.endswith("\n") else text + "\n").splitlines(True)
 
 
+def _surroundings(region: Region) -> tuple[str, str]:
+    return region.head, region.tail.rstrip("\n")
+
+
 class Model:
     def __init__(
         self,
@@ -281,7 +285,7 @@ class Model:
     def _patch(self, before: str, answer: str) -> tuple[str, ...]:
         if self.template not in WHOLE:
             patch = parse_patch(answer)
-            self._inside_region(before, patch)
+            self._reject_edits_outside_region(before, patch)
             return patch
         written = parse_program(answer)
         marked = split(before, *self.markers)
@@ -291,9 +295,7 @@ class Model:
             raise PatchError("the program came back unchanged")
         return patch
 
-    def _inside_region(self, before: str, patch: tuple[str, ...]) -> None:
-        # A diff is free to touch any line, so the markers only hold if the
-        # lines around them come back as they went out.
+    def _reject_edits_outside_region(self, before: str, patch: tuple[str, ...]) -> None:
         marked = split(before, *self.markers)
         if marked is None:
             return
@@ -301,11 +303,7 @@ class Model:
             after = split(apply_patch(before, patch), *self.markers)
         except MarkerError:
             after = None
-        # apply_patch does not keep a final newline; that is not a change.
-        if after is None or (after.head, after.tail.rstrip("\n")) != (
-            marked.head,
-            marked.tail.rstrip("\n"),
-        ):
+        if after is None or _surroundings(after) != _surroundings(marked):
             raise PatchError("the diff changes lines outside the marked region")
 
     def _ask(self, request: Request):
