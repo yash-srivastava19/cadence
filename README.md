@@ -53,7 +53,7 @@ You bring three things, and Cadence never reaches past them:
 | You bring | What it is | Why it is separate |
 |---|---|---|
 | **A marked program** | The file, with `CADENCE:BEGIN` / `CADENCE:END` around the part that may change | Everything outside the markers stays fixed, so every trial is comparable |
-| **A scoring command** | Anything that runs a candidate and prints numbers | It lives outside the region, so a candidate cannot set its own score |
+| **A scoring command** | Anything that runs a candidate and prints numbers | It lives outside the region, so the model cannot edit it. A scorer that imports the candidate shares its process, and the candidate can still print a score: run it as a separate process |
 | **A manifest** | `.cadence`: metrics, budget, model, sandbox limits | One file states the whole experiment, and its hash is recorded with every result |
 
 What comes back from each trial is a **verdict**, not just a number. A

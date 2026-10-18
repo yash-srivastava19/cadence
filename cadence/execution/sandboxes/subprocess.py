@@ -32,7 +32,9 @@ KILLED_BY_TIMEOUT = "wall clock"
 # RLIMIT_AS does not kill the process; it makes the allocation fail and the
 # runtime say so. Only the kernel's OOM killer sends SIGKILL.
 OOM_SIGNS = ("memoryerror", "std::bad_alloc", "cannot allocate memory", "out of memory")
-IGNORED = shutil.ignore_patterns(".git", "__pycache__", ".venv", "*.pyc")
+IGNORED = shutil.ignore_patterns(
+    ".git", "__pycache__", ".venv", "*.pyc", ".cadence", "*.cadence"
+)
 SKIPPED = (".git", "__pycache__", ".venv")
 GRACE_SECONDS = 0.5
 

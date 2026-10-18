@@ -47,6 +47,8 @@ print(f"score: {measure(choose, cases)}")
 
 If the candidate can rewrite its own scorer, the experiment no longer measures a stable objective.
 
+Outside the region stops the model editing the scorer. It does not stop the candidate at run time: imported like this, it runs inside the scorer's process and can print a score of its own, exit early, or replace `print`. When that matters, run the candidate as a separate process and read only its answer, the way the Scrabble scorer runs each player.
+
 ## A small complete scorer
 
 This example keeps the candidate and the measurement visibly separate:
