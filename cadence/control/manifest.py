@@ -145,6 +145,18 @@ class Manifest(Strict):
             )
         return self
 
+    @model_validator(mode="after")
+    def _confirm_on_fresh_seeds(self) -> "Manifest":
+        if self.pick is None or self.pick.name != "confirm":
+            return self
+        shared = set(self.pick.options.get("seeds") or ()) & set(self.sandbox.seeds)
+        if shared:
+            raise ValueError(
+                f"pick.confirm seeds {sorted(shared)} are also sandbox seeds;"
+                " confirming on seeds the search was scored on measures the same luck"
+            )
+        return self
+
     @property
     def hash(self) -> str:
         """The identity of this configuration.
