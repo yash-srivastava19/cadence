@@ -2,7 +2,7 @@
 [project]
 name = "cadence"
 version = "0.1.0"
-description = "LLM-based program evolution framework, similar to AlphaEvolve"
+description = "Evolve code you can measure: mark the part a model may rewrite, name the command that scores it."
 # Upper bound because pydantic-core has no wheel for 3.14 and PyO3 will not
 # build against it, so a 3.14 venv fails to sync rather than failing loudly.
 requires-python = ">=3.11.4,<3.14"

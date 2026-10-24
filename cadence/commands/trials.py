@@ -12,7 +12,7 @@ app = typer.Typer(no_args_is_help=True, help="Trials inside a run.")
 
 @app.command("list")
 def list_(
-    run_id: str = typer.Option(..., "--run", help="Which run's trials."),
+    run_id: str = typer.Argument(..., metavar="RUN_ID"),
     status: str | None = typer.Option(None, "--status"),
     limit: int = typer.Option(PAGE, "--limit"),
     json_: bool | None = typer.Option(None, "--json/--no-json"),

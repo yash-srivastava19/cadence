@@ -225,7 +225,7 @@ Then, from your project, with `DATABASE_URL` still set:
 cadence check                    # now says the run will be recorded
 cadence run                      # prints a run id
 cadence runs list                # every recorded run, newest first
-cadence trials list --run RUN_ID # the trials of one run
+cadence trials list RUN_ID       # the trials of one run
 cadence run --resume RUN_ID      # carry on a run that stopped
 cadence apply RUN_ID             # write the best program over yours
 cadence dashboard                # read all of it in a browser
@@ -371,7 +371,7 @@ cadence run --config FILE            # use FILE instead of DIR/.cadence
 cadence run --resume RUN_ID          # carry on a recorded run
 cadence runs list                    # recorded runs
 cadence runs show RUN_ID             # one run in full
-cadence trials list --run RUN_ID     # the trials of a run
+cadence trials list RUN_ID           # the trials of a run
 cadence trials show TRIAL_ID         # one trial in full, and what it changed
 cadence apply RUN_ID [DIR]           # write the winner over your program
 cadence schema                       # the manifest's JSON Schema

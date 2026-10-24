@@ -289,11 +289,21 @@ class Model:
             return patch
         written = parse_program(answer)
         marked = split(before, *self.markers)
-        after = splice(before, written, *self.markers) if marked else written
+        after = (
+            splice(before, self._region(written), *self.markers) if marked else written
+        )
         patch = as_patch(before, after)
         if not patch:
             raise PatchError("the program came back unchanged")
         return patch
+
+    def _region(self, written: str) -> str:
+        """A reply that echoes the markers keeps only what lies between them."""
+        try:
+            echoed = split(written, *self.markers)
+        except MarkerError as error:
+            raise PatchError(f"the reply's marker lines are broken: {error}") from error
+        return echoed.body if echoed else written
 
     def _reject_edits_outside_region(self, before: str, patch: tuple[str, ...]) -> None:
         marked = split(before, *self.markers)

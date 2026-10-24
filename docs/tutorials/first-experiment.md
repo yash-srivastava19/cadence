@@ -96,7 +96,7 @@ With a database configured, use:
 ```bash
 cadence runs list
 cadence runs show RUN_ID
-cadence trials list --run RUN_ID
+cadence trials list RUN_ID
 ```
 
 ## 6. What you learned
