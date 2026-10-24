@@ -7,7 +7,7 @@ from cadence.control.recall import digest, through
 from cadence.control.region import BEGIN, END, splice, split
 from cadence.core.dto import Completion, Directive, Proposal, Request, Suggestion
 from cadence.core.ports import Backend, Calls
-from cadence.errors import PatchError
+from cadence.errors import MarkerError, PatchError
 
 __all__ = [
     "HINTS",
@@ -282,11 +282,21 @@ class Model:
             return parse_patch(answer)
         written = parse_program(answer)
         marked = split(before, *self.markers)
-        after = splice(before, written, *self.markers) if marked else written
+        after = (
+            splice(before, self._region(written), *self.markers) if marked else written
+        )
         patch = as_patch(before, after)
         if not patch:
             raise PatchError("the program came back unchanged")
         return patch
+
+    def _region(self, written: str) -> str:
+        """A reply that echoes the markers keeps only what lies between them."""
+        try:
+            echoed = split(written, *self.markers)
+        except MarkerError as error:
+            raise PatchError(f"the reply's marker lines are broken: {error}") from error
+        return echoed.body if echoed else written
 
     def _ask(self, request: Request):
         return self.backend.call(request)

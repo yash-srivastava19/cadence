@@ -132,6 +132,29 @@ class TestAskingForTheWholeProgram:
         assert after.startswith("before = 1")
         assert after.rstrip().endswith("after = 2")
 
+    @pytest.mark.parametrize("template", ["region", "rewrite"])
+    def test_echoed_markers_are_not_doubled(self, template):
+        from cadence.control.patcher import apply_patch
+        from cadence.control.region import split
+
+        marked = "before = 1\n# CADENCE:BEGIN\nx = 1\n# CADENCE:END\nafter = 2\n"
+        echo = "before = 1\n# CADENCE:BEGIN\nx = 99\n# CADENCE:END\nafter = 2\n"
+        directive = Directive(parent="p", code=marked)
+        proposal = (
+            a_model(f"```python\n{echo}```", template=template)
+            .propose(directive)
+            .proposal
+        )
+        assert split(apply_patch(marked, proposal.patch)).body == "x = 99\n"
+
+    def test_a_lone_echoed_marker_costs_one_trial(self):
+        marked = "# CADENCE:BEGIN\nx = 1\n# CADENCE:END\n"
+        answer = "```python\n# CADENCE:BEGIN\nx = 99\n```"
+        with pytest.raises(PatchError, match="marker"):
+            a_model(answer, template="region").propose(
+                Directive(parent="p", code=marked)
+            )
+
 
 class TestProposing:
     def test_it_returns_the_parsed_patch(self):
