@@ -21,7 +21,7 @@ These commands require `DATABASE_URL`:
 ```bash
 cadence runs list
 cadence runs show RUN_ID
-cadence trials list --run RUN_ID
+cadence trials list RUN_ID
 cadence trials show TRIAL_ID
 ```
 

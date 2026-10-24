@@ -18,7 +18,7 @@ Without `DATABASE_URL`, Cadence still runs and writes local JSONL logs, but data
 ```bash
 cadence runs list
 cadence runs show RUN_ID
-cadence trials list --run RUN_ID
+cadence trials list RUN_ID
 cadence trials show TRIAL_ID
 ```
 

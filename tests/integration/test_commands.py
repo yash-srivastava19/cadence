@@ -142,7 +142,7 @@ class TestARunCanBeFoundAfterwards:
     def test_the_trials_can_be_listed(self, project, label):
         a_run(project)
         run_id = listed(label)[0]["id"]
-        result = runner.invoke(app, ["trials", "list", "--run", run_id, "--json"])
+        result = runner.invoke(app, ["trials", "list", run_id, "--json"])
         assert result.exit_code == 0, result.output
         assert [t["run_id"] for t in json.loads(result.output)] == [run_id]
 

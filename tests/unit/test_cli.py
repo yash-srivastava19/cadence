@@ -514,7 +514,7 @@ class TestTheQueryCommandsNeedADatabase:
         assert "DATABASE_URL" in runner.invoke(app, ["runs", "list"]).output
 
     def test_listing_trials_without_one_fails(self):
-        assert runner.invoke(app, ["trials", "list", "--run", "r1"]).exit_code == 1
+        assert runner.invoke(app, ["trials", "list", "r1"]).exit_code == 1
 
     def test_the_verbs_are_plural(self):
         """`cadence run` starts one; `cadence runs` lists them. Two words
