@@ -70,6 +70,9 @@ class TrialRunner:
                 "seconds": self.seconds,
                 "memory_mb": self.memory_mb,
                 "workspace": workspace_digest(self.workspace, self.program),
+                # A timing on another machine is another measurement. Absent
+                # for the local sandbox, so local hashes stay what they were.
+                **({"where": where} if (where := _where(self.sandbox)) else {}),
             }
         )
 
@@ -185,3 +188,7 @@ def _tail(stderr: str, lines: int = 3) -> str:
 
 def _mean(readings: Sequence[Metrics]) -> Metrics:
     return {name: fmean(r[name] for r in readings) for name in readings[0]}
+
+
+def _where(sandbox: Sandbox) -> str | None:
+    return getattr(sandbox, "where", None)
