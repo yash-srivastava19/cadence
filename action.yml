@@ -18,8 +18,8 @@ inputs:
       The model is called from this job either way, with your own key.
     default: here
   sandbox-url:
-    description: "The hosted sandbox to use with `compute: cadence`."
-    default: https://scrabble-runner.tail3226fd.ts.net/run
+    description: "The hosted sandbox to use with `compute: cadence`. Required until a public one exists."
+    default: ""
   pull-request:
     description: Open a pull request when the winner beats the starting program.
     default: "true"
@@ -50,6 +50,10 @@ runs:
       env:
         URL: ${{ inputs.sandbox-url }}
       run: |
+        if [ -z "$URL" ]; then
+          echo "::error::compute: cadence needs sandbox-url."
+          exit 1
+        fi
         if [ -z "${CADENCE_TOKEN:-}" ]; then
           echo "::error::compute: cadence needs the CADENCE_TOKEN secret in this step's env."
           exit 1
