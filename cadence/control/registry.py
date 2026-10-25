@@ -1,5 +1,6 @@
 import difflib
 import inspect
+import os
 import shlex
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from cadence.control.restore import resume_from
 from cadence.core.dto import RecordedManifest
 from cadence.errors import UnknownPlugin
 from cadence.execution.runner import TrialRunner
+from cadence.execution.sandboxes.remote import Command
 from cadence.execution.sandboxes.subprocess import Subprocess
 from cadence.parsing.metrics import direction
 
@@ -134,6 +136,15 @@ def guidance(manifest: Manifest, root: Path) -> str | None:
     return path.read_text() if path.exists() else None
 
 
+def _sandbox():
+    """Where candidates are measured. A machine's choice, so the environment's.
+
+    CADENCE_SANDBOX names a command that measures elsewhere; unset, here.
+    """
+    command = os.environ.get("CADENCE_SANDBOX")
+    return Command(command) if command else Subprocess()
+
+
 def runner_for(manifest: Manifest, root: Path) -> TrialRunner:
     """The measuring stick this manifest describes, as one object.
 
@@ -146,7 +157,7 @@ def runner_for(manifest: Manifest, root: Path) -> TrialRunner:
         program=manifest.program,
         command=shlex.split(manifest.command),
         metrics=manifest.metrics,
-        sandbox=Subprocess(),
+        sandbox=_sandbox(),
         workspace=str(root),
         seeds=manifest.sandbox.seeds,
         seconds=manifest.sandbox.seconds,

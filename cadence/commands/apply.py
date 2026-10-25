@@ -11,6 +11,8 @@ This writes it to the file it is a version of.
 # which the help text says out loud.
 """
 
+import json
+import os
 from pathlib import Path
 
 import typer
@@ -18,7 +20,8 @@ import typer
 from cadence.commands.reading import reading
 from cadence.commands.report import die, found, note
 from cadence.control.manifest import load
-from cadence.control.restore import winner_of
+from cadence.control.restore import Winner, winner_of
+from cadence.delivery.runlog import find_result
 from cadence.errors import CadenceError
 
 
@@ -41,8 +44,14 @@ def apply(
         manifest = load(config or root)
     except CadenceError as error:
         die(str(error))
-    with reading() as session:
-        winner = winner_of(session, run_id)
+    # The database is the record when there is one; the file beside the log
+    # is what a run without one leaves behind.
+    if os.environ.get("DATABASE_URL"):
+        with reading() as session:
+            winner = winner_of(session, run_id)
+    else:
+        kept = find_result(root, run_id)
+        winner = _from_file(kept) if kept else None
     if winner is None:
         die(
             f"run {run_id!r} has no best program to apply.",
@@ -60,6 +69,20 @@ def apply(
             " --config to name the manifest it used.",
         )
     target = root / manifest.program
-    target.write_text(winner.code)
+    # Stored code is stripped; the file keeps its own last newline.
+    ends = "\n" if target.read_text().endswith("\n") else ""
+    target.write_text(winner.code.rstrip("\n") + ends)
     found("wrote", f"{target} from {winner.fingerprint[:12]}")
     note(f"\n`git diff {target}` to see what changed.")
+
+
+def _from_file(path: Path) -> Winner | None:
+    """The winner a run left beside its log, so applying needs no database."""
+    report = json.loads(path.read_text())
+    if not report.get("program"):
+        return None
+    return Winner(
+        code=report["program"],
+        fingerprint=report["best"],
+        manifest_hash=report.get("manifest_hash"),
+    )

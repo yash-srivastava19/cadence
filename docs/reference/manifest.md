@@ -95,6 +95,19 @@ Every score is recorded. If the scoring command reports a fault of its own, the 
 
 Supported provider names are `scripted`, `gemini`, `openai`, `anthropic`, and `ollama`. Provider keys come from the environment. See [Environment](environment.md).
 
+`scripted` needs no key. It answers each trial with the next of its `replies`, in the shape the prompt template asks for:
+
+```yaml
+model:
+  scripted:
+    replies:
+      - |
+        ```python
+        def pick(numbers, k):
+            return sorted(numbers, reverse=True)[:k]
+        ```
+```
+
 ## Configuration precedence
 
 Cadence reads `.env` in the project directory. Variables already present in the environment take precedence. Provider-specific local configuration belongs in `providers.local.yml`, which is gitignored.

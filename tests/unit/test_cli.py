@@ -648,3 +648,35 @@ class TestTrialsShow:
         result = runner.invoke(app, ["trials", "show", "r1/0", "--no-json"])
         assert result.exit_code == 0, result.output
         assert "+print('value: 45')" in result.output
+
+
+class TestARunWithNoDatabaseCanStillBeKept:
+    """A CI job has no database. Its winner has to survive the run anyway."""
+
+    @pytest.fixture
+    def project(self, tmp_path):
+        (tmp_path / ".cadence").write_text(
+            "api_version: cadence/v1alpha2\nprogram: p.py\n"
+            "metrics: {v: maximize}\nbudget: {trials: 1}\n"
+            "model:\n  scripted:\n    replies:\n"
+            "      - \"```python\\nprint('v: 9')\\n```\"\n"
+        )
+        (tmp_path / "p.py").write_text(MARKED % "print('v: 1')")
+        return tmp_path
+
+    def _run(self, project):
+        result = runner.invoke(app, ["run", str(project), "--json"])
+        assert result.exit_code == 0, result.output
+        return json.loads(result.output[result.output.index("{") :])
+
+    def test_check_accepts_written_replies(self, project):
+        assert runner.invoke(app, ["check", str(project)]).exit_code == 0
+
+    def test_the_report_says_where_it_started(self, project):
+        assert self._run(project)["baseline"] == {"v": 1.0}
+
+    def test_apply_writes_the_winner(self, project):
+        run_id = self._run(project)["run_id"]
+        result = runner.invoke(app, ["apply", run_id, str(project)])
+        assert result.exit_code == 0, result.output
+        assert (project / "p.py").read_text() == MARKED % "print('v: 9')"

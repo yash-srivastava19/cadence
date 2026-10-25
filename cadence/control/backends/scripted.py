@@ -5,6 +5,7 @@ no network: tests and examples get a real Backend without a provider.
 """
 
 from collections import deque
+from collections.abc import Sequence
 
 from cadence.core.dto import Completion, Request
 from cadence.errors import TerminalModelError
@@ -16,8 +17,10 @@ class Scripted:
     name = "scripted"
     model = "scripted-1"
 
-    def __init__(self, *responses: str | Exception) -> None:
-        self._remaining = deque(responses)
+    def __init__(
+        self, *responses: str | Exception, replies: Sequence[str] = ()
+    ) -> None:
+        self._remaining = deque((*responses, *replies))
         self.prompts: list[str] = []
 
     @property

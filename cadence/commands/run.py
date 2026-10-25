@@ -15,7 +15,7 @@ from cadence.control.registry import build, seed_program
 from cadence.control.restore import status_of
 from cadence.core.verdict import Scored
 from cadence.delivery import as_json, as_text
-from cadence.delivery.runlog import RunLog
+from cadence.delivery.runlog import RunLog, result_file
 from cadence.errors import CadenceError
 from cadence.lifecycle.states import RunState
 from cadence.observe.signals import (
@@ -194,6 +194,10 @@ def run(
     except CadenceError as error:
         die(str(error))
         raise  # unreachable; die() exits. keeps `report` definitely bound.
+    kept = result_file(root, run_id)
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    kept.write_text(as_json(report))
+    note(f"  result     {kept}")
     if wanted_json(as_json_output):
         typer.echo(as_json(report))
     else:

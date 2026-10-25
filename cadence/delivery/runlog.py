@@ -39,7 +39,7 @@ from cadence.observe.signals import (
     TrialStarted,
 )
 
-__all__ = ["DIRECTORY", "KINDS", "RunLog", "environment"]
+__all__ = ["DIRECTORY", "KINDS", "RunLog", "environment", "find_result", "result_file"]
 
 DIRECTORY = "cadence-runs"
 ORDER = (
@@ -191,6 +191,19 @@ def _hex(kind: str, name: str, length: int) -> str:
 
 def environment() -> str:
     return os.environ.get("CADENCE_ENV") or "development"
+
+
+def result_file(root: Path, run_id: str) -> Path:
+    """What a run ended with, beside its log.
+
+    The log holds content only as hashes. This is the one file that holds the
+    winning program, so a run with no database can still be applied.
+    """
+    return root / DIRECTORY / environment() / f"{run_id}.result.json"
+
+
+def find_result(root: Path, run_id: str) -> Path | None:
+    return next((root / DIRECTORY).glob(f"*/{run_id}.result.json"), None)
 
 
 def _version() -> str:

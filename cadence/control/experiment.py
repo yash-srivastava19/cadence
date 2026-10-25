@@ -449,6 +449,8 @@ class Experiment:
             metrics=best.metrics if best else None,
             reason=reason,
             evidence=picked.evidence if picked else None,
+            baseline=self.baseline.metrics if self.baseline else None,
+            manifest_hash=self.manifest.hash,
         )
 
     def _fail(self, run: Run, reason: str, results: list[TrialResult]) -> Report:
@@ -485,6 +487,8 @@ class Experiment:
             metrics=best.metrics if best else None,
             reason=reason,
             evidence=picked.evidence if picked else None,
+            baseline=self.baseline.metrics if self.baseline else None,
+            manifest_hash=self.manifest.hash,
         )
 
 

@@ -358,6 +358,10 @@ class Report(Value):
     #: Set when the winner was chosen on measurements the search did not see;
     #: `metrics` are then those measurements.
     evidence: Evidence | None = None
+    #: What the program the run started from scored, so a winner can be read
+    #: against it without a database.
+    baseline: Mapping[str, float] | None = None
+    manifest_hash: str | None = None
 
 
 class RunSummary(Value):

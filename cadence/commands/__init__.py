@@ -8,6 +8,7 @@ from cadence.commands import (
     init,
     run,
     runs,
+    sandbox,
     schema,
     trials,
 )
@@ -27,6 +28,7 @@ app.command()(run.run)
 app.command()(apply.apply)
 app.command()(schema.schema)
 app.command()(dashboard.dashboard)
+app.command()(sandbox.sandbox)
 app.add_typer(db.app, name="db")
 app.add_typer(runs.app, name="runs")
 app.add_typer(trials.app, name="trials")

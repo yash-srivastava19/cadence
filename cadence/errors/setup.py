@@ -12,6 +12,7 @@ __all__ = [
     "MarkerError",
     "MissingKey",
     "MissingMetric",
+    "SandboxUnreachable",
     "SetupError",
     "UnknownPlugin",
     "UnknownProvider",
@@ -48,3 +49,11 @@ class UnknownProvider(SetupError):
 
 class MissingKey(SetupError):
     """A provider needs an API key and the environment does not have one."""
+
+
+class SandboxUnreachable(SetupError):
+    """The sandbox CADENCE_SANDBOX names did not answer with a measurement.
+
+    Not the candidate's fault, so not a verdict. The run stops, and resumes
+    once the sandbox is back.
+    """

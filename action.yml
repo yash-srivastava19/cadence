@@ -1,0 +1,142 @@
+name: Cadence
+description: Run the experiment in .cadence and open a pull request with the winner.
+branding:
+  icon: trending-up
+  color: green
+
+inputs:
+  path:
+    description: The project directory, where .cadence lives.
+    default: .
+  config:
+    description: A manifest to use instead of <path>/.cadence.
+    default: ""
+  compute:
+    description: >-
+      Where candidates are measured. `here` is this job's runner; `cadence` is
+      the hosted sandbox, which needs a CADENCE_TOKEN secret in the step's env.
+      The model is called from this job either way, with your own key.
+    default: here
+  sandbox-url:
+    description: "The hosted sandbox to use with `compute: cadence`. Required until a public one exists."
+    default: ""
+  pull-request:
+    description: Open a pull request when the winner beats the starting program.
+    default: "true"
+  token:
+    description: Token used to push the branch and open the pull request.
+    default: ${{ github.token }}
+
+outputs:
+  run-id:
+    description: The run's id.
+    value: ${{ steps.run.outputs.run-id }}
+  pull-request:
+    description: The pull request's URL, when one was opened.
+    value: ${{ steps.deliver.outputs.url }}
+
+runs:
+  using: composite
+  steps:
+    - if: inputs.compute != 'here' && inputs.compute != 'cadence'
+      shell: bash
+      run: |
+        echo "::error::compute: ${{ inputs.compute }} is not one of here, cadence."
+        exit 1
+
+    - name: Measure in the hosted sandbox
+      if: inputs.compute == 'cadence'
+      shell: bash
+      env:
+        URL: ${{ inputs.sandbox-url }}
+      run: |
+        if [ -z "$URL" ]; then
+          echo "::error::compute: cadence needs sandbox-url."
+          exit 1
+        fi
+        if [ -z "${CADENCE_TOKEN:-}" ]; then
+          echo "::error::compute: cadence needs the CADENCE_TOKEN secret in this step's env."
+          exit 1
+        fi
+        echo "CADENCE_SANDBOX_URL=$URL" >> "$GITHUB_ENV"
+        # The token stays a variable name here and is read when curl runs,
+        # so it never lands in a hash, an error message or the database.
+        echo "CADENCE_SANDBOX=sh -c 'curl -sS --fail-with-body --max-time 900 --retry 3 --retry-all-errors --retry-delay 2 -H \"Authorization: Bearer \$CADENCE_TOKEN\" --data-binary @- \"\$CADENCE_SANDBOX_URL\"'" >> "$GITHUB_ENV"
+
+    - uses: astral-sh/setup-uv@v6
+
+    - name: Install cadence
+      shell: bash
+      env:
+        REF: ${{ github.action_ref }}
+        REPO: ${{ github.action_repository }}
+      run: uv tool install --python 3.12 "git+https://github.com/${REPO}@${REF}"
+
+    - name: Check
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        CONFIG: ${{ inputs.config }}
+      run: cadence check . ${CONFIG:+--config "$CONFIG"}
+
+    - name: Run
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        CONFIG: ${{ inputs.config }}
+      run: |
+        status=0
+        cadence run . --no-json ${CONFIG:+--config "$CONFIG"} > "$RUNNER_TEMP/cadence-report.txt" || status=$?
+        cat "$RUNNER_TEMP/cadence-report.txt"
+        result=$(ls -t cadence-runs/*/*.result.json 2>/dev/null | head -1) || true
+        [ -n "$result" ] && echo "run-id=$(basename "$result" .result.json)" >> "$GITHUB_OUTPUT"
+        {
+          echo '### Cadence'
+          echo '```'
+          cat "$RUNNER_TEMP/cadence-report.txt"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit $status
+
+    - name: Keep the run log
+      if: always() && steps.run.outputs.run-id != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: cadence-${{ steps.run.outputs.run-id }}
+        path: ${{ inputs.path }}/cadence-runs/
+        include-hidden-files: true
+
+    - name: Open a pull request
+      id: deliver
+      if: inputs.pull-request == 'true'
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        RUN_ID: ${{ steps.run.outputs.run-id }}
+        CONFIG: ${{ inputs.config }}
+      run: |
+        cadence apply "$RUN_ID" . ${CONFIG:+--config "$CONFIG"}
+        if git diff --quiet; then
+          echo "The winner is the program the run started from; no pull request." | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+        branch="cadence/$RUN_ID"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git switch -c "$branch"
+        git commit -qam "cadence: winner of run $RUN_ID"
+        git push -q origin "$branch"
+        {
+          echo "Cadence run \`$RUN_ID\` found a program that scores better than the one it started from."
+          echo
+          echo '```'
+          cat "$RUNNER_TEMP/cadence-report.txt"
+          echo '```'
+          echo
+          echo "The run log is attached to the workflow run as \`cadence-$RUN_ID\`."
+        } > "$RUNNER_TEMP/cadence-pr.md"
+        url=$(gh pr create --head "$branch" --title "cadence: winner of run $RUN_ID" --body-file "$RUNNER_TEMP/cadence-pr.md")
+        echo "url=$url" >> "$GITHUB_OUTPUT"
+        echo "Opened $url" >> "$GITHUB_STEP_SUMMARY"
