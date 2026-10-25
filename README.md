@@ -329,7 +329,7 @@ passed to it.
 | `openai` | `OPENAI_API_KEY` | Name a model: `openai: {model: ...}` |
 | `anthropic` | `ANTHROPIC_API_KEY` | Name a model: `anthropic: {model: ...}` |
 | `ollama` | none | Local. `OLLAMA_HOST` overrides the address |
-| `scripted` | none | Canned answers, for tests. It cannot run from the CLI |
+| `scripted` | none | Canned answers written in `.cadence` as `replies:`, one per trial. For trying the pipeline with no key |
 
 Providers are defined in
 [`providers.yml`](cadence/control/backends/providers.yml). Every provider

@@ -224,6 +224,9 @@ def _the_model(manifest: Manifest) -> Finding:
     environment.
     """
     name = manifest.model.name
+    if name == SCRIPTED and manifest.model.options.get("replies"):
+        replies = len(manifest.model.options["replies"])
+        return Finding(about="model", detail=f"scripted, {replies} written replies")
     if name == SCRIPTED:
         return Finding(
             about="model",
