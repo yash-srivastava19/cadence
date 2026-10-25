@@ -12,8 +12,11 @@ def as_text(report: Report) -> str:
     ]
     if report.reason:
         lines.append(f"\n{report.reason}")
+    baseline = report.baseline or {}
     for name, value in (report.metrics or {}).items():
-        lines.append(f"  {name} = {value:g}")
+        was = baseline.get(name)
+        started = f" (started at {was:g})" if was is not None else ""
+        lines.append(f"  {name} = {value:g}{started}")
     if report.evidence is not None:
         lines.append(evidence(report.evidence))
     if report.program:

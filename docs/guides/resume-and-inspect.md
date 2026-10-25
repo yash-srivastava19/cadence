@@ -40,6 +40,8 @@ cadence apply RUN_ID
 
 This overwrites the configured program with the run's winner. Commit or copy the project first; `apply` does not create a backup.
 
+`apply` reads the winner from `cadence-runs/<env>/RUN_ID.result.json` when the run happened on this machine, and from the database otherwise.
+
 ## Read the local log
 
 Each run writes JSONL under `cadence-runs/`:

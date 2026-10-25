@@ -172,8 +172,9 @@ Progress goes to stderr, one line per trial. The result goes to stdout: the
 winner, its metrics, and what the run spent. Pipe it (`cadence run >
 result.json`) or read it on the terminal.
 
-Without a database, that output is the only copy of the winner. Keep it, or
-set up recording first.
+The run also writes the result, winner included, to
+`cadence-runs/<env>/RUN_ID.result.json`, so `cadence apply RUN_ID` works on
+this machine without a database.
 
 Every run also writes a log of each step to `cadence-runs/`, with or without
 a database. See [Logs](#logs).
