@@ -11,14 +11,13 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from cadence.migrations.grants import ADVANCES, grant
+
 # revision identifiers, used by Alembic.
 revision: str = "2b605efc34c7"
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
-
-
-APP = "cadence_app"
 
 
 def upgrade() -> None:
@@ -51,8 +50,7 @@ def upgrade() -> None:
     )
     # A run's status changes as it progresses, so the application may UPDATE.
     # It may never DELETE: a finished run is history.
-    op.execute(f"GRANT SELECT, INSERT, UPDATE ON runs TO {APP}")
-    op.execute(f"REVOKE DELETE ON runs FROM {APP}")
+    grant("runs", ADVANCES)
 
 
 def downgrade() -> None:
