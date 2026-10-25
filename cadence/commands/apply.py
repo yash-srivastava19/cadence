@@ -12,6 +12,7 @@ This writes it to the file it is a version of.
 """
 
 import json
+import os
 from pathlib import Path
 
 import typer
@@ -43,12 +44,14 @@ def apply(
         manifest = load(config or root)
     except CadenceError as error:
         die(str(error))
-    kept = find_result(root, run_id)
-    if kept is not None:
-        winner = _from_file(kept)
-    else:
+    # The database is the record when there is one; the file beside the log
+    # is what a run without one leaves behind.
+    if os.environ.get("DATABASE_URL"):
         with reading() as session:
             winner = winner_of(session, run_id)
+    else:
+        kept = find_result(root, run_id)
+        winner = _from_file(kept) if kept else None
     if winner is None:
         die(
             f"run {run_id!r} has no best program to apply.",
