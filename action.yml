@@ -12,8 +12,14 @@ inputs:
     description: A manifest to use instead of <path>/.cadence.
     default: ""
   compute:
-    description: Where candidates are measured. `here` is this job's runner.
+    description: >-
+      Where candidates are measured. `here` is this job's runner; `cadence` is
+      the hosted sandbox, which needs a CADENCE_TOKEN secret in the step's env.
+      The model is called from this job either way, with your own key.
     default: here
+  sandbox-url:
+    description: "The hosted sandbox to use with `compute: cadence`."
+    default: https://cadence-sandbox.tail-placeholder.ts.net/run
   pull-request:
     description: Open a pull request when the winner beats the starting program.
     default: "true"
@@ -32,11 +38,26 @@ outputs:
 runs:
   using: composite
   steps:
-    - if: inputs.compute != 'here'
+    - if: inputs.compute != 'here' && inputs.compute != 'cadence'
       shell: bash
       run: |
-        echo "::error::compute: ${{ inputs.compute }} is not available yet; use compute: here."
+        echo "::error::compute: ${{ inputs.compute }} is not one of here, cadence."
         exit 1
+
+    - name: Measure in the hosted sandbox
+      if: inputs.compute == 'cadence'
+      shell: bash
+      env:
+        URL: ${{ inputs.sandbox-url }}
+      run: |
+        if [ -z "${CADENCE_TOKEN:-}" ]; then
+          echo "::error::compute: cadence needs the CADENCE_TOKEN secret in this step's env."
+          exit 1
+        fi
+        echo "CADENCE_SANDBOX_URL=$URL" >> "$GITHUB_ENV"
+        # The token stays a variable name here and is read when curl runs,
+        # so it never lands in a hash, an error message or the database.
+        echo "CADENCE_SANDBOX=sh -c 'curl -sS --fail-with-body --max-time 900 -H \"Authorization: Bearer \$CADENCE_TOKEN\" --data-binary @- \"\$CADENCE_SANDBOX_URL\"'" >> "$GITHUB_ENV"
 
     - uses: astral-sh/setup-uv@v6
 
