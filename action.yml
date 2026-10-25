@@ -57,7 +57,7 @@ runs:
         echo "CADENCE_SANDBOX_URL=$URL" >> "$GITHUB_ENV"
         # The token stays a variable name here and is read when curl runs,
         # so it never lands in a hash, an error message or the database.
-        echo "CADENCE_SANDBOX=sh -c 'curl -sS --fail-with-body --max-time 900 -H \"Authorization: Bearer \$CADENCE_TOKEN\" --data-binary @- \"\$CADENCE_SANDBOX_URL\"'" >> "$GITHUB_ENV"
+        echo "CADENCE_SANDBOX=sh -c 'curl -sS --fail-with-body --max-time 900 --retry 3 --retry-all-errors --retry-delay 2 -H \"Authorization: Bearer \$CADENCE_TOKEN\" --data-binary @- \"\$CADENCE_SANDBOX_URL\"'" >> "$GITHUB_ENV"
 
     - uses: astral-sh/setup-uv@v6
 
