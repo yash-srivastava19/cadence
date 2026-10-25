@@ -19,7 +19,7 @@ inputs:
     default: here
   sandbox-url:
     description: "The hosted sandbox to use with `compute: cadence`."
-    default: https://cadence-sandbox.tail-placeholder.ts.net/run
+    default: https://scrabble-runner.tail3226fd.ts.net/run
   pull-request:
     description: Open a pull request when the winner beats the starting program.
     default: "true"
